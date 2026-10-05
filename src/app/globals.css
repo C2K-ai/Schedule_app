@@ -1,26 +1,274 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ───────── 디자인 토큰 ─────────
+   라임(#C8FF2E) = 진행/행동, 빨강 = 미시작·경고 전용. 경고색은 다른 데 쓰지 않는다. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --bg: #f3f4f6;
+  --bg-glow: rgba(150, 190, 0, 0.12);
+  --surface: #ffffff;
+  --surface-2: #f2f3f6;
+  --surface-3: #e7e9ee;
+  --line: rgba(15, 17, 23, 0.08);
+  --line-strong: rgba(15, 17, 23, 0.16);
+  --fg: #0e1016;
+  --muted: #5c6373;
+  --faint: #9aa0ad;
+  --accent: #c8ff2e;
+  --accent-fg: #0b0c10;
+  --accent-text: #4d7c0f;
+  --danger: #e5243f;
+  --danger-soft: rgba(229, 36, 63, 0.1);
+  --warn: #d97706;
+  --ok: #059669;
+  --shadow: 0 1px 2px rgba(15, 17, 23, 0.04), 0 10px 30px rgba(15, 17, 23, 0.06);
+  --hour: 64px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0b0f;
+  --bg-glow: rgba(200, 255, 46, 0.075);
+  --surface: #121419;
+  --surface-2: #181b22;
+  --surface-3: #21252e;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --fg: #f2f4f7;
+  --muted: #9097a6;
+  --faint: #5d6372;
+  --accent: #c8ff2e;
+  --accent-fg: #0b0c10;
+  --accent-text: #c8ff2e;
+  --danger: #ff3d5a;
+  --danger-soft: rgba(255, 61, 90, 0.13);
+  --warn: #ffb020;
+  --ok: #34d399;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
-@media (prefers-color-scheme: dark) {
+@media (min-width: 768px) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --hour: 72px;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-text: var(--accent-text);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo",
+    "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --shadow-card: var(--shadow);
+}
+
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-family: var(--font-sans);
+  /* 한글이 단어 중간에서 끊기지 않게 */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  background-image: radial-gradient(1200px 500px at 15% -10%, var(--bg-glow), transparent 60%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+button,
+[role="button"] {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* ───────── 강제성 연출 ───────── */
+
+/* 공사장 테이프 — 미시작 경고 배너 */
+.tape {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--danger) 0 12px,
+    color-mix(in oklab, var(--danger) 55%, black) 12px 24px
+  );
+  background-size: 34px 34px;
+  animation: tape-move 1.2s linear infinite;
+}
+@keyframes tape-move {
+  to {
+    background-position: 34px 0;
+  }
+}
+
+/* 미시작 일정 블록 — 빨간 맥박 */
+.overdue-pulse {
+  animation: overdue-pulse 1.6s ease-in-out infinite;
+}
+@keyframes overdue-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--danger) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in oklab, var(--danger) 0%, transparent);
+  }
+}
+
+/* 알람 화면 — 퍼져나가는 원 */
+.ring-wave {
+  animation: ring-wave 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+@keyframes ring-wave {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.strobe {
+  animation: strobe 0.9s steps(2, jump-none) infinite;
+}
+@keyframes strobe {
+  0% {
+    background-color: color-mix(in oklab, var(--danger) 92%, black);
+  }
+  100% {
+    background-color: #12030a;
+  }
+}
+
+.breathe {
+  animation: breathe 5s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(0.94);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+.shake {
+  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-5px);
+  }
+  40%,
+  60% {
+    transform: translateX(5px);
+  }
+}
+
+.fade-up {
+  animation: fade-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.sheet-in {
+  animation: sheet-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.grid-hours {
+  background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, transparent calc(var(--hour) / 2), color-mix(in oklab, var(--line) 50%, transparent) calc(var(--hour) / 2), transparent calc(var(--hour) / 2 + 1px));
+  background-size: 100% var(--hour);
+}
+
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tape,
+  .overdue-pulse,
+  .ring-wave,
+  .strobe,
+  .breathe {
+    animation: none;
+  }
 }
