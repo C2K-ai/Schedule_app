@@ -133,6 +133,14 @@ await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub'
 ok((await q(`select count(*)::int n from public.tasks`))[0].n === 0, "RLS: B 는 A 의 일정을 못 봄");
 await db.exec(`select set_config('request.jwt.claim.sub', '${A}', false);`);
 ok((await q(`select count(*)::int n from public.tasks`))[0].n === 4, "RLS: A 는 자기 일정 4개를 봄");
+// 트리거 함수 EXECUTE 를 회수해도 로그인 사용자의 쓰기에서 트리거는 그대로 돈다
+const T9 = "99999999-0000-4000-8000-0000000000aa";
+await q(`insert into public.tasks (id, user_id, title, starts_at, ends_at) values ($1, $2, '트리거 확인', now() + interval '1 hour', now() + interval '2 hours')`, [T9, A]);
+const jobsT9 = (await q(`select count(*)::int n from public.notification_jobs where task_id = $1`, [T9]))[0].n;
+ok(jobsT9 >= 2, `권한 회수 뒤에도 트리거 동작 (알림 ${jobsT9}개 생성)`);
+let rpcDenied = false;
+try { await q(`select public.sync_task_jobs()`); } catch { rpcDenied = true; }
+ok(rpcDenied, "트리거 함수는 직접 호출 불가");
 let threw = false;
 try {
   await q(`insert into public.tasks (id, user_id, title, starts_at, ends_at) values (gen_random_uuid(), '${B}', '남의 것', now(), now() + interval '1 hour')`);

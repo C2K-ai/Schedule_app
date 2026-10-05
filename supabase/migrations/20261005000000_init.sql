@@ -137,6 +137,10 @@ create table if not exists public.notification_jobs (
   unique (task_id, kind, seq, fire_at)
 );
 create index if not exists notification_jobs_due on public.notification_jobs (fire_at) where sent_at is null;
+-- 외래키 인덱스 (삭제·조인 성능)
+create index if not exists focus_task on public.focus_sessions (task_id);
+create index if not exists notification_jobs_user on public.notification_jobs (user_id);
+create index if not exists task_logs_task on public.task_logs (task_id);
 
 -- ════════════════════════════════════════════════════════════════════
 --  트리거
@@ -144,7 +148,7 @@ create index if not exists notification_jobs_due on public.notification_jobs (fi
 
 -- LWW: 더 오래된 updated_at 으로 덮어쓰려 하면 무시. synced_at 은 서버 시계로 갱신.
 create or replace function public.lww_guard() returns trigger
-language plpgsql as $$
+language plpgsql set search_path = '' as $$
 begin
   if tg_op = 'UPDATE' then
     if new.updated_at < old.updated_at then
@@ -352,6 +356,9 @@ revoke update, delete on public.task_logs from anon, authenticated;
 revoke insert, update, delete on public.notification_jobs from anon, authenticated;
 revoke all on public.profiles, public.habits, public.tasks, public.task_logs, public.focus_sessions,
   public.push_subscriptions, public.notification_jobs from anon;
+-- 트리거 함수는 API(/rpc)로 부를 일이 없다 — 트리거로 실행될 때는 EXECUTE 권한을 보지 않는다
+revoke all on function public.handle_new_user(), public.sync_task_jobs(), public.resync_after_grace_change(),
+  public.lww_guard() from public, anon, authenticated;
 
 -- ════════════════════════════════════════════════════════════════════
 --  Realtime — 노트북에서 바꾸면 핸드폰에 즉시

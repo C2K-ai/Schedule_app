@@ -15,6 +15,7 @@ import {
 } from "@/lib/planner";
 import { fmtCountdown, fmtSpan, fmtTime, MIN, startOfDay } from "@/lib/time";
 import { COLOR_HEX } from "@/lib/types";
+import { useMedia } from "@/lib/useMedia";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
 import { Button, Card, cx, ProgressRing } from "./ui";
@@ -160,10 +161,10 @@ function NextCard() {
   const nx = nextTask(tasks, now);
   if (!nx) {
     return (
-      <Card className="flex flex-col justify-between p-5 md:p-6">
-        <p className="text-xs font-bold tracking-widest text-faint uppercase">다음 일정까지</p>
-        <p className="mt-3 font-mono text-5xl font-bold tracking-tight text-faint tabular-nums">--:--</p>
-        <p className="mt-2 text-sm text-muted">남은 일정이 없어요. 내일을 미리 짜 두세요.</p>
+      <Card className="flex h-full flex-col justify-between p-4 md:p-6">
+        <p className="text-[11px] font-bold tracking-widest text-faint uppercase md:text-xs">다음 일정까지</p>
+        <p className="mt-3 font-mono text-[30px] font-bold tracking-tight text-faint tabular-nums md:text-5xl">--:--</p>
+        <p className="mt-2 text-xs text-muted md:text-sm">남은 일정이 없어요. 내일을 미리 짜 두세요.</p>
       </Card>
     );
   }
@@ -172,23 +173,25 @@ function NextCard() {
   return (
     <Card
       className={cx(
-        "relative flex flex-col justify-between overflow-hidden p-5 md:p-6",
+        "relative flex h-full flex-col justify-between overflow-hidden p-4 md:p-6",
         soon && "border-accent/60 shadow-[0_0_0_1px_var(--accent),0_0_40px_-10px_var(--accent)]",
       )}
     >
-      <p className="text-xs font-bold tracking-widest text-faint uppercase">다음 일정까지</p>
+      <p className="text-[11px] font-bold tracking-widest text-faint uppercase md:text-xs">다음 일정까지</p>
       <p
         className={cx(
-          "mt-2 font-mono text-[44px] leading-none font-bold tracking-tighter tabular-nums md:text-[56px]",
+          "mt-2 font-mono text-[30px] leading-none font-bold tracking-tighter tabular-nums sm:text-[40px] md:text-[44px] xl:text-[56px]",
           soon && "text-accent-text",
         )}
       >
         {fmtCountdown(ms)}
       </p>
-      <div className="mt-3 flex min-w-0 items-center gap-2">
-        <span className="size-2.5 shrink-0 rounded-full" style={{ background: COLOR_HEX[nx.color] }} />
-        <p className="truncate font-semibold">{nx.title}</p>
-        <span className="ml-auto shrink-0 font-mono text-sm text-muted tabular-nums">{fmtTime(nx.starts_at)}</span>
+      <div className="mt-3 flex min-w-0 flex-col gap-0.5 md:flex-row md:items-center md:gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="size-2.5 shrink-0 rounded-full" style={{ background: COLOR_HEX[nx.color] }} />
+          <p className="truncate text-sm font-semibold md:text-base">{nx.title}</p>
+        </div>
+        <span className="font-mono text-xs text-muted tabular-nums md:ml-auto md:shrink-0 md:text-sm">{fmtTime(nx.starts_at)}</span>
       </div>
     </Card>
   );
@@ -205,6 +208,25 @@ function TodayCard() {
   const s = dayStats(todays, now, settings.graceMin, focus);
   const postponed = recentLogs(snap.db, today.getTime()).filter((l) => l.kind === "postponed").length;
   const ringColor = s.rate >= 80 ? "var(--accent)" : s.rate >= 40 ? "var(--warn)" : "var(--danger)";
+  const wide = useMedia("(min-width: 768px)");
+
+  if (!wide) {
+    return (
+      <Card className="flex h-full flex-col items-center justify-between gap-2 p-4">
+        <ProgressRing value={s.total ? s.done / s.total : 0} size={86} stroke={9} color={s.total ? ringColor : "var(--faint)"}>
+          <div className="text-center">
+            <p className="font-mono text-[22px] leading-none font-bold tabular-nums">{s.rate}%</p>
+            <p className="mt-0.5 text-[10px] font-semibold text-muted">오늘 달성</p>
+          </div>
+        </ProgressRing>
+        <p className="text-center text-xs text-muted">
+          완료 <b className="font-mono text-fg tabular-nums">{s.done}/{s.total}</b>
+          {postponed > 0 && <span className="text-warn"> · 미룸 {postponed}</span>}
+          {s.missed + s.skipped > 0 && <span className="text-danger"> · 놓침 {s.missed + s.skipped}</span>}
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="flex items-center gap-5 p-5 md:p-6">
@@ -236,12 +258,17 @@ function Stat({ label, value, warn, danger }: { label: string; value: number | s
   );
 }
 
+/** 폰: [지금] 한 줄 + [다음까지 | 달성률] 나란히 / 태블릿: 2열 / 데스크톱: 3열 */
 export function NowBar() {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.25fr_1fr_1fr]">
-      <NowCard />
-      <NextCard />
-      <div className="md:col-span-2 xl:col-span-1">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-[1.25fr_1fr_1fr]">
+      <div className="col-span-2 md:col-span-1">
+        <NowCard />
+      </div>
+      <div className="col-span-1">
+        <NextCard />
+      </div>
+      <div className="col-span-1 md:col-span-2 xl:col-span-1">
         <TodayCard />
       </div>
     </div>

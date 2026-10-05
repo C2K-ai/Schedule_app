@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellRing, Cloud, Download, KeyRound, LogOut, Mail, Monitor, Moon, RefreshCw, Smartphone, Sun, Upload, Vibrate, Volume2 } from "lucide-react";
+import { Bell, BellRing, Cloud, Download, LogOut, Monitor, Moon, RefreshCw, Smartphone, Sun, Upload, Vibrate, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   isIOS,
@@ -18,9 +18,10 @@ import { cloudEnabled, getSupabase } from "@/lib/supabase";
 import { fmtOffset, uuid } from "@/lib/time";
 import type { AlarmTheme, Settings, VibrationKey } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
+import { AuthForm } from "./AuthForm";
 import { SoundOptions } from "./SoundOptions";
 import { SoundStudio } from "./SoundStudio";
-import { Button, Chip, cx, inputCls, Label, Modal, Segmented, Switch } from "./ui";
+import { Button, Chip, cx, Label, Modal, Segmented, Switch } from "./ui";
 
 type Tab = "notify" | "sound" | "rules" | "focus" | "account" | "data";
 
@@ -401,12 +402,6 @@ function FocusTab() {
 
 function AccountTab() {
   const { session, snap, store, signOut, toast } = usePlanner();
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<"email" | "code">("email");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const sb = getSupabase();
   const importedKey = session.userId ? `must:local-imported:${session.userId}` : "";
   const [importedNow, setImportedNow] = useState(false);
   const alreadyImported = (() => {
@@ -508,72 +503,13 @@ function AccountTab() {
 
   return (
     <Section
-      title="로그인 — 기기 간 동기화"
-      desc="비밀번호 없이 이메일로 받은 6자리 코드로 로그인합니다. (iPhone 홈 화면 앱은 메일 링크가 Safari로 열려서, 링크 대신 코드를 씁니다.)"
+      title="로그인 — 노트북 ↔ 폰 동기화"
+      desc="같은 계정으로 로그인한 기기끼리 일정·습관·기록이 실시간으로 맞춰지고, 앱을 닫아도 서버가 알림을 보냅니다."
     >
-      {step === "email" ? (
-        <form
-          className="flex flex-col gap-2 sm:flex-row"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            setErr(null);
-            const { error } = await sb!.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
-            setBusy(false);
-            if (error) setErr(error.message);
-            else setStep("code");
-          }}
-        >
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className={inputCls}
-            autoComplete="email"
-          />
-          <Button variant="primary" disabled={busy} className="h-11 shrink-0">
-            <Mail size={16} /> 코드 받기
-          </Button>
-        </form>
-      ) : (
-        <form
-          className="space-y-2"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            setErr(null);
-            const { error } = await sb!.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: "email" });
-            setBusy(false);
-            if (error) setErr(error.message);
-            else toast({ text: "로그인했습니다 — 동기화를 시작합니다", tone: "ok" });
-          }}
-        >
-          <p className="text-sm text-muted">{email} 로 보낸 코드를 입력하세요.</p>
-          <div className="flex gap-2">
-            <input
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 10))}
-              placeholder="123456"
-              className={cx(inputCls, "font-mono text-xl tracking-[0.4em]")}
-            />
-            <Button variant="primary" disabled={busy || code.length < 6} className="h-12 shrink-0">
-              <KeyRound size={16} /> 확인
-            </Button>
-          </div>
-          <button type="button" onClick={() => setStep("email")} className="text-xs text-muted underline">
-            이메일 다시 입력
-          </button>
-        </form>
-      )}
-      {err && <p className="mt-2 text-sm text-danger">{err}</p>}
+      <AuthForm />
     </Section>
   );
 }
-
 function DataTab() {
   const { settings, updateSettings, store, toast } = usePlanner();
   const fileRef = useRef<HTMLInputElement>(null);

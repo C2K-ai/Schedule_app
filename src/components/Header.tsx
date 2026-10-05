@@ -3,6 +3,7 @@
 import { CalendarDays, Cloud, CloudOff, Download, NotebookPen, Repeat, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { isStandalone } from "@/lib/notify";
+import { cloudEnabled } from "@/lib/supabase";
 import { currentTask, dayStats, enforcementQueue, nextTask, tasksOnDay } from "@/lib/planner";
 import { fmtCountdown, fmtDate, fmtTime, startOfDay } from "@/lib/time";
 import { COLOR_HEX } from "@/lib/types";
@@ -16,12 +17,17 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 function SyncPill() {
-  const { snap, openSheet } = usePlanner();
+  const { snap, openSheet, session } = usePlanner();
   const s = snap.status;
   let tone = "text-muted";
   let dot = "bg-faint";
   let text = "이 기기에만 저장";
   let Icon = CloudOff;
+  if (cloudEnabled && !session.userId) {
+    tone = "text-warn";
+    dot = "bg-warn";
+    text = "로그인하면 동기화";
+  }
   if (s.mode === "cloud") {
     Icon = Cloud;
     if (!s.online) {

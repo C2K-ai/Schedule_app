@@ -1,10 +1,12 @@
 "use client";
 
-import { Plus, Share, X } from "lucide-react";
+import { Cloud, Plus, Share, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { isIOS, isStandalone } from "@/lib/notify";
+import { cloudEnabled } from "@/lib/supabase";
 import { MIN, startOfDay } from "@/lib/time";
 import { AlarmOverlay } from "./AlarmOverlay";
+import { AuthForm } from "./AuthForm";
 import { Board, type View } from "./Board";
 import { EnforcementModal, OverdueSiren, PostponeDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
@@ -68,6 +70,36 @@ function InstallHint() {
   );
 }
 
+/** 서버는 연결돼 있는데 아직 로그인 전 — 맨 위에서 바로 로그인 */
+function CloudLoginCard() {
+  const { session } = usePlanner();
+  const [open, setOpen] = useState(false);
+  if (!cloudEnabled || !session.ready || session.userId) return null;
+  return (
+    <div className="fade-up rounded-2xl border border-accent/40 bg-[color-mix(in_oklab,var(--accent)_7%,var(--surface))] px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-fg">
+          <Cloud size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">로그인하면 노트북 ↔ 폰이 연결돼요</p>
+          <p className="text-xs text-muted">일정이 실시간으로 맞춰지고, 앱을 닫아도 서버가 알림을 보냅니다.</p>
+        </div>
+        {!open && (
+          <button onClick={() => setOpen(true)} className="h-9 shrink-0 rounded-xl bg-accent px-3 text-sm font-bold text-accent-fg">
+            로그인
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-3 max-w-md">
+          <AuthForm compact />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Dashboard() {
   const p = usePlanner();
   const [selected, setSelected] = useState(() => startOfDay(new Date()));
@@ -87,6 +119,7 @@ export function Dashboard() {
     <>
       <Header onToday={() => setSelected(startOfDay(new Date()))} compact={!nowVisible} />
       <main className="mx-auto max-w-[1400px] space-y-4 px-4 pt-4 pb-36 md:px-6 md:pt-6">
+        <CloudLoginCard />
         <InstallHint />
         <OverdueBanner
           onOpen={() => {
