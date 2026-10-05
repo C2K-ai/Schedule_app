@@ -242,9 +242,8 @@ export function ReminderEngine() {
         const pl = data.payload;
         const task = pl.taskId ? (latest.current.store.db.tasks[pl.taskId] ?? null) : null;
         const kind = pl.kind ?? "start";
-        const key = task
-          ? `${task.id}:${kind}:${pl.seq ?? 0}:${pl.startsAt ?? task.starts_at}`
-          : `push:${pl.title}:${pl.startsAt}`;
+        // 로컬 일정의 starts_at 으로 키를 만든다 — 앱 안 알림과 같은 키라서 둘 다 와도 한 번만 울린다
+        const key = task ? `${task.id}:${kind}:${pl.seq ?? 0}:${task.starts_at}` : `push:${pl.title}:${pl.startsAt}`;
         void once(key, () =>
           fire(kind, pl.seq ?? 0, task, key, pl.title ? { title: pl.title, body: pl.body ?? "" } : undefined),
         );

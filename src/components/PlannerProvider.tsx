@@ -13,6 +13,7 @@ import {
 } from "react";
 import { liveHabits, liveTasks, materializeHabits } from "@/lib/planner";
 import { mergeSettings } from "@/lib/settings";
+import { unsubscribePush } from "@/lib/push";
 import { PlannerStore, type Snapshot } from "@/lib/store";
 import { getSupabase } from "@/lib/supabase";
 import { addDays, startOfDay, uuid } from "@/lib/time";
@@ -216,8 +217,20 @@ function Inner({
   );
 
   const signOut = useCallback(async () => {
-    await getSupabase()?.auth.signOut();
+    const sb = getSupabase();
+    if (!sb) return;
+    // 이 기기의 푸시 구독을 먼저 지운다 — 안 그러면 로그아웃한 계정의 알림이 계속 이 기기로 온다
+    await unsubscribePush(sb).catch(() => {});
+    await sb.auth.signOut();
   }, []);
+
+  // 서버가 습관 회차·알림 문구를 이 기기 시간대로 만들도록 프로필에 시간대를 맞춰 둔다
+  const profileTz = snap.db.profile?.timezone;
+  useEffect(() => {
+    if (!session.userId || !profileTz) return;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && tz !== profileTz) store.saveProfile({ timezone: tz });
+  }, [session.userId, profileTz, store]);
 
   const value: Ctx = {
     store,

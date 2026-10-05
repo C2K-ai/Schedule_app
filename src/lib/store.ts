@@ -39,6 +39,7 @@ const k = (scope: string, part: string) => `${PREFIX}:${scope}:${part}`;
 
 const emptyDb = (): DB => ({ tasks: {}, habits: {}, task_logs: {}, focus_sessions: {}, profile: null });
 
+
 function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -212,7 +213,8 @@ export class PlannerStore {
     const db = { ...this.snap.db, [table]: { ...this.snap.db[table], [row.id]: next } } as DB;
     this.emit({ db });
     this.persist();
-    this.enqueue(table, next as unknown as Record<string, unknown>, mode);
+    // 사유 기록은 서버에서 고칠 수 없다(쓰기 전용) → 재전송돼도 '중복이면 무시'
+    this.enqueue(table, next as unknown as Record<string, unknown>, table === "task_logs" ? "insertIgnore" : mode);
   }
 
   patch<T extends TableName>(table: T, id: string, patch: Partial<DB[T][string]>): DB[T][string] | null {
@@ -300,7 +302,12 @@ export class PlannerStore {
     }
     let networkFailed = false;
     const done = new Set<OutboxItem>();
-    for (const [key, items] of groups) {
+    // 외래키 순서: 습관 → 일정 → 기록·집중 (일정보다 기록이 먼저 올라가면 거절된다)
+    const order: AnyTable[] = ["profiles", "habits", "tasks", "task_logs", "focus_sessions"];
+    const sorted = [...groups].sort(
+      ([a], [b]) => order.indexOf(a.split("|")[0] as AnyTable) - order.indexOf(b.split("|")[0] as AnyTable),
+    );
+    for (const [key, items] of sorted) {
       const [table, mode] = key.split("|") as [AnyTable, OutboxItem["mode"]];
       const rows = items.map((i) => i.row);
       const { error } = await this.remote
@@ -344,7 +351,21 @@ export class PlannerStore {
   }
 
   // ───────────── 동기화: 받기 ─────────────
-  private applyRemote(table: AnyTable, row: Record<string, unknown>): boolean {
+  /** Postgres 는 '2026-10-05T14:30:00+00:00' 형태로 준다 → 앱의 toISOString() 형태로 맞춰 문자열 비교·정렬이 어긋나지 않게 */
+  private normalize(row: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...row };
+    for (const [k, v] of Object.entries(out)) {
+      const isTime = (k.endsWith("_at") && k !== "synced_at") || k === "planned_end";
+      if (isTime && typeof v === "string") {
+        const t = Date.parse(v);
+        if (!Number.isNaN(t)) out[k] = new Date(t).toISOString();
+      }
+    }
+    return out;
+  }
+
+  private applyRemote(table: AnyTable, raw: Record<string, unknown>): boolean {
+    const row = this.normalize(raw);
     const id = String(row.id);
     const incoming = String(row.updated_at ?? "");
     const pending = this.outbox.find((o) => o.table === table && o.id === id);
@@ -377,10 +398,12 @@ export class PlannerStore {
     let changed = false;
     try {
       for (const table of [...TABLES, "profiles"] as AnyTable[]) {
+        // 첫 쪽만 2분 겹쳐 받는다 — 늦게 커밋된 트랜잭션을 놓치지 않게(다시 받아도 LWW라 무해)
+        const start = this.cursor[table];
+        let after: string | null = start ? new Date(Date.parse(start) - 2 * 60_000).toISOString() : null;
         for (let page = 0; page < 20; page++) {
           let q = this.remote.from(table).select("*").order("synced_at", { ascending: true }).limit(500);
-          const cur = this.cursor[table];
-          if (cur) q = q.gt("synced_at", cur);
+          if (after) q = q.gt("synced_at", after);
           else if (table === "tasks") q = q.gte("starts_at", new Date(Date.now() - 60 * DAY).toISOString());
           else if (table === "task_logs") q = q.gte("created_at", new Date(Date.now() - 60 * DAY).toISOString());
           else if (table === "focus_sessions")
@@ -392,6 +415,7 @@ export class PlannerStore {
             this.bumpCursor(table, row.synced_at);
           }
           if (!data || data.length < 500) break;
+          after = String(data[data.length - 1].synced_at);
         }
       }
       writeJson(k(this.scope, "cursor"), this.cursor);
