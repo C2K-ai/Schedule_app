@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Play, SkipForward, TriangleAlert } from "lucide-react";
+import { CalendarClock, Play, SkipForward, TriangleAlert, VolumeX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   enforcementQueue,
@@ -10,7 +10,7 @@ import {
   skipTask,
   startTask,
 } from "@/lib/planner";
-import { stopAllSounds } from "@/lib/sound";
+import { findSound, playSound, stopAllSounds } from "@/lib/sound";
 import { addDays, addMinutes, atTime, fmtSpan, fmtTime, MIN, toHHMM } from "@/lib/time";
 import { COLOR_HEX, type Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
@@ -109,6 +109,31 @@ function TimeChoices({ base, value, now, onChange }: { base: Task; value: Date; 
 
 const nextSlot = (now: number) => new Date(Math.ceil(now / (5 * MIN)) * 5 * MIN + 15 * MIN);
 
+/** 미시작 경고음 — 화면 없이 소리만. 경고창의 '경고음 끄기'나 어떤 처리를 하면 멈춘다(최대 45초). */
+export function OverdueSiren() {
+  const { overdueRing, stopOverdue, settings } = usePlanner();
+  const key = overdueRing?.key;
+  useEffect(() => {
+    if (!overdueRing) return;
+    let replaced = false;
+    const h = playSound(findSound(overdueRing.soundId, settings.customSounds), {
+      loop: true,
+      escalate: true,
+      volume: settings.volume,
+      maxSeconds: 45,
+      // 다 울리고 끝났을 때만 상태를 비운다(다음 경고로 바뀌어 멈춘 경우는 그대로 둔다)
+      onEnd: () => !replaced && stopOverdue(),
+    });
+    return () => {
+      replaced = true;
+      h.stop();
+    };
+    // 같은 경고가 이어지는 동안 설정 변경으로 다시 울리지 않게 key 기준
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return null;
+}
+
 type Step = "choose" | "postpone" | "skip" | "bulk";
 
 /** 미시작 일정 강제 처리 — 닫기 버튼이 없다. 시작하거나 사유를 써야 넘어간다. */
@@ -122,7 +147,7 @@ export function EnforcementModal({ suppressed }: { suppressed: boolean }) {
 }
 
 function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now: number }) {
-  const { store, settings, toast } = usePlanner();
+  const { store, settings, toast, overdueRing, stopOverdue } = usePlanner();
   const [step, setStep] = useState<Step>("choose");
   const [reason, setReason] = useState("");
   const [shake, setShake] = useState(0);
@@ -146,12 +171,24 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
   const guard = (fn: () => void) => {
     if (!valid) return setShake((n) => n + 1);
     fn();
+    stopOverdue();
     stopAllSounds();
   };
 
   return (
     <Modal open size="md" tone="danger" className="border-danger/70!">
       <div className="tape -mx-5 mb-5 h-2.5 md:-mx-6" />
+      {overdueRing && (
+        <button
+          onClick={() => {
+            stopOverdue();
+            stopAllSounds();
+          }}
+          className="absolute top-5 right-4 inline-flex items-center gap-1 rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs font-semibold text-muted hover:text-fg"
+        >
+          <VolumeX size={14} /> 경고음 끄기
+        </button>
+      )}
       <div className="flex items-start gap-3">
         <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-danger-soft text-danger">
           <TriangleAlert size={26} />
@@ -185,6 +222,7 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
               className="w-full"
               onClick={() => {
                 startTask(store, task.id);
+                stopOverdue();
                 stopAllSounds();
                 toast({ text: "▶ 좋아요. 지금 시작합니다", tone: "ok" });
               }}

@@ -105,18 +105,26 @@ const SNOOZE_KEY = "must:snoozes";
 
 export function readFired(): Record<string, number> {
   try {
-    return JSON.parse(localStorage.getItem(FIRED_KEY) ?? "{}");
+    return { ...firedMem, ...JSON.parse(localStorage.getItem(FIRED_KEY) ?? "{}") };
   } catch {
-    return {};
+    return { ...firedMem };
   }
 }
 
+// 저장소가 막힌 환경에서도 같은 탭 안에서는 중복으로 울리지 않게 메모리에도 둔다
+const firedMem: Record<string, number> = {};
+
 export function markFired(key: string) {
-  const all = readFired();
-  const cutoff = Date.now() - 3 * 24 * 60 * MIN;
-  for (const k of Object.keys(all)) if (all[k] < cutoff) delete all[k];
-  all[key] = Date.now();
-  localStorage.setItem(FIRED_KEY, JSON.stringify(all));
+  firedMem[key] = Date.now();
+  try {
+    const all = readFired();
+    const cutoff = Date.now() - 3 * 24 * 60 * MIN;
+    for (const k of Object.keys(all)) if (all[k] < cutoff) delete all[k];
+    all[key] = Date.now();
+    localStorage.setItem(FIRED_KEY, JSON.stringify(all));
+  } catch {
+    /* 메모리 기록으로 대신 */
+  }
 }
 
 export function readSnoozes(): Snooze[] {
@@ -132,7 +140,11 @@ export function readSnoozes(): Snooze[] {
 export function addSnooze(taskId: string, minutes = 5) {
   const list = readSnoozes().filter((s) => s.taskId !== taskId);
   list.push({ taskId, fireAt: Date.now() + minutes * MIN });
-  localStorage.setItem(SNOOZE_KEY, JSON.stringify(list));
+  try {
+    localStorage.setItem(SNOOZE_KEY, JSON.stringify(list));
+  } catch {
+    /* 저장 불가 환경 */
+  }
 }
 
 export function soundForKind(kind: AlarmKind, task: Task | null, s: Settings): string {

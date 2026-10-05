@@ -1,12 +1,12 @@
 "use client";
 
 import { Plus, Share, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isIOS, isStandalone } from "@/lib/notify";
 import { MIN, startOfDay } from "@/lib/time";
 import { AlarmOverlay } from "./AlarmOverlay";
 import { Board, type View } from "./Board";
-import { EnforcementModal, PostponeDialog } from "./Enforcement";
+import { EnforcementModal, OverdueSiren, PostponeDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
 import { Header } from "./Header";
 import { HabitsSheet } from "./HabitsSheet";
@@ -23,6 +23,7 @@ import { Logo } from "./ui";
 function InstallHint() {
   const { openSheet } = usePlanner();
   const [ios] = useState(() => isIOS());
+  const [android] = useState(() => /Android/i.test(navigator.userAgent));
   const [show, setShow] = useState(() => {
     try {
       return !isStandalone() && !localStorage.getItem("must:install-hint-dismissed");
@@ -41,7 +42,9 @@ function InstallHint() {
         <p className="mt-0.5 text-muted">
           {ios
             ? "Safari 아래쪽 공유 버튼 → ‘홈 화면에 추가’ → 설치된 앱을 열고 설정 → 알림 켜기. (iOS는 설치해야만 알림이 옵니다)"
-            : "주소창 오른쪽 설치 아이콘(또는 상단 ‘앱 설치’)을 누르세요. 설치 후 설정 → 알림에서 권한을 켜면 됩니다."}
+            : android
+              ? "Chrome 오른쪽 위 ⋮ → ‘앱 설치’ → 홈 화면의 MUST 로 열고 설정 → 알림 켜기. 배터리는 ‘제한 없음’으로."
+              : "주소창 오른쪽 설치 아이콘(또는 상단 ‘앱 설치’)을 누르세요. 설치 후 설정 → 알림에서 권한을 켜면 됩니다."}
         </p>
         <button onClick={() => openSheet("settings", "notify")} className="mt-1.5 text-sm font-bold text-accent-text">
           알림 설정 열기 →
@@ -51,7 +54,11 @@ function InstallHint() {
         aria-label="닫기"
         className="text-muted hover:text-fg"
         onClick={() => {
-          localStorage.setItem("must:install-hint-dismissed", "1");
+          try {
+            localStorage.setItem("must:install-hint-dismissed", "1");
+          } catch {
+            /* 저장 못 해도 이번엔 닫기만 */
+          }
           setShow(false);
         }}
       >
@@ -65,10 +72,20 @@ export function Dashboard() {
   const p = usePlanner();
   const [selected, setSelected] = useState(() => startOfDay(new Date()));
   const [view, setView] = useState<View>("day");
+  // 큰 상태 카드가 화면 밖으로 나가면 헤더에 한 줄 요약을 붙인다 → 지금/다음/달성률이 항상 보임
+  const nowRef = useRef<HTMLDivElement>(null);
+  const [nowVisible, setNowVisible] = useState(true);
+  useEffect(() => {
+    const el = nowRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setNowVisible(e.isIntersecting), { rootMargin: "-64px 0px 0px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   return (
     <>
-      <Header onToday={() => setSelected(startOfDay(new Date()))} />
+      <Header onToday={() => setSelected(startOfDay(new Date()))} compact={!nowVisible} />
       <main className="mx-auto max-w-[1400px] space-y-4 px-4 pt-4 pb-36 md:px-6 md:pt-6">
         <InstallHint />
         <OverdueBanner
@@ -78,7 +95,9 @@ export function Dashboard() {
             p.closeEditor();
           }}
         />
-        <NowBar />
+        <div ref={nowRef}>
+          <NowBar />
+        </div>
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <Board selected={selected} setSelected={setSelected} view={view} setView={setView} />
           <aside className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
@@ -112,6 +131,7 @@ export function Dashboard() {
       <SettingsSheet />
       <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.postpone)} />
       <AlarmOverlay />
+      <OverdueSiren />
       <Toasts />
       <ReminderEngine />
     </>

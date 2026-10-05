@@ -123,6 +123,21 @@ export function ReminderEngine() {
         return;
       }
       vibrate(s.vibration);
+      if (kind === "overdue") {
+        // 경고창이 이미 떠 있으니 화면은 덮지 않고 소리만 — 사유를 쓰던 중이어도 입력이 날아가지 않는다
+        latest.current.ringOverdue({
+          key,
+          kind,
+          seq,
+          taskId: task?.id ?? null,
+          title: desc.title,
+          body: desc.body,
+          soundId,
+          at: Date.now(),
+        });
+        if (s.speak && task) window.setTimeout(() => speak(`${task.title}, 아직 시작하지 않았습니다.`, s.volume), 1800);
+        return;
+      }
       ring({
         key,
         kind,
@@ -134,12 +149,7 @@ export function ReminderEngine() {
         at: Date.now(),
       });
       if (s.speak && task) {
-        const line =
-          kind === "overdue"
-            ? `${task.title}, 아직 시작하지 않았습니다.`
-            : kind === "focus"
-              ? desc.title
-              : `${task.title}, 시작할 시간입니다.`;
+        const line = kind === "focus" ? desc.title : `${task.title}, 시작할 시간입니다.`;
         window.setTimeout(() => speak(line, s.volume), 1800);
       }
     },

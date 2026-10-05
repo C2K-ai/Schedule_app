@@ -70,6 +70,10 @@ interface Ctx {
   alarm: Alarm | null;
   ring: (a: Alarm) => void;
   dismissAlarm: () => void;
+  /** 미시작 경고음 — 화면을 덮지 않고 경고창이 울린다(사유를 쓰는 중에 끊기지 않게) */
+  overdueRing: Alarm | null;
+  ringOverdue: (a: Alarm) => void;
+  stopOverdue: () => void;
   toasts: Toast[];
   toast: (t: Omit<Toast, "id">) => void;
   dropToast: (id: string) => void;
@@ -166,6 +170,7 @@ function Inner({
   const [sheetTab, setSheetTab] = useState<string | null>(null);
   const [focusScreen, setFocusScreen] = useState(false);
   const [alarm, setAlarm] = useState<Alarm | null>(null);
+  const [overdueRing, setOverdueRing] = useState<Alarm | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [postpone, setPostpone] = useState<{ taskId: string; start: Date } | null>(null);
 
@@ -253,6 +258,9 @@ function Inner({
     alarm,
     ring: (a) => setAlarm((cur) => (cur && cur.kind === "overdue" && a.kind === "before" ? cur : a)),
     dismissAlarm: () => setAlarm(null),
+    overdueRing,
+    ringOverdue: setOverdueRing,
+    stopOverdue: () => setOverdueRing(null),
     toasts,
     toast,
     dropToast,

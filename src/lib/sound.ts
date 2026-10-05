@@ -517,6 +517,8 @@ export function speak(text: string, volume = 1) {
 
 export function vibrate(key: VibrationKey) {
   if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
+  const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+  if (ua && !ua.hasBeenActive) return; // 화면을 한 번도 안 눌렀으면 브라우저가 막는다
   const p = VIBRATIONS[key]?.pattern ?? [];
   if (p.length) navigator.vibrate(p);
 }

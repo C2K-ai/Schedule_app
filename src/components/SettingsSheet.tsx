@@ -409,7 +409,14 @@ function AccountTab() {
   const sb = getSupabase();
   const importedKey = session.userId ? `must:local-imported:${session.userId}` : "";
   const [importedNow, setImportedNow] = useState(false);
-  const canImport = Boolean(session.userId) && !importedNow && hasLocalData("local") && !localStorage.getItem(importedKey);
+  const alreadyImported = (() => {
+    try {
+      return Boolean(localStorage.getItem(importedKey));
+    } catch {
+      return false;
+    }
+  })();
+  const canImport = Boolean(session.userId) && !importedNow && hasLocalData("local") && !alreadyImported;
 
   if (!cloudEnabled) {
     return (
@@ -482,7 +489,11 @@ function AccountTab() {
               variant="primary"
               onClick={() => {
                 store.importDb(readLocalDb("local"));
-                localStorage.setItem(importedKey, new Date().toISOString());
+                try {
+                  localStorage.setItem(importedKey, new Date().toISOString());
+                } catch {
+                  /* 저장 불가 환경 */
+                }
                 setImportedNow(true);
                 toast({ text: "로컬 데이터를 계정으로 옮겼습니다", tone: "ok" });
               }}

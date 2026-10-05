@@ -3,7 +3,9 @@
 import { CalendarDays, Cloud, CloudOff, Download, NotebookPen, Repeat, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { isStandalone } from "@/lib/notify";
-import { fmtDate, fmtTime } from "@/lib/time";
+import { currentTask, dayStats, enforcementQueue, nextTask, tasksOnDay } from "@/lib/planner";
+import { fmtCountdown, fmtDate, fmtTime, startOfDay } from "@/lib/time";
+import { COLOR_HEX } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
 import { cx, IconButton, Logo } from "./ui";
@@ -86,7 +88,42 @@ function InstallButton() {
   );
 }
 
-export function Header({ onToday }: { onToday: () => void }) {
+/** 큰 카드가 화면 밖으로 나가면 헤더 아래에 붙는 한 줄 — 지금 / 다음까지 / 달성률을 항상 보이게 */
+function MiniStatus() {
+  const { tasks, settings } = usePlanner();
+  const now = useNow(1000);
+  const cur = currentTask(tasks, now);
+  const nx = nextTask(tasks, now);
+  const today = tasksOnDay(tasks, startOfDay(new Date(now)));
+  const s = dayStats(today, now, settings.graceMin);
+  const overdue = enforcementQueue(tasks, now, settings.graceMin).length;
+  const late = cur && cur.status === "planned";
+  return (
+    <div className="fade-up mx-auto flex h-10 max-w-[1400px] items-center gap-3 border-t border-line px-4 text-[13px] md:px-6">
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span
+          className={cx("size-2 shrink-0 rounded-full", late ? "animate-pulse bg-danger" : cur ? "bg-accent" : "bg-faint")}
+          style={cur && !late ? { background: COLOR_HEX[cur.color] } : undefined}
+        />
+        <span className={cx("truncate font-semibold", late && "text-danger")}>
+          {cur ? (late ? `시작 안 함 · ${cur.title}` : cur.title) : "비어 있는 시간"}
+        </span>
+      </span>
+      {nx && (
+        <span className="shrink-0 font-mono text-muted tabular-nums">
+          <span className="font-sans">다음 </span>
+          {fmtCountdown(Date.parse(nx.starts_at) - now)}
+        </span>
+      )}
+      {overdue > 0 && (
+        <span className="shrink-0 rounded-md bg-danger px-1.5 py-0.5 text-[11px] font-bold text-white">미시작 {overdue}</span>
+      )}
+      <span className="shrink-0 font-mono font-bold tabular-nums">{s.rate}%</span>
+    </div>
+  );
+}
+
+export function Header({ onToday, compact = false }: { onToday: () => void; compact?: boolean }) {
   const { openSheet } = usePlanner();
   const now = useNow(1000);
   return (
@@ -117,6 +154,7 @@ export function Header({ onToday }: { onToday: () => void }) {
           </IconButton>
         </div>
       </div>
+      {compact && <MiniStatus />}
     </header>
   );
 }
