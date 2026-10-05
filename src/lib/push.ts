@@ -1,0 +1,85 @@
+"use client";
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { registerServiceWorker } from "./notify";
+import { VAPID_PUBLIC_KEY } from "./supabase";
+
+/**
+ * Web Push 구독 — 앱이 완전히 닫혀 있어도 서버(Supabase pg_cron → Edge Function)가 알림을 보낸다.
+ * 기기마다 구독이 하나씩 생기고 push_subscriptions 테이블에 저장된다.
+ */
+
+function urlBase64ToUint8Array(base64: string) {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+export function pushSupported() {
+  return (
+    typeof window !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    Boolean(VAPID_PUBLIC_KEY)
+  );
+}
+
+export async function currentPushSubscription(): Promise<PushSubscription | null> {
+  if (!pushSupported()) return null;
+  const reg = await registerServiceWorker();
+  return (await reg?.pushManager.getSubscription()) ?? null;
+}
+
+async function save(client: SupabaseClient, userId: string, sub: PushSubscription) {
+  const json = sub.toJSON() as { endpoint: string; keys?: { p256dh?: string; auth?: string } };
+  const { error } = await client.from("push_subscriptions").upsert(
+    {
+      user_id: userId,
+      endpoint: json.endpoint,
+      p256dh: json.keys?.p256dh ?? "",
+      auth: json.keys?.auth ?? "",
+      user_agent: navigator.userAgent.slice(0, 300),
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "endpoint" },
+  );
+  if (error) throw new Error(error.message);
+}
+
+/** 사용자 제스처 안에서 호출 */
+export async function subscribePush(client: SupabaseClient, userId: string): Promise<PushSubscription> {
+  const reg = await registerServiceWorker();
+  if (!reg) throw new Error("서비스 워커를 등록하지 못했습니다");
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
+  }
+  await save(client, userId, sub);
+  return sub;
+}
+
+/** 앱을 열 때마다 구독을 다시 저장 — 브라우저가 구독을 갈아끼웠을 때(pushsubscriptionchange) 복구 */
+export async function refreshPushSubscription(client: SupabaseClient, userId: string) {
+  const sub = await currentPushSubscription();
+  if (sub) await save(client, userId, sub).catch(() => {});
+  return sub;
+}
+
+export async function unsubscribePush(client: SupabaseClient) {
+  const sub = await currentPushSubscription();
+  if (!sub) return;
+  await client.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+  await sub.unsubscribe();
+}
+
+export async function sendTestPush(client: SupabaseClient) {
+  const { data, error } = await client.functions.invoke("push-test", { body: {} });
+  if (error) throw new Error(error.message);
+  return data as { sent: number; removed: number; failed: number };
+}
