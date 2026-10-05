@@ -23,13 +23,40 @@ export function admin(): SupabaseClient {
   });
 }
 
+// 비밀값: 환경변수(supabase secrets set) → 없으면 Vault(SQL 로 넣은 값). CLI 없이 SQL 만으로 설정할 수 있게.
+const VAULT_NAMES: Record<string, string> = {
+  VAPID_PUBLIC_KEY: "must_vapid_public",
+  VAPID_PRIVATE_KEY: "must_vapid_private",
+  VAPID_SUBJECT: "must_vapid_subject",
+  CRON_SECRET: "must_cron_secret",
+  ACTION_SECRET: "must_action_secret",
+};
+let vaultCache: Promise<Record<string, string>> | null = null;
+
+export async function setting(name: keyof typeof VAULT_NAMES | string, fallback?: string): Promise<string> {
+  const env = Deno.env.get(name);
+  if (env) return env;
+  vaultCache ??= (async () => {
+    const { data, error } = await admin().rpc("must_function_config");
+    if (error) throw new Error(`Vault 설정을 읽지 못했습니다: ${error.message}`);
+    return (data ?? {}) as Record<string, string>;
+  })().catch((e) => {
+    vaultCache = null; // 다음 호출에서 다시 시도
+    throw e;
+  });
+  const v = (await vaultCache)[VAULT_NAMES[name] ?? ""];
+  if (v) return v;
+  if (fallback !== undefined) return fallback;
+  throw new Error(`${name} 설정이 없습니다 — Vault 에 ${VAULT_NAMES[name]} 를 넣거나 supabase secrets set ${name}=...`);
+}
+
 let vapidReady = false;
-function ensureVapid() {
+async function ensureVapid() {
   if (vapidReady) return;
   webpush.setVapidDetails(
-    Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.com",
-    must("VAPID_PUBLIC_KEY"),
-    must("VAPID_PRIVATE_KEY"),
+    await setting("VAPID_SUBJECT", "mailto:admin@example.com"),
+    await setting("VAPID_PUBLIC_KEY"),
+    await setting("VAPID_PRIVATE_KEY"),
   );
   vapidReady = true;
 }
@@ -65,7 +92,7 @@ export async function sendToUser(
   payload: PushPayload,
   ttlSec = 900,
 ): Promise<SendResult> {
-  ensureVapid();
+  await ensureVapid();
   const { data: subs, error } = await db
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
@@ -151,9 +178,9 @@ export const VIBRATIONS: Record<string, number[]> = {
 const enc = new TextEncoder();
 let hmacKey: Promise<CryptoKey> | null = null;
 const key = () =>
-  (hmacKey ??= crypto.subtle.importKey("raw", enc.encode(must("ACTION_SECRET")), { name: "HMAC", hash: "SHA-256" }, false, [
-    "sign",
-  ]));
+  (hmacKey ??= setting("ACTION_SECRET").then((secret) =>
+    crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]),
+  ));
 
 const b64url = (buf: ArrayBuffer) =>
   btoa(String.fromCharCode(...new Uint8Array(buf)))

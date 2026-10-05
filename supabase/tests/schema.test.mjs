@@ -30,6 +30,18 @@ await db.exec(`
 await db.exec(readFileSync(sqlPath, "utf8"));
 ok(true, "init.sql 실행됨");
 
+// Vault 흉내 + 함수 설정 마이그레이션
+await db.exec(`
+  create schema vault;
+  create table vault.decrypted_secrets (name text primary key, decrypted_secret text);
+  insert into vault.decrypted_secrets values ('must_vapid_public', 'PUB'), ('must_cron_secret', 'CRON'), ('other_app_secret', 'NOPE');
+`);
+await db.exec(readFileSync(new URL("../migrations/20261006000000_config.sql", import.meta.url), "utf8"));
+await db.exec(`set role service_role;`);
+const cfg = (await q(`select public.must_function_config() c`))[0].c;
+await db.exec(`reset role;`);
+ok(cfg.must_vapid_public === "PUB" && cfg.must_cron_secret === "CRON" && !("other_app_secret" in cfg), "Vault 설정: 우리 값만 읽음");
+
 const A = "aaaaaaaa-0000-4000-8000-000000000001";
 const B = "bbbbbbbb-0000-4000-8000-000000000002";
 await db.exec(`insert into auth.users (id, email) values ('${A}', 'a@x'), ('${B}', 'b@x');`);
@@ -148,6 +160,13 @@ try {
   threw = true;
 }
 ok(threw, "일반 사용자는 claim 함수 호출 불가");
+threw = false;
+try {
+  await q(`select public.must_function_config()`);
+} catch {
+  threw = true;
+}
+ok(threw, "일반 사용자는 Vault 설정 못 읽음");
 await db.exec(`reset role;`);
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

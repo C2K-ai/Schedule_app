@@ -1,7 +1,7 @@
 // pg_cron 이 1분마다 부른다 → 보낼 때가 된 알림을 꺼내 Web Push 로 보낸다.
 //   배포: npx supabase functions deploy send-due-notifications --no-verify-jwt
 //   보호: x-cron-secret 헤더 == CRON_SECRET
-import { admin, cors, describe, json, sendToUser, signAction, VIBRATIONS, type PushPayload } from "../_shared/push.ts";
+import { admin, cors, describe, json, sendToUser, setting, signAction, VIBRATIONS, type PushPayload } from "../_shared/push.ts";
 
 interface Job {
   id: number;
@@ -14,7 +14,7 @@ interface Job {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  if (req.headers.get("x-cron-secret") !== Deno.env.get("CRON_SECRET")) return json({ error: "unauthorized" }, 401);
+  if (req.headers.get("x-cron-secret") !== (await setting("CRON_SECRET"))) return json({ error: "unauthorized" }, 401);
 
   const db = admin();
   const { data, error } = await db.rpc("claim_due_notification_jobs", { p_limit: 300 });
