@@ -21,12 +21,15 @@ import {
   readFired,
   readSnoozes,
   soundForKind,
+  type Trigger,
 } from "@/lib/reminders";
-import { findSound, playSound, speak, unlockAudio, vibrate } from "@/lib/sound";
+import { findSound, playSound, preloadSounds, speak, unlockAudio, vibrate } from "@/lib/sound";
 import { getSupabase } from "@/lib/supabase";
 import { DAY } from "@/lib/time";
 import type { AlarmKind, Task } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
+
+const PRIORITY: Record<AlarmKind, number> = { overdue: 5, start: 4, snooze: 3, end: 2, before: 1, focus: 0 };
 
 /** 여러 탭이 열려 있어도 한 번만 울리도록 Web Locks 로 감싼다 */
 async function once(key: string, fn: () => void) {
@@ -61,6 +64,15 @@ export function ReminderEngine() {
   useEffect(() => {
     latest.current = p;
   });
+
+  // 알람 소리 미리 받기 — 울릴 때 네트워크를 기다리지 않게
+  const { settings, tasks } = p;
+  useEffect(() => {
+    const now = Date.now();
+    const ids = new Set<string>(Object.values(settings.sounds));
+    for (const t of tasks) if (t.sound_id && Math.abs(Date.parse(t.starts_at) - now) < 2 * DAY) ids.add(t.sound_id);
+    preloadSounds([...ids].map((id) => findSound(id, settings.customSounds)));
+  }, [settings.sounds, settings.customSounds, tasks]);
 
   // 오디오 잠금 해제 — 첫 터치/클릭 때
   useEffect(() => {
@@ -143,9 +155,21 @@ export function ReminderEngine() {
       const now = Date.now();
       const near = all.filter((t) => Math.abs(Date.parse(t.starts_at) - now) < 2 * DAY);
       const triggers = computeTriggers(near, s, readSnoozes());
-      const fired = readFired();
-      for (const tr of dueTriggers(triggers, now, fired)) {
-        void once(tr.key, () => fire(tr.kind, tr.seq, tr.task, tr.key));
+      const due = dueTriggers(triggers, now, readFired());
+      if (due.length) {
+        // 앱을 늦게 열어 알림이 여러 개 밀렸으면: 일정마다 가장 최근 것, 그중 가장 급한 것 하나만 울린다.
+        // 나머지는 조용히 처리(미시작 일정은 어차피 경고창이 하나씩 보여 준다).
+        const latestByTask = new Map<string, Trigger>();
+        for (const tr of due) {
+          const cur = latestByTask.get(tr.task.id);
+          if (!cur || tr.fireAt > cur.fireAt) latestByTask.set(tr.task.id, tr);
+        }
+        const [primary, ...rest] = [...latestByTask.values()].sort(
+          (a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || b.fireAt - a.fireAt,
+        );
+        for (const tr of due) if (tr !== primary) markFired(tr.key);
+        void once(primary.key, () => fire(primary.kind, primary.seq, primary.task, primary.key));
+        if (rest.length) latest.current.toast({ text: `밀린 알림 ${rest.length}건이 더 있어요 — 목록을 확인하세요`, ttl: 6000 });
       }
 
       // 뽀모도로 종료

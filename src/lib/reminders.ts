@@ -47,7 +47,11 @@ export function computeTriggers(tasks: Task[], settings: Settings, snoozes: Snoo
     if (t.deleted_at) continue;
     const start = Date.parse(t.starts_at);
     if (t.status === "planned") {
-      for (const off of t.reminder_offsets) mk(t, off > 0 ? "before" : "start", off, start - off * MIN);
+      const created = Date.parse(t.created_at);
+      for (const off of t.reminder_offsets) {
+        const at = start - off * MIN;
+        if (at >= created - MIN) mk(t, off > 0 ? "before" : "start", off, at);
+      }
       if (t.strict) {
         OVERDUE_STEPS.forEach((extra, i) => {
           const at = start + (settings.graceMin + extra) * MIN;
@@ -74,8 +78,11 @@ export function describeTrigger(tr: { kind: AlarmKind; seq: number; task: Task }
   const { task: t, kind, seq } = tr;
   const range = `${fmtTime(t.starts_at)}–${fmtTime(t.ends_at)}`;
   switch (kind) {
-    case "before":
-      return { title: `⏰ ${seq}분 뒤 시작 · ${t.title}`, body: `${range} · 지금 정리하고 준비하세요` };
+    case "before": {
+      const left = Math.round((Date.parse(t.starts_at) - now) / MIN);
+      const when = left >= 1 ? `${left}분 뒤 시작` : "곧 시작";
+      return { title: `⏰ ${when} · ${t.title}`, body: `${range} · 지금 정리하고 준비하세요` };
+    }
     case "start":
       return { title: `▶ 지금 시작: ${t.title}`, body: `${range} · 미루지 말고 바로 시작` };
     case "snooze":

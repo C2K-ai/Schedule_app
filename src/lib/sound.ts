@@ -485,6 +485,23 @@ export function playSound(def: SoundDef, opts: PlayOptions = {}): PlayHandle {
   }
   return outer;
 }
+/** 소리를 파일로 저장 — 음원은 MP3 그대로, 합성음은 WAV로 렌더해서 */
+export async function downloadSound(def: SoundDef) {
+  const a = document.createElement("a");
+  const safe = def.name.replace(/[^\w가-힣-]+/g, "_");
+  if (def.src) {
+    a.href = def.src;
+    a.download = `MUST-${safe}.mp3`;
+    a.click();
+    return;
+  }
+  const url = URL.createObjectURL(await renderWav(def, 2));
+  a.href = url;
+  a.download = `MUST-${safe}.wav`;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 /** 일정 제목을 소리 내어 읽기 */
 export function speak(text: string, volume = 1) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;

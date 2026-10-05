@@ -150,7 +150,7 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
   };
 
   return (
-    <Modal open size="md" tone="danger" className="!border-danger/70">
+    <Modal open size="md" tone="danger" className="border-danger/70!">
       <div className="tape -mx-5 mb-5 h-2.5 md:-mx-6" />
       <div className="flex items-start gap-3">
         <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-danger-soft text-danger">

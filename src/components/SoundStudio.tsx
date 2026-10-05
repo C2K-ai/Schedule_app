@@ -2,7 +2,7 @@
 
 import { Copy, Dice5, Download, Play, Plus, Square, Trash } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { BUILTIN_SOUNDS, getAudioContext, playSound, renderWav, STUDIO_SCALE, stopAllSounds, type PlayHandle } from "@/lib/sound";
+import { downloadSound, getAudioContext, playSound, SAMPLE_SOUNDS, STUDIO_SCALE, stopAllSounds, SYNTH_SOUNDS, type PlayHandle } from "@/lib/sound";
 import { uuid } from "@/lib/time";
 import type { SoundDef, Wave } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
@@ -97,6 +97,7 @@ export function SoundStudio() {
     const t0 = (ctx?.currentTime ?? 0) + 0.05;
     handle.current = playSound(def, { volume: settings.volume, loop, maxSeconds: 8, onEnd: () => stop() });
     setPlaying(true);
+    if (def.src) return; // 녹음 음원은 스텝 표시가 없다
     const stepDur = 60 / def.bpm;
     const passLen = def.steps.length * stepDur;
     const gap = loop ? Math.min(0.6, passLen * 0.25) : 0;
@@ -135,40 +136,41 @@ export function SoundStudio() {
     setDraft(settings.customSounds.find((s) => s.id !== draft.id) ?? blank());
   };
 
-  const exportWav = async () => {
-    const blob = await renderWav(draft, 2);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `MUST-${draft.name.replace(/[^\w가-힣-]+/g, "_")}.wav`;
-    a.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-  };
+  const exportWav = () => void downloadSound(draft);
 
   return (
     <div className="space-y-5">
       {/* 사운드 목록 */}
-      <div>
-        <Label hint="눌러서 듣기">프리셋 · 내 사운드</Label>
-        <div className="flex flex-wrap gap-1.5">
-          {[...BUILTIN_SOUNDS, ...settings.customSounds].map((s) => (
-            <button
-              key={s.id}
-              onClick={() => {
-                play(s, false);
-                if (!s.builtin) setDraft(s);
-              }}
-              className={cx(
-                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-semibold transition",
-                draft.id === s.id ? "border-accent bg-accent/15" : "border-line bg-surface-2 hover:border-line-strong",
-              )}
-            >
-              <span>{s.emoji}</span> {s.name}
-            </button>
-          ))}
-        </div>
-      </div>
-
+      {(
+        [
+          { title: "녹음 음원", hint: "Kenney.nl CC0 · 눌러서 듣기", list: SAMPLE_SOUNDS },
+          { title: "합성음", hint: "Web Audio로 그 자리에서 만든 소리", list: SYNTH_SOUNDS },
+          { title: "내 사운드", hint: "아래 스튜디오에서 만든 것", list: settings.customSounds },
+        ] as const
+      )
+        .filter((g) => g.list.length > 0)
+        .map((g) => (
+          <div key={g.title}>
+            <Label hint={g.hint}>{g.title}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {g.list.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => {
+                    play(s, false);
+                    if (!s.builtin) setDraft(s);
+                  }}
+                  className={cx(
+                    "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-semibold transition",
+                    draft.id === s.id ? "border-accent bg-accent/15" : "border-line bg-surface-2 hover:border-line-strong",
+                  )}
+                >
+                  <span>{s.emoji}</span> {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       <div className="rounded-3xl border border-line bg-surface-2/50 p-4">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <select
@@ -189,18 +191,18 @@ export function SoundStudio() {
             <Button size="sm" variant="ghost" onClick={() => setDraft(blank())}>
               <Plus size={15} /> 새로
             </Button>
-            {BUILTIN_SOUNDS.length > 0 && (
+            {SYNTH_SOUNDS.length > 0 && (
               <select
                 className="h-8 rounded-xl border border-line bg-surface px-2 text-[13px] font-semibold text-muted"
                 value=""
                 onChange={(e) => {
-                  const b = BUILTIN_SOUNDS.find((x) => x.id === e.target.value);
+                  const b = SYNTH_SOUNDS.find((x) => x.id === e.target.value);
                   if (b) setDraft({ ...b, id: `custom-${uuid().slice(0, 8)}`, name: `${b.name} 변형`, builtin: false });
                 }}
                 aria-label="프리셋 복제"
               >
                 <option value="">프리셋 복제…</option>
-                {BUILTIN_SOUNDS.map((b) => (
+                {SYNTH_SOUNDS.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.emoji} {b.name}
                   </option>

@@ -5,7 +5,8 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultOffsets: [10, 0],
   reasonMinLength: 10,
   postponeWarnAt: 2,
-  sounds: { before: "chime", start: "digital", overdue: "siren", focus: "zen" },
+  // 기본은 듣기 편한 녹음 음원(CC0). 합성음(사이렌 등)은 원하면 고른다
+  sounds: { before: "glass-ping", start: "steel-rise", overdue: "hit-alert", focus: "steel-calm" },
   volume: 0.8,
   escalate: true,
   speak: true,

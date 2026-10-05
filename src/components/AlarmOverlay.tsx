@@ -33,7 +33,7 @@ export function AlarmOverlay() {
       loop: true,
       escalate: settings.escalate || alarm.kind === "overdue",
       volume: settings.volume,
-      maxSeconds: alarm.kind === "focus" ? 12 : 90,
+      maxSeconds: alarm.kind === "focus" ? 8 : alarm.kind === "overdue" ? 45 : 30,
     });
     return () => h.stop();
     // 같은 알람이 이어지는 동안 설정 변경으로 다시 울리지 않게 key 기준

@@ -12,12 +12,13 @@ import {
 } from "@/lib/notify";
 import { OFFSET_CHOICES } from "@/lib/settings";
 import { currentPushSubscription, pushSupported, sendTestPush, subscribePush, unsubscribePush } from "@/lib/push";
-import { BUILTIN_SOUNDS, findSound, playSound, unlockAudio, vibrate, VIBRATIONS } from "@/lib/sound";
+import { downloadSound, findSound, playSound, unlockAudio, vibrate, VIBRATIONS } from "@/lib/sound";
 import { hasLocalData, readLocalDb } from "@/lib/store";
 import { cloudEnabled, getSupabase } from "@/lib/supabase";
 import { fmtOffset, uuid } from "@/lib/time";
 import type { AlarmTheme, Settings, VibrationKey } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
+import { SoundOptions } from "./SoundOptions";
 import { SoundStudio } from "./SoundStudio";
 import { Button, Chip, cx, inputCls, Label, Modal, Segmented, Switch } from "./ui";
 
@@ -305,7 +306,6 @@ function NotifyTab() {
 
 function SoundTab() {
   const { settings, updateSettings } = usePlanner();
-  const all = [...BUILTIN_SOUNDS, ...settings.customSounds];
   const rows: { key: keyof Settings["sounds"]; label: string; desc: string }[] = [
     { key: "before", label: "곧 시작 (N분 전)", desc: "짧게 한 번" },
     { key: "start", label: "정각", desc: "전체화면 + 반복" },
@@ -314,7 +314,7 @@ function SoundTab() {
   ];
   return (
     <>
-      <Section title="알림 종류별 소리" desc="일정마다 따로 소리를 고를 수도 있습니다(일정 편집 → 알림 소리). 미시작 경고는 항상 여기 소리로 울립니다.">
+      <Section title="알림 종류별 소리" desc="일정마다 따로 소리를 고를 수도 있습니다(일정 편집 → 알림 소리). 미시작 경고는 항상 여기 소리로 울립니다. ↓ 버튼으로 파일을 받아 안드로이드 알림음으로 지정하면, 앱이 꺼져 있을 때 오는 푸시도 이 소리로 울립니다.">
         <div className="space-y-2">
           {rows.map((r) => (
             <div key={r.key} className="flex items-center gap-3 rounded-2xl bg-surface-2/60 px-3 py-2">
@@ -327,11 +327,7 @@ function SoundTab() {
                 onChange={(e) => updateSettings({ sounds: { ...settings.sounds, [r.key]: e.target.value } })}
                 className="h-9 max-w-[160px] rounded-xl border border-line bg-surface px-2 text-sm"
               >
-                {all.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.emoji} {s.name}
-                  </option>
-                ))}
+                <SoundOptions custom={settings.customSounds} />
               </select>
               <button
                 className="grid size-9 place-items-center rounded-xl text-muted hover:bg-surface-3 hover:text-fg"
@@ -340,11 +336,19 @@ function SoundTab() {
               >
                 <Volume2 size={16} />
               </button>
+              <button
+                className="grid size-9 place-items-center rounded-xl text-muted hover:bg-surface-3 hover:text-fg"
+                aria-label="파일로 저장"
+                title="파일로 저장 — 안드로이드 알림 소리로 지정할 수 있어요"
+                onClick={() => void downloadSound(findSound(settings.sounds[r.key], settings.customSounds))}
+              >
+                <Download size={16} />
+              </button>
             </div>
           ))}
         </div>
       </Section>
-      <Section title="사운드 스튜디오" desc="칸을 눌러 음을 찍으면 나만의 알람이 됩니다. 저장하면 위 목록과 일정 편집에서 고를 수 있어요.">
+      <Section title="사운드 스튜디오" desc="녹음 음원은 Kenney.nl 의 CC0(퍼블릭 도메인) 징글입니다. 칸을 눌러 음을 찍으면 나만의 합성 알람도 만들 수 있어요.">
         <SoundStudio />
       </Section>
     </>

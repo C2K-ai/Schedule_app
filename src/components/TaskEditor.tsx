@@ -14,11 +14,12 @@ import {
   updateTask,
 } from "@/lib/planner";
 import { DURATION_CHOICES, OFFSET_CHOICES } from "@/lib/settings";
-import { BUILTIN_SOUNDS, findSound, playSound } from "@/lib/sound";
+import { findSound, playSound } from "@/lib/sound";
 import { atTime, fmtOffset, fmtTime, MIN, parseDayKey, toDateInput, toHHMM, WEEKDAYS } from "@/lib/time";
 import type { ColorKey, Settings, Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { usePlanner, type EditorState } from "./PlannerProvider";
+import { SoundOptions } from "./SoundOptions";
 import { Button, Chip, ColorPicker, cx, inputCls, Label, Modal, Switch } from "./ui";
 
 interface Draft {
@@ -87,7 +88,6 @@ function EditorBody({ editor }: { editor: EditorState }) {
   const end = new Date(start.getTime() + d.duration * MIN);
   const st = task ? taskState(task, now, settings.graceMin) : null;
   const lockedDelete = task && task.strict && (st === "overdue" || st === "late");
-  const allSounds = [...BUILTIN_SOUNDS, ...settings.customSounds];
 
   const save = () => {
     if (!d.title.trim()) return setErr("제목을 적어 주세요");
@@ -240,7 +240,7 @@ function EditorBody({ editor }: { editor: EditorState }) {
               step={5}
               value={d.duration}
               onChange={(e) => set({ duration: Number(e.target.value) || 0 })}
-              className={cx(inputCls, "h-9 w-24 py-1 text-sm")}
+              className={cx(inputCls, "h-9 w-24! py-1 text-sm")}
               aria-label="분 직접 입력"
             />
           </div>
@@ -270,12 +270,7 @@ function EditorBody({ editor }: { editor: EditorState }) {
               className={cx(inputCls, "h-10 py-1")}
             >
               <option value="">기본 (알림 종류별 설정)</option>
-              {allSounds.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.emoji} {s.name}
-                  {s.builtin ? "" : " (내가 만든)"}
-                </option>
-              ))}
+              <SoundOptions custom={settings.customSounds} />
             </select>
             <Button
               variant="soft"

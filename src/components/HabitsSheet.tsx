@@ -4,7 +4,7 @@ import { Flame, Pause, Pencil, Play, Plus, Repeat, Trash } from "lucide-react";
 import { useMemo, useState } from "react";
 import { createHabit, deleteHabit, habitStreak, updateHabit, type HabitInput } from "@/lib/planner";
 import { DURATION_CHOICES, OFFSET_CHOICES } from "@/lib/settings";
-import { BUILTIN_SOUNDS } from "@/lib/sound";
+import { SoundOptions } from "./SoundOptions";
 import { addDays, dayKey, fmtOffset, startOfDay, WEEKDAYS } from "@/lib/time";
 import { COLOR_HEX, type Habit } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
@@ -125,11 +125,7 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
         <Label>소리</Label>
         <select value={f.sound_id ?? ""} onChange={(e) => set({ sound_id: e.target.value || null })} className={cx(inputCls, "py-2")}>
           <option value="">기본</option>
-          {[...BUILTIN_SOUNDS, ...settings.customSounds].map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.emoji} {s.name}
-            </option>
-          ))}
+          <SoundOptions custom={settings.customSounds} />
         </select>
       </div>
       <div>

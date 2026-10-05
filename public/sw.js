@@ -3,9 +3,19 @@
  *  - notificationclick: "지금 시작" / "5분 뒤 다시" 버튼 처리 (잠금화면에서도 앱 안 열고 스누즈)
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
  */
-const VERSION = "must-v1";
+const VERSION = "must-v2";
 const DEV = new URL(self.location.href).searchParams.get("mode") === "development";
-const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/badge-96.png"];
+const SHELL = [
+  "/",
+  "/manifest.webmanifest",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/badge-96.png",
+  "/sounds/steel-rise.mp3",
+  "/sounds/glass-ping.mp3",
+  "/sounds/hit-alert.mp3",
+  "/sounds/steel-calm.mp3",
+];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
