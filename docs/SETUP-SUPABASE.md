@@ -1,5 +1,10 @@
 # Supabase 연결 — 기기 간 동기화 + 앱이 꺼져도 오는 푸시
 
+> **이 저장소는 이미 연결돼 있습니다** — 프로젝트 `gcnosxcojuefkaaxefug`(서울). 아래는 새 프로젝트로 다시 만들 때의 순서입니다.
+> 2026-10-06 설정 때는 CLI 대신 SQL 만으로 끝냈습니다: 마이그레이션 4개(init·config·single_owner·cron) 적용 →
+> Vault 에 `must_project_url / must_vapid_public / must_vapid_private / must_vapid_subject / must_cron_secret / must_action_secret` 저장 →
+> Edge Function 3개 배포. 함수는 환경변수가 없으면 Vault 에서 비밀값을 읽으므로 `supabase secrets set` 이 필요 없습니다.
+
 로컬 모드만 쓸 거면 이 문서는 필요 없습니다. 노트북 ↔ 폰 실시간 동기화와 “앱을 닫아도 오는 알림”이 필요할 때 따라 하세요.
 전부 무료 플랜으로 됩니다. 처음 한 번 30분 정도.
 
@@ -22,7 +27,7 @@
 
 > 같은 SQL 을 로컬에서 미리 검증할 수 있습니다: `npm run test:db` (실제 Postgres 로 25개 항목 확인)
 
-## 필수 3. 로그인(이메일 코드) 설정
+## 필수 3. 로그인 설정 (선택 — 비밀번호 로그인은 기본 설정 그대로 동작)
 
 1. **Authentication → Sign In / Providers → Email** 이 켜져 있는지 확인
 2. **Authentication → Emails → Templates → Magic Link** 본문에 코드가 보이게 아래 한 줄을 넣기
@@ -94,7 +99,7 @@ npx supabase functions deploy push-test
 
 ## 필수 8. 확인
 
-1. 앱에서 설정 → 동기화 → 이메일 → 코드로 로그인
+1. 앱 첫 화면의 로그인 카드 → ‘처음이에요’에서 이메일·비밀번호로 계정 만들기 → 메일 확인 링크 → 로그인
 2. 설정 → 알림 → **이 기기 등록** → **서버 푸시 테스트** → 알림이 오면 성공
 3. 2분 뒤 시작하는 일정을 만들고 **앱(탭)을 닫기** → 정각에 시스템 알림이 오면 서버 푸시까지 완성
 4. 폰에서도 같은 이메일로 로그인 → 노트북에서 일정을 끌어 옮기면 폰 화면이 바로 바뀜

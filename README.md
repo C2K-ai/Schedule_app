@@ -3,6 +3,33 @@
 > 일정을 어기면 **빨갛게 경고하고**, 미루려면 **사유를 쓰게** 만드는 습관·일정 플래너.
 > 노트북과 핸드폰에 앱처럼 설치되고(PWA), 정각·미시작 알림이 **앱을 닫아도** 옵니다.
 
+## 지금 상태 (2026-10-06)
+
+- **서버 연결 완료** — Supabase 프로젝트 `must-planner` (서울 리전, 무료)
+  · 대시보드: https://supabase.com/dashboard/project/gcnosxcojuefkaaxefug
+  · DB·RLS·알림 큐·1분 크론·서버 함수 3개 배포, 보안 점검 0건, 크론→함수 호출 200 확인
+  · **1인 전용** — 처음 만든 계정 하나만 쓸 수 있고 그 뒤 가입은 막힘 (풀려면 `supabase/migrations/20261006000100_single_owner.sql` 맨 위 주석)
+  · 비밀값(VAPID 개인키·크론 비밀·버튼 서명키)은 Supabase **Vault** 에만 있음. 저장소에는 공개값(`.env.production`)뿐
+- **폰 주소(배포 후)**: https://c2k-ai.github.io/Schedule_app/
+
+### 남은 2단계 — 직접 해 주세요 (각 1분)
+
+1. 이 폴더에서 업로드
+   ```bash
+   git push -u origin main
+   ```
+2. GitHub 저장소 → **Settings → Pages → Build and deployment → Source: GitHub Actions**
+   → 2~3분 뒤 **Actions** 탭에 초록 체크가 뜨면 위 폰 주소가 열립니다. (이후엔 push 할 때마다 자동 배포)
+
+### 처음 쓰는 순서
+
+1. 폰 주소(또는 노트북에서 `npm run dev` → http://localhost:3000)를 열고 위쪽 **로그인 카드 → ‘처음이에요’** 에서 이메일·비밀번호로 계정 만들기
+2. 메일함의 **확인 링크 한 번 누르기** — 열리는 페이지가 오류(localhost)여도 확인은 끝난 것 → 앱에서 **로그인**
+3. 설정 → 알림 → **알림 켜기 → 이 기기 등록 → 서버 푸시 테스트** (노트북·폰 각각)
+4. 폰은 홈 화면에 설치해서 쓰기 — 기기별 순서는 [docs/PWA-NOTIFICATIONS.md](docs/PWA-NOTIFICATIONS.md)
+
+---
+
 | 노션·일반 캘린더의 약점 | MUST 의 보완 |
 |---|---|
 | 일정을 어겨도 아무 일 없음 | 유예 시간(기본 5분)이 지나면 **닫을 수 없는 빨간 경고창**. 시작하거나, 사유 10자 이상 쓰고 미루거나 건너뛰기. 사유는 지울 수 없는 ‘변명 노트’에 남고, 자주 쓰는 변명을 모아 보여 줌 |

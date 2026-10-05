@@ -10,7 +10,7 @@
 | 백엔드 | **Supabase** (Postgres · Auth · Realtime · Edge Functions · pg_cron · Vault) | DB·로그인·실시간·서버 함수·예약 작업이 한 곳. 무료 플랜으로 개인 사용 충분 |
 | 푸시 발송 | Edge Function(Deno) + `web-push` | VAPID 표준 Web Push. Chrome·Edge·Firefox·Safari(macOS 13+, iOS 16.4+ 설치 앱) |
 | 소리 | Web Audio API | 녹음 음원(CC0) 재생 + 합성 + 사용자 작곡. 백그라운드 탭에서도 끊기지 않게 미리 예약 |
-| 로그인 | 이메일 6자리 코드(OTP) | iPhone 홈 화면 앱은 메일 링크가 Safari 로 열려 세션이 안 이어짐 → 코드 입력 방식 |
+| 로그인 | 이메일 + 비밀번호 (보조: 메일 코드) | 메일 링크 방식은 iPhone 홈 화면 앱에서 세션이 Safari 로 새어 나감 → 앱 안에서 끝나는 비밀번호가 기본. Supabase 기본 설정 그대로 동작 |
 
 ## 2. 전체 구조
 

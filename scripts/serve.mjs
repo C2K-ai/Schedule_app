@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 const root = join(fileURLToPath(new URL("..", import.meta.url)), "out");
 const port = Number(process.env.PORT ?? 4173);
 // GitHub Pages 처럼 하위 경로로 시험: BASE_PATH=/Schedule_app (빌드도 같은 값으로)
-const base = process.env.BASE_PATH ?? process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const argBase = process.argv.indexOf("--base");
+const base = (argBase > 0 ? process.argv[argBase + 1] : null) ?? process.env.BASE_PATH ?? process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -23,6 +24,7 @@ const TYPES = {
   ".woff2": "font/woff2",
   ".txt": "text/plain; charset=utf-8",
   ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
 };
 
 if (!existsSync(root)) {
