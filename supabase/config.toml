@@ -1,0 +1,13 @@
+# Supabase CLI 설정 (npx supabase link / functions deploy / db push 에서 사용)
+project_id = "must-planner"
+
+# 크론과 알림 버튼은 사용자 로그인 없이 호출되므로 JWT 검증을 끈다.
+# 대신 각 함수가 x-cron-secret / 서명 토큰으로 직접 확인한다.
+[functions.send-due-notifications]
+verify_jwt = false
+
+[functions.notification-action]
+verify_jwt = false
+
+[functions.push-test]
+verify_jwt = true
