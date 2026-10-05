@@ -502,3 +502,25 @@ export function weekDays(anchor: Date): Date[] {
   const monday = addDays(s, -((s.getDay() + 6) % 7));
   return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
 }
+
+/** 처음 연 사람을 위한 예시 — 오늘 남은 시간에 일정 몇 개 + 매일 습관 하나 */
+export function seedDemo(store: PlannerStore, settings: Settings) {
+  const base = Math.ceil(Date.now() / (5 * MIN)) * 5 * MIN;
+  const at = (min: number) => new Date(base + min * MIN).toISOString();
+  const add = (off: number, dur: number, title: string, color: ColorKey, strict = true) =>
+    createTask(store, { title, starts_at: at(off), ends_at: at(off + dur), color, strict }, settings);
+  add(15, 30, "독일어 단어 30개", "lime");
+  add(60, 45, "운동 — 스쿼트·러닝", "green");
+  add(120, 60, "보고서 초안 쓰기", "blue");
+  add(200, 20, "내일 계획 세우기", "violet", false);
+  createHabit(store, {
+    title: "독일어 듣기",
+    color: "amber",
+    days: [0, 1, 2, 3, 4, 5, 6],
+    start_time: "21:00",
+    duration_min: 30,
+    reminder_offsets: [10, 0],
+    sound_id: null,
+    strict: true,
+  });
+}

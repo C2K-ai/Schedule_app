@@ -6,6 +6,7 @@ import {
   completeTask,
   habitStreak,
   recentLogs,
+  seedDemo,
   startTask,
   taskState,
   tasksOnDay,
@@ -55,7 +56,24 @@ export function Agenda({ day }: { day: Date }) {
         {sameDayLabel(day)} 할 일 <span className="font-mono text-muted tabular-nums">{list.length}</span>
       </PanelTitle>
       {list.length === 0 ? (
-        <Empty icon={<CircleDashed size={22} />} title="비어 있어요" desc="타임라인 빈 곳을 누르거나 + 로 추가하세요." />
+        <Empty
+          icon={<CircleDashed size={22} />}
+          title="비어 있어요"
+          desc="타임라인 빈 곳을 누르거나 + 로 추가하세요."
+          action={
+            tasks.length === 0 ? (
+              <button
+                onClick={() => {
+                  seedDemo(store, settings);
+                  toast({ text: "예시 일정 4개와 습관 1개를 넣었어요 — 마음대로 고치거나 지우세요", tone: "ok", ttl: 6000 });
+                }}
+                className="text-sm font-bold text-accent-text"
+              >
+                예시 일정으로 둘러보기 →
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
         <ul className="px-2 pb-2">
           {list.map((t) => {
