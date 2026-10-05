@@ -197,7 +197,7 @@ function NextCard() {
 function TodayCard() {
   const { tasks, settings, snap } = usePlanner();
   const now = useNow(10_000);
-  const today = useMemo(() => startOfDay(new Date(now || Date.now())), [now]);
+  const today = useMemo(() => startOfDay(new Date(now)), [now]);
   const todays = tasksOnDay(tasks, today);
   const focus = Object.values(snap.db.focus_sessions).filter(
     (f) => !f.deleted_at && Date.parse(f.started_at) >= today.getTime(),

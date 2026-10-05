@@ -74,7 +74,7 @@ export function Board({
     const out: Record<string, number> = {};
     for (const d of weekDays(selected)) {
       const list = tasksOnDay(tasks, d);
-      if (list.length) out[dayKey(d)] = dayStats(list, now || Date.now(), settings.graceMin).rate;
+      if (list.length) out[dayKey(d)] = dayStats(list, now, settings.graceMin).rate;
     }
     return out;
   }, [tasks, selected, now, settings.graceMin]);

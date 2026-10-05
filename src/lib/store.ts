@@ -220,7 +220,7 @@ export class PlannerStore {
     if (!cur) return null;
     const next = { ...cur, ...patch } as DB[T][string];
     this.put(table, next);
-    return this.snap.db[table][id];
+    return (this.snap.db[table][id] as DB[T][string] | undefined) ?? null;
   }
 
   saveProfile(patch: Partial<Profile>) {

@@ -1,0 +1,119 @@
+"use client";
+
+import { Plus, Share, X } from "lucide-react";
+import { useState } from "react";
+import { isIOS, isStandalone } from "@/lib/notify";
+import { MIN, startOfDay } from "@/lib/time";
+import { AlarmOverlay } from "./AlarmOverlay";
+import { Board, type View } from "./Board";
+import { EnforcementModal, PostponeDialog } from "./Enforcement";
+import { FocusDock, FocusScreen } from "./Focus";
+import { Header } from "./Header";
+import { HabitsSheet } from "./HabitsSheet";
+import { LogSheet } from "./LogSheet";
+import { NowBar, OverdueBanner } from "./NowBar";
+import { usePlanner } from "./PlannerProvider";
+import { ReminderEngine } from "./ReminderEngine";
+import { SettingsSheet } from "./SettingsSheet";
+import { Agenda, HabitMini, ReasonFeed } from "./SidePanels";
+import { TaskEditor } from "./TaskEditor";
+import { Toasts } from "./Toasts";
+import { Logo } from "./ui";
+
+function InstallHint() {
+  const { openSheet } = usePlanner();
+  const [ios] = useState(() => isIOS());
+  const [show, setShow] = useState(() => {
+    try {
+      return !isStandalone() && !localStorage.getItem("must:install-hint-dismissed");
+    } catch {
+      return false;
+    }
+  });
+  if (!show) return null;
+  return (
+    <div className="fade-up flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
+      <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-fg">
+        <Share size={18} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">홈 화면에 설치하면 알림을 놓치지 않아요</p>
+        <p className="mt-0.5 text-muted">
+          {ios
+            ? "Safari 아래쪽 공유 버튼 → ‘홈 화면에 추가’ → 설치된 앱을 열고 설정 → 알림 켜기. (iOS는 설치해야만 알림이 옵니다)"
+            : "주소창 오른쪽 설치 아이콘(또는 상단 ‘앱 설치’)을 누르세요. 설치 후 설정 → 알림에서 권한을 켜면 됩니다."}
+        </p>
+        <button onClick={() => openSheet("settings", "notify")} className="mt-1.5 text-sm font-bold text-accent-text">
+          알림 설정 열기 →
+        </button>
+      </div>
+      <button
+        aria-label="닫기"
+        className="text-muted hover:text-fg"
+        onClick={() => {
+          localStorage.setItem("must:install-hint-dismissed", "1");
+          setShow(false);
+        }}
+      >
+        <X size={18} />
+      </button>
+    </div>
+  );
+}
+
+export function Dashboard() {
+  const p = usePlanner();
+  const [selected, setSelected] = useState(() => startOfDay(new Date()));
+  const [view, setView] = useState<View>("day");
+
+  return (
+    <>
+      <Header onToday={() => setSelected(startOfDay(new Date()))} />
+      <main className="mx-auto max-w-[1400px] space-y-4 px-4 pt-4 pb-36 md:px-6 md:pt-6">
+        <InstallHint />
+        <OverdueBanner
+          onOpen={() => {
+            p.setFocusScreen(false);
+            p.openSheet(null);
+            p.closeEditor();
+          }}
+        />
+        <NowBar />
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <Board selected={selected} setSelected={setSelected} view={view} setView={setView} />
+          <aside className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
+            <Agenda day={selected} />
+            <HabitMini />
+            <div className="md:col-span-2 lg:col-span-1">
+              <ReasonFeed />
+            </div>
+          </aside>
+        </div>
+        <footer className="flex items-center justify-center gap-2 pt-6 text-xs text-faint">
+          <Logo className="scale-75 opacity-60" /> 미루지 못하는 플래너
+        </footer>
+      </main>
+
+      {/* 모바일 추가 버튼 */}
+      <button
+        aria-label="일정 추가"
+        onClick={() => p.openEditor({ start: new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN) })}
+        className="fixed right-4 bottom-[92px] z-30 grid size-14 place-items-center rounded-2xl bg-accent text-accent-fg shadow-[0_10px_30px_-8px_var(--accent)] active:scale-95 md:hidden"
+      >
+        <Plus size={26} strokeWidth={2.5} />
+      </button>
+
+      <FocusDock />
+      <FocusScreen />
+      <TaskEditor />
+      <PostponeDialog />
+      <HabitsSheet />
+      <LogSheet />
+      <SettingsSheet />
+      <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.postpone)} />
+      <AlarmOverlay />
+      <Toasts />
+      <ReminderEngine />
+    </>
+  );
+}

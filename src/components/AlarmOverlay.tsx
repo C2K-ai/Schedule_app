@@ -23,12 +23,11 @@ const KIND_LABEL = {
 export function AlarmOverlay() {
   const { alarm, dismissAlarm, settings, store, toast, snap } = usePlanner();
   const now = useNow(1000);
-  const [muted, setMuted] = useState(false);
+  const [mutedKey, setMutedKey] = useState<string | null>(null);
   const alarmKey = alarm?.key;
 
   useEffect(() => {
     if (!alarm) return;
-    setMuted(false);
     const sound = findSound(alarm.soundId, settings.customSounds);
     const h = playSound(sound, {
       loop: true,
@@ -47,6 +46,7 @@ export function AlarmOverlay() {
   const theme = overdue && settings.alarmTheme !== "calm" ? (settings.alarmTheme === "strobe" ? "strobe" : "danger") : settings.alarmTheme;
   const ringColor = overdue ? "#ff3d5a" : "#c8ff2e";
   const focus = activeFocus(snap.db);
+  const muted = mutedKey === alarm.key;
 
   const close = () => {
     stopAllSounds();
@@ -83,7 +83,7 @@ export function AlarmOverlay() {
       />
 
       <div className="relative z-10 flex w-full max-w-lg flex-col items-center text-center">
-        <p className="font-mono text-6xl font-bold tracking-tighter tabular-nums md:text-7xl">{fmtTime(new Date(now || Date.now()))}</p>
+        <p className="font-mono text-6xl font-bold tracking-tighter tabular-nums md:text-7xl">{fmtTime(new Date(now))}</p>
         <span
           className={cx(
             "mt-5 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold",
@@ -151,7 +151,7 @@ export function AlarmOverlay() {
             <button
               onClick={() => {
                 stopAllSounds();
-                setMuted(true);
+                setMutedKey(alarm.key);
               }}
               disabled={muted}
               className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-white/5 font-semibold text-white/70 hover:bg-white/10 disabled:opacity-40"

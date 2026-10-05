@@ -19,6 +19,7 @@ import { Button, Chip, cx, inputCls, Modal } from "./ui";
 
 const PRESETS = ["다른 일이 길어졌다", "컨디션이 안 좋다", "깜빡했다", "계획을 너무 빡빡하게 잡았다", "갑자기 약속이 생겼다"];
 
+/** 사유 입력 — 글자 수가 모자란데 확정을 누르면 흔들리고 포커스가 돌아온다 */
 export function ReasonForm({
   value,
   onChange,
@@ -32,19 +33,20 @@ export function ReasonForm({
   placeholder?: string;
   shake?: number;
 }) {
+  const wrap = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const [anim, setAnim] = useState(false);
   useEffect(() => {
-    if (!shake) return;
-    setAnim(true);
+    const el = wrap.current;
+    if (!shake || !el) return;
+    el.classList.remove("shake");
+    void el.offsetWidth; // 애니메이션 다시 시작
+    el.classList.add("shake");
     ref.current?.focus();
-    const t = window.setTimeout(() => setAnim(false), 500);
-    return () => window.clearTimeout(t);
   }, [shake]);
   const len = value.trim().length;
   const ok = len >= minLength;
   return (
-    <div className={cx(anim && "shake")}>
+    <div ref={wrap}>
       <div className="mb-2 flex flex-wrap gap-1.5">
         {PRESETS.map((p) => (
           <button
@@ -72,17 +74,17 @@ export function ReasonForm({
   );
 }
 
-function TimeChoices({ base, value, onChange }: { base: Task; value: Date; onChange: (d: Date) => void }) {
-  const now = new Date();
+function TimeChoices({ base, value, now, onChange }: { base: Task; value: Date; now: number; onChange: (d: Date) => void }) {
+  const today = new Date(now);
   const origStart = new Date(base.starts_at);
-  const roundNow = new Date(Math.ceil(now.getTime() / (5 * MIN)) * 5 * MIN);
-  const evening = atTime(now, "20:00");
-  const tomorrowSame = atTime(addDays(now, 1), toHHMM(origStart));
+  const roundNow = new Date(Math.ceil(now / (5 * MIN)) * 5 * MIN);
+  const evening = atTime(today, "20:00");
+  const tomorrowSame = atTime(addDays(today, 1), toHHMM(origStart));
   const opts: { label: string; d: Date }[] = [
     { label: "+15분", d: addMinutes(roundNow, 15) },
     { label: "+30분", d: addMinutes(roundNow, 30) },
     { label: "+1시간", d: addMinutes(roundNow, 60) },
-    ...(evening > now ? [{ label: "오늘 20:00", d: evening }] : []),
+    ...(evening.getTime() > now ? [{ label: "오늘 20:00", d: evening }] : []),
     { label: `내일 ${toHHMM(origStart)}`, d: tomorrowSame },
   ];
   const localValue = `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}T${toHHMM(value)}`;
@@ -105,27 +107,26 @@ function TimeChoices({ base, value, onChange }: { base: Task; value: Date; onCha
   );
 }
 
+const nextSlot = (now: number) => new Date(Math.ceil(now / (5 * MIN)) * 5 * MIN + 15 * MIN);
+
 type Step = "choose" | "postpone" | "skip" | "bulk";
 
 /** 미시작 일정 강제 처리 — 닫기 버튼이 없다. 시작하거나 사유를 써야 넘어간다. */
 export function EnforcementModal({ suppressed }: { suppressed: boolean }) {
-  const { store, tasks, settings, toast } = usePlanner();
+  const { tasks, settings } = usePlanner();
   const now = useNow(5000);
   const queue = useMemo(() => enforcementQueue(tasks, now, settings.graceMin), [tasks, now, settings.graceMin]);
-  const task = queue[0] ?? null;
+  if (!queue.length || suppressed) return null;
+  // 일정이 바뀌면 key 가 바뀌어 단계·사유 입력이 처음부터 시작된다
+  return <EnforcementCard key={queue[0].id} task={queue[0]} queue={queue} now={now} />;
+}
+
+function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now: number }) {
+  const { store, settings, toast } = usePlanner();
   const [step, setStep] = useState<Step>("choose");
   const [reason, setReason] = useState("");
   const [shake, setShake] = useState(0);
-  const [newStart, setNewStart] = useState<Date>(() => new Date(Date.now() + 15 * MIN));
-  const taskId = task?.id;
-
-  useEffect(() => {
-    setStep("choose");
-    setReason("");
-    setNewStart(new Date(Math.ceil(Date.now() / (5 * MIN)) * 5 * MIN + 15 * MIN));
-  }, [taskId]);
-
-  if (!task || suppressed) return null;
+  const [newStart, setNewStart] = useState<Date>(() => nextSlot(now));
 
   const expired = isExpired(task, now);
   const late = now - Date.parse(task.starts_at);
@@ -212,7 +213,7 @@ export function EnforcementModal({ suppressed }: { suppressed: boolean }) {
         <div className="mt-5 space-y-4">
           <div>
             <p className="mb-2 text-sm font-semibold">언제로 미룰까요?</p>
-            <TimeChoices base={task} value={newStart} onChange={setNewStart} />
+            <TimeChoices base={task} value={newStart} now={now} onChange={setNewStart} />
           </div>
           <div>
             <p className="mb-2 text-sm font-semibold">미루는 사유</p>
@@ -225,11 +226,11 @@ export function EnforcementModal({ suppressed }: { suppressed: boolean }) {
             <Button
               variant="primary"
               className="flex-1"
-              disabled={newStart.getTime() <= Date.now()}
+              disabled={newStart.getTime() <= now}
               onClick={() =>
                 guard(() => {
                   postponeTask(store, task.id, newStart, reason.trim());
-                  toast({ text: `${fmtTime(newStart)}로 미뤘습니다 — 사유 기록됨`, tone: "default" });
+                  toast({ text: `${fmtTime(newStart)}로 미뤘습니다 — 사유 기록됨` });
                 })
               }
             >
@@ -243,7 +244,7 @@ export function EnforcementModal({ suppressed }: { suppressed: boolean }) {
         <div className="mt-5 space-y-4">
           <p className="text-sm text-muted">
             {expired
-              ? "이 일정을 '놓침'으로 기록합니다. 달성률에서 빠지지 않습니다."
+              ? "이 일정을 ‘놓침’으로 기록합니다. 달성률에서 빠지지 않습니다."
               : "오늘은 이 일정을 하지 않습니다. 건너뛴 것도 달성률에서 빠지지 않습니다."}
           </p>
           <ReasonForm value={reason} onChange={setReason} minLength={need} shake={shake} />
@@ -302,33 +303,30 @@ export function EnforcementModal({ suppressed }: { suppressed: boolean }) {
   );
 }
 
-/** 이미 시작 시각이 지난 일정을 끌어서 뒤로 옮길 때 — 이것도 '미루기'라 사유가 필요하다 */
+/** 이미 시작 시각이 지난 일정을 끌어서 뒤로 옮길 때 — 이것도 ‘미루기’라 사유가 필요하다 */
 export function PostponeDialog() {
-  const { store, postpone, closePostpone, settings, toast } = usePlanner();
+  const { store, postpone } = usePlanner();
   const task = postpone ? store.db.tasks[postpone.taskId] : null;
+  if (!postpone || !task) return null;
+  return <PostponeCard key={`${task.id}:${postpone.start.getTime()}`} task={task} proposed={postpone.start} />;
+}
+
+function PostponeCard({ task, proposed }: { task: Task; proposed: Date }) {
+  const { store, closePostpone, settings, toast } = usePlanner();
+  const now = useNow(5000);
   const [reason, setReason] = useState("");
   const [shake, setShake] = useState(0);
-  const [start, setStart] = useState<Date>(() => postpone?.start ?? new Date());
-  const key = postpone ? `${postpone.taskId}:${postpone.start.getTime()}` : "";
-
-  useEffect(() => {
-    if (!postpone) return;
-    setReason("");
-    setStart(postpone.start);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  if (!postpone || !task) return null;
+  const [start, setStart] = useState<Date>(proposed);
   const need = settings.reasonMinLength;
   return (
     <Modal
       open
       onClose={closePostpone}
       title="미루려면 사유가 필요해요"
-      subtitle={`'${task.title}'은(는) 이미 ${fmtTime(task.starts_at)}에 시작했어야 합니다.`}
+      subtitle={`‘${task.title}’은(는) 이미 ${fmtTime(task.starts_at)}에 시작했어야 합니다.`}
     >
       <div className="space-y-4">
-        <TimeChoices base={task} value={start} onChange={setStart} />
+        <TimeChoices base={task} value={start} now={now} onChange={setStart} />
         <ReasonForm value={reason} onChange={setReason} minLength={need} shake={shake} />
         <div className="flex gap-2">
           <Button variant="ghost" onClick={closePostpone}>
@@ -337,7 +335,7 @@ export function PostponeDialog() {
           <Button
             variant="primary"
             className="flex-1"
-            disabled={start.getTime() <= Date.now()}
+            disabled={start.getTime() <= now}
             onClick={() => {
               if (reason.trim().length < need) return setShake((n) => n + 1);
               postponeTask(store, task.id, start, reason.trim());

@@ -318,7 +318,7 @@ export function FocusScreen() {
             </Button>
           </div>
         )}
-        <p className="text-xs text-faint">집중 중엔 '곧 시작' 알림이 조용해지고, 정각·미시작 경고만 울립니다.</p>
+        <p className="text-xs text-faint">집중 중엔 ‘곧 시작’ 알림이 조용해지고, 정각·미시작 경고만 울립니다.</p>
       </main>
       <AbandonDialog open={abandon} onClose={() => setAbandon(false)} />
     </div>

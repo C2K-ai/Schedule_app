@@ -235,13 +235,13 @@ export function Timeline({ days, tasks, graceMin, dayStartHour, onCreate, onOpen
 
   const onColumnPointerDown = (e: React.PointerEvent, dayIndex: number) => {
     if (e.button !== 0) return;
-    tapRef.current = { x: e.clientX, y: e.clientY, t: Date.now(), dayIndex };
+    tapRef.current = { x: e.clientX, y: e.clientY, t: e.timeStamp, dayIndex };
   };
 
   const onColumnPointerUp = (e: React.PointerEvent, day: Date) => {
     const tap = tapRef.current;
     tapRef.current = null;
-    if (!tap || Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8 || Date.now() - tap.t > 600) return;
+    if (!tap || Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8 || e.timeStamp - tap.t > 600) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const y = e.clientY - rect.top;
     const mins = Math.max(0, Math.min(24 * 60 - 15, Math.floor(((y / hourPx) * 60) / 15) * 15));
@@ -249,7 +249,7 @@ export function Timeline({ days, tasks, graceMin, dayStartHour, onCreate, onOpen
     onCreate(start);
   };
 
-  const today = new Date(now || Date.now());
+  const today = new Date(now);
   const nowTop = (minutesOfDay(today) / 60) * hourPx;
   const todayIndex = days.findIndex((d) => sameDay(d, today));
   const week = days.length > 1;
@@ -326,7 +326,7 @@ export function Timeline({ days, tasks, graceMin, dayStartHour, onCreate, onOpen
               >
                 {placed[di].map((p) => {
                   const t = p.task;
-                  const st = taskState(t, now || Date.now(), graceMin);
+                  const st = taskState(t, now, graceMin);
                   const isDragging = drag?.id === t.id && drag.active;
                   const dTop = isDragging && drag.mode === "move" ? (drag.dMin / 60) * hourPx : 0;
                   const dH = isDragging && drag.mode === "resize" ? (drag.dMin / 60) * hourPx : 0;

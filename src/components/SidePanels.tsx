@@ -59,7 +59,7 @@ export function Agenda({ day }: { day: Date }) {
       ) : (
         <ul className="px-2 pb-2">
           {list.map((t) => {
-            const st = taskState(t, now || Date.now(), settings.graceMin);
+            const st = taskState(t, now, settings.graceMin);
             const lab = STATE_LABEL[st];
             const closed = st === "done" || st === "skipped" || st === "missed";
             return (
@@ -224,7 +224,8 @@ const KIND_TEXT = {
 
 export function ReasonFeed() {
   const { snap, openSheet } = usePlanner();
-  const logs = recentLogs(snap.db, Date.now() - 7 * DAY)
+  const now = useNow(60_000);
+  const logs = recentLogs(snap.db, now - 7 * DAY)
     .filter((l) => l.reason && l.kind in KIND_TEXT)
     .slice(0, 5);
   return (

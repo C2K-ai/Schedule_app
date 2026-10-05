@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Play, Repeat, RotateCcw, Trash, Volume2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   completeTask,
   createHabit,
@@ -16,8 +16,9 @@ import {
 import { DURATION_CHOICES, OFFSET_CHOICES } from "@/lib/settings";
 import { BUILTIN_SOUNDS, findSound, playSound } from "@/lib/sound";
 import { atTime, fmtOffset, fmtTime, MIN, parseDayKey, toDateInput, toHHMM, WEEKDAYS } from "@/lib/time";
-import type { ColorKey } from "@/lib/types";
-import { usePlanner } from "./PlannerProvider";
+import type { ColorKey, Settings, Task } from "@/lib/types";
+import { useNow } from "@/lib/useNow";
+import { usePlanner, type EditorState } from "./PlannerProvider";
 import { Button, Chip, ColorPicker, cx, inputCls, Label, Modal, Switch } from "./ui";
 
 interface Draft {
@@ -34,58 +35,57 @@ interface Draft {
   days: number[];
 }
 
+function initialDraft(task: Task | null, editor: EditorState, settings: Settings): Draft {
+  if (task) {
+    const s = new Date(task.starts_at);
+    return {
+      title: task.title,
+      date: toDateInput(s),
+      time: toHHMM(s),
+      duration: Math.round((Date.parse(task.ends_at) - s.getTime()) / MIN),
+      color: task.color,
+      offsets: task.reminder_offsets,
+      soundId: task.sound_id,
+      strict: task.strict,
+      notes: task.notes ?? "",
+      repeat: false,
+      days: [s.getDay()],
+    };
+  }
+  const s = editor.start ?? new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN);
+  const dur = editor.end ? Math.round((editor.end.getTime() - s.getTime()) / MIN) : 30;
+  return {
+    title: "",
+    date: toDateInput(s),
+    time: toHHMM(s),
+    duration: dur,
+    color: "lime",
+    offsets: settings.defaultOffsets,
+    soundId: null,
+    strict: true,
+    notes: "",
+    repeat: false,
+    days: [s.getDay()],
+  };
+}
+
 export function TaskEditor() {
-  const { editor, closeEditor, store, settings, toast } = usePlanner();
-  const task = editor?.taskId ? store.db.tasks[editor.taskId] : null;
-  const [d, setD] = useState<Draft | null>(null);
+  const { editor } = usePlanner();
+  if (!editor) return null;
+  // 열 때마다 key 가 바뀌어 초안이 새로 만들어진다
+  return <EditorBody key={editor.taskId ?? `new-${editor.start?.getTime() ?? "now"}`} editor={editor} />;
+}
+
+function EditorBody({ editor }: { editor: EditorState }) {
+  const { closeEditor, store, settings, toast } = usePlanner();
+  const now = useNow(10_000);
+  const task = editor.taskId ? (store.db.tasks[editor.taskId] ?? null) : null;
+  const [d, setD] = useState<Draft>(() => initialDraft(task, editor, settings));
   const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!editor) {
-      setD(null);
-      return;
-    }
-    setErr(null);
-    if (task) {
-      const s = new Date(task.starts_at);
-      setD({
-        title: task.title,
-        date: toDateInput(s),
-        time: toHHMM(s),
-        duration: Math.round((Date.parse(task.ends_at) - s.getTime()) / MIN),
-        color: task.color,
-        offsets: task.reminder_offsets,
-        soundId: task.sound_id,
-        strict: task.strict,
-        notes: task.notes ?? "",
-        repeat: false,
-        days: [s.getDay()],
-      });
-    } else {
-      const s = editor.start ?? new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN);
-      const dur = editor.end ? Math.round((editor.end.getTime() - s.getTime()) / MIN) : 30;
-      setD({
-        title: "",
-        date: toDateInput(s),
-        time: toHHMM(s),
-        duration: dur,
-        color: "lime",
-        offsets: settings.defaultOffsets,
-        soundId: null,
-        strict: true,
-        notes: "",
-        repeat: false,
-        days: [s.getDay()],
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor]);
-
-  if (!editor || !d) return null;
   const set = (p: Partial<Draft>) => setD({ ...d, ...p });
   const start = atTime(parseDayKey(d.date), d.time);
   const end = new Date(start.getTime() + d.duration * MIN);
-  const st = task ? taskState(task, Date.now(), settings.graceMin) : null;
+  const st = task ? taskState(task, now, settings.graceMin) : null;
   const lockedDelete = task && task.strict && (st === "overdue" || st === "late");
   const allSounds = [...BUILTIN_SOUNDS, ...settings.customSounds];
 
@@ -95,7 +95,7 @@ export function TaskEditor() {
     if (task) {
       // 이미 시작 시각이 지난 미시작 일정을 뒤로 미는 건 '미루기' — 사유 화면으로
       const movingLater = start.getTime() > Date.parse(task.starts_at);
-      if (task.status === "planned" && task.strict && Date.parse(task.starts_at) <= Date.now() && movingLater) {
+      if (task.status === "planned" && task.strict && Date.parse(task.starts_at) <= now && movingLater) {
         return setErr("이미 시작했어야 하는 일정입니다. 뒤로 미루려면 메인 화면의 경고창에서 사유와 함께 미루세요.");
       }
       updateTask(store, task.id, {

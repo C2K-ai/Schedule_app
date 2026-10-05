@@ -97,8 +97,8 @@ export function Header({ onToday }: { onToday: () => void }) {
           onClick={onToday}
           className="ml-1 hidden items-baseline gap-2 rounded-lg px-2 py-1 text-sm hover:bg-surface-2 md:flex"
         >
-          <span className="font-semibold">{fmtDate(new Date(now || Date.now()))}</span>
-          <span className="font-mono text-muted tabular-nums">{fmtTime(new Date(now || Date.now()))}</span>
+          <span className="font-semibold">{fmtDate(new Date(now))}</span>
+          <span className="font-mono text-muted tabular-nums">{fmtTime(new Date(now))}</span>
         </button>
         <div className="ml-auto flex items-center gap-1.5">
           <InstallButton />

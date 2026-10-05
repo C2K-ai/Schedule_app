@@ -111,6 +111,8 @@ export function PlannerProvider({ children, splash }: { children: ReactNode; spl
     let cancelled = false;
     let unsub: (() => void) | null = null;
     if (!sb) {
+      // 외부 저장소(localStorage) 를 여는 초기화 — 마운트 때 한 번
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       boot(null, null);
     } else {
       void sb.auth.getSession().then(({ data }) => {
