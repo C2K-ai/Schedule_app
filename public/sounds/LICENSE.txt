@@ -1,0 +1,21 @@
+이 폴더의 소리 파일(*.mp3)은 Kenney(www.kenney.nl)의 아래 팩에서 골라
+음량 정규화·앞뒤 무음 정리 후 모노 MP3로 변환한 것입니다.
+
+  - Music Jingles      https://kenney.nl/assets/music-jingles
+  - Interface Sounds   https://kenney.nl/assets/interface-sounds
+
+License: Creative Commons Zero (CC0 1.0) — 퍼블릭 도메인
+http://creativecommons.org/publicdomain/zero/1.0/
+개인·교육·상업 프로젝트에 자유롭게 쓸 수 있으며 출처 표기는 의무가 아닙니다.
+
+파일 ← 원본
+  steel-rise     ← jingles_STEEL02     steel-bright ← jingles_STEEL15
+  steel-calm     ← jingles_STEEL06     steel-bell   ← jingles_STEEL10
+  pizzi-up       ← jingles_PIZZI15     pizzi-walk   ← jingles_PIZZI12
+  pizzi-hop      ← jingles_PIZZI02     retro-up     ← jingles_NES03
+  retro-fanfare  ← jingles_NES12       retro-quest  ← jingles_NES05
+  sax-smooth     ← jingles_SAX12       sax-lift     ← jingles_SAX15
+  hit-alert      ← jingles_HIT03       hit-drive    ← jingles_HIT11
+  glass-ping     ← glass_004           glass-duo    ← glass_001
+  confirm-up     ← confirmation_002    confirm-soft ← confirmation_001
+  maximize-up    ← maximize_006        switch-up    ← switch_007

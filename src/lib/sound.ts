@@ -3,12 +3,53 @@
 import type { SoundDef, VibrationKey, Wave } from "./types";
 
 /**
- * 자체 알람 소리 엔진 — 파일 없이 Web Audio로 합성한다.
- * 프리셋도, 사용자가 사운드 스튜디오에서 찍은 패턴도 같은 SoundDef 하나로 표현된다.
+ * 자체 알람 소리 엔진.
+ *  - 음원: Kenney.nl 의 CC0(퍼블릭 도메인) 징글·효과음을 다듬은 MP3 (public/sounds)
+ *  - 합성: Web Audio 로 만드는 프리셋, 그리고 사운드 스튜디오에서 사용자가 찍은 패턴
+ * 둘 다 같은 SoundDef 로 표현된다(src 가 있으면 음원).
  * 앱이 열려 있으면(백그라운드 탭 포함) 이 소리가 나고, 닫혀 있으면 OS 푸시의 시스템 소리가 난다.
  */
 
-export const BUILTIN_SOUNDS: SoundDef[] = [
+const sample = (id: string, name: string, emoji: string): SoundDef => ({
+  id,
+  name,
+  emoji,
+  src: `/sounds/${id}.mp3`,
+  // 아래 값은 합성용 — 음원에서는 쓰지 않는다
+  wave: "sine",
+  bpm: 120,
+  root: 60,
+  steps: [],
+  gate: 1,
+  glide: false,
+  builtin: true,
+});
+
+/** 녹음 음원 — 듣기 좋은 순서로. 기본값은 정각=스틸드럼 아침, 사전=유리 종, 미시작=타악 경고 */
+export const SAMPLE_SOUNDS: SoundDef[] = [
+  sample("steel-rise", "스틸드럼 · 아침", "🌅"),
+  sample("steel-bright", "스틸드럼 · 경쾌", "🏝️"),
+  sample("steel-calm", "스틸드럼 · 잔잔", "🌊"),
+  sample("steel-bell", "스틸드럼 · 한 번", "🔔"),
+  sample("glass-ping", "유리 종", "🥂"),
+  sample("glass-duo", "유리 · 짧게", "💎"),
+  sample("pizzi-up", "피치카토 · 상승", "🎻"),
+  sample("pizzi-walk", "피치카토 · 산책", "🚶"),
+  sample("pizzi-hop", "피치카토 · 통통", "🐇"),
+  sample("sax-smooth", "색소폰 · 부드럽게", "🎷"),
+  sample("sax-lift", "색소폰 · 올라가기", "🌇"),
+  sample("retro-up", "8비트 · 레벨업", "🍄"),
+  sample("retro-fanfare", "8비트 · 팡파르", "🏆"),
+  sample("retro-quest", "8비트 · 퀘스트", "🗺️"),
+  sample("confirm-up", "확인음 · 상승", "✅"),
+  sample("confirm-soft", "확인음 · 짧게", "☑️"),
+  sample("maximize-up", "스윕 · 위로", "⬆️"),
+  sample("switch-up", "스위치", "🔘"),
+  sample("hit-alert", "타악 · 경고", "🥁"),
+  sample("hit-drive", "타악 · 몰아치기", "⚡"),
+];
+
+export const SYNTH_SOUNDS: SoundDef[] = [
   {
     id: "chime",
     name: "맑은 차임",
@@ -106,6 +147,8 @@ export const BUILTIN_SOUNDS: SoundDef[] = [
     builtin: true,
   },
 ];
+
+export const BUILTIN_SOUNDS: SoundDef[] = [...SAMPLE_SOUNDS, ...SYNTH_SOUNDS];
 
 export const STUDIO_SCALE = [0, 2, 4, 7, 9, 12, 14, 16]; // 펜타토닉 8음 (아래→위)
 
@@ -265,11 +308,40 @@ function schedulePass(
   return def.steps.length * stepDur;
 }
 
+// ───────────── 음원(샘플) 로딩 ─────────────
+const sampleCache = new Map<string, Promise<AudioBuffer | null>>();
+
+export function loadSample(src: string): Promise<AudioBuffer | null> {
+  const c = getAudioContext();
+  if (!c) return Promise.resolve(null);
+  let p = sampleCache.get(src);
+  if (!p) {
+    p = fetch(src)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then((b) => c.decodeAudioData(b))
+      .catch((e) => {
+        console.warn("[must] 음원 로드 실패", src, e);
+        sampleCache.delete(src);
+        return null;
+      });
+    sampleCache.set(src, p);
+  }
+  return p;
+}
+
+/** 알람이 울릴 때 네트워크를 기다리지 않도록 미리 받아 둔다(서비스 워커가 오프라인용으로도 캐시) */
+export function preloadSounds(defs: SoundDef[]) {
+  for (const d of defs) if (d.src) void loadSample(d.src);
+}
+
 export interface PlayOptions {
   volume?: number;
   /** 반복 재생(알람) — 멈출 때까지 */
   loop?: boolean;
-  /** 반복될수록 커지고 빨라짐 */
+  /** 반복될수록 커지고 간격이 좁아짐 */
   escalate?: boolean;
   maxSeconds?: number;
   onEnd?: () => void;
@@ -278,6 +350,43 @@ export interface PlayOptions {
 export interface PlayHandle {
   stop: () => void;
 }
+
+/** 한 바퀴를 t 시점에 예약하고 그 길이(초)를 돌려준다 */
+type PassFn = (c: BaseAudioContext, dest: AudioNode, t: number, pass: number, voices: Voice[]) => number;
+/** 바퀴 사이 쉬는 시간 */
+type GapFn = (len: number, pass: number, escalate: boolean) => number;
+
+const synthPass =
+  (def: SoundDef): PassFn =>
+  (c, dest, t, pass, voices) =>
+    schedulePass(c, dest, def, t, 0.5, 1, voices);
+
+const synthGap: GapFn = (len, pass, escalate) => Math.min(0.6, len * 0.25) * (escalate ? Math.max(0.4, 1 - pass * 0.06) : 1);
+
+const samplePass =
+  (buf: AudioBuffer): PassFn =>
+  (c, dest, t, _pass, voices) => {
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const g = c.createGain();
+    g.gain.value = 0.9;
+    src.connect(g);
+    g.connect(dest);
+    src.start(t);
+    voices.push({
+      stop: (when) => {
+        try {
+          src.stop(when);
+        } catch {
+          /* 이미 멈춤 */
+        }
+      },
+    });
+    return buf.duration;
+  };
+
+const sampleGap: GapFn = (len, pass, escalate) =>
+  Math.max(0.25, Math.min(0.9, len * 0.6)) * (escalate ? Math.max(0.35, 1 - pass * 0.07) : 1);
 
 let current: PlayHandle | null = null;
 
@@ -290,33 +399,26 @@ export function stopAllSounds() {
  * 반복 알람은 최대 길이만큼 미리 한꺼번에 예약한다.
  * 백그라운드 탭에서 타이머가 1분 단위로 늦춰져도 소리는 끊기지 않는다.
  */
-export function playSound(def: SoundDef, opts: PlayOptions = {}): PlayHandle {
-  const c = getAudioContext();
-  if (!c) return { stop() {} };
-  if (c.state === "suspended") void c.resume();
-  stopAllSounds();
-
+function scheduleLoop(c: AudioContext, opts: PlayOptions, pass: PassFn, gap: GapFn, onEnd: () => void): PlayHandle {
   const volume = Math.max(0, Math.min(1, opts.volume ?? 0.8));
   const master = c.createGain();
   master.connect(c.destination);
   const voices: Voice[] = [];
   const start = c.currentTime + 0.05;
-  const maxSec = opts.loop ? (opts.maxSeconds ?? 60) : 30;
+  const maxSec = opts.loop ? (opts.maxSeconds ?? 30) : 30;
 
   let t = start;
-  let pass = 0;
+  let n = 0;
   do {
-    const speed = opts.escalate ? Math.min(1.6, 1 + pass * 0.06) : 1;
-    const len = schedulePass(c, master, def, t, 0.5, speed, voices);
-    // 쉼표 없이 끝나는 패턴은 반복 사이에 숨 쉴 틈을 준다
-    t += len + (opts.loop ? Math.min(0.6, len * 0.25) : 0);
-    pass++;
+    const len = pass(c, master, t, n, voices);
+    t += len + (opts.loop ? gap(len, n, Boolean(opts.escalate)) : 0);
+    n++;
   } while (opts.loop && t - start < maxSec);
 
   const end = t;
   if (opts.escalate) {
-    master.gain.setValueAtTime(volume * 0.35, start);
-    master.gain.linearRampToValueAtTime(volume, start + Math.min(25, end - start));
+    master.gain.setValueAtTime(volume * 0.4, start);
+    master.gain.linearRampToValueAtTime(volume, start + Math.min(20, end - start));
   } else {
     master.gain.setValueAtTime(volume, start);
   }
@@ -326,13 +428,13 @@ export function playSound(def: SoundDef, opts: PlayOptions = {}): PlayHandle {
     () => {
       if (!stopped) {
         stopped = true;
-        opts.onEnd?.();
+        onEnd();
       }
     },
     (end - c.currentTime) * 1000 + 300,
   );
 
-  const handle: PlayHandle = {
+  return {
     stop() {
       if (stopped) return;
       stopped = true;
@@ -343,13 +445,46 @@ export function playSound(def: SoundDef, opts: PlayOptions = {}): PlayHandle {
       master.gain.linearRampToValueAtTime(0, now + 0.08);
       voices.forEach((v) => v.stop(now + 0.1));
       window.setTimeout(() => master.disconnect(), 200);
-      opts.onEnd?.();
+      onEnd();
     },
   };
-  current = handle;
-  return handle;
 }
 
+export function playSound(def: SoundDef, opts: PlayOptions = {}): PlayHandle {
+  const c = getAudioContext();
+  if (!c) return { stop() {} };
+  if (c.state === "suspended") void c.resume();
+  stopAllSounds();
+
+  let inner: PlayHandle | null = null;
+  let cancelled = false;
+  let ended = false;
+  const end = () => {
+    if (ended) return;
+    ended = true;
+    opts.onEnd?.();
+  };
+  const outer: PlayHandle = {
+    stop() {
+      cancelled = true;
+      if (inner) inner.stop();
+      else end();
+    },
+  };
+  current = outer;
+
+  if (def.src) {
+    void loadSample(def.src).then((buf) => {
+      if (cancelled || current !== outer) return;
+      inner = buf
+        ? scheduleLoop(c, opts, samplePass(buf), sampleGap, end)
+        : scheduleLoop(c, opts, synthPass(SYNTH_SOUNDS[0]), synthGap, end); // 파일을 못 읽으면 합성음으로 대신
+    });
+  } else {
+    inner = scheduleLoop(c, opts, synthPass(def), synthGap, end);
+  }
+  return outer;
+}
 /** 일정 제목을 소리 내어 읽기 */
 export function speak(text: string, volume = 1) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -375,6 +510,16 @@ export function vibrate(key: VibrationKey) {
  */
 export async function renderWav(def: SoundDef, passes = 2): Promise<Blob> {
   const sampleRate = 44100;
+  if (def.src) {
+    const buf = await loadSample(def.src);
+    if (!buf) throw new Error("음원을 읽지 못했습니다");
+    const gapSec = sampleGap(buf.duration, 0, false);
+    const off = new OfflineAudioContext(1, Math.ceil((buf.duration * passes + gapSec * (passes - 1) + 0.1) * sampleRate), sampleRate);
+    const voices: Voice[] = [];
+    let t = 0;
+    for (let i = 0; i < passes; i++) t += samplePass(buf)(off, off.destination, t, i, voices) + gapSec;
+    return encodeWav(await off.startRendering());
+  }
   const stepDur = 60 / def.bpm;
   const passLen = def.steps.length * stepDur;
   const tail = def.wave === "bell" ? 1.5 : 0.5;

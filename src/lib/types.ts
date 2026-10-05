@@ -120,6 +120,8 @@ export interface SoundDef {
   /** 다음 음으로 미끄러지듯 이어짐(사이렌) */
   glide: boolean;
   builtin?: boolean;
+  /** 녹음된 음원 파일(/sounds/*.mp3). 있으면 합성 대신 이 파일을 재생한다 */
+  src?: string;
 }
 
 export type VibrationKey = "none" | "short" | "double" | "heartbeat" | "sos" | "alarm";
