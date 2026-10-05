@@ -1,13 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "./globals.css";
+import { withBase } from "@/lib/base";
 
 export const metadata: Metadata = {
   title: "MUST — 미루지 못하는 플래너",
   description: "미시작 일정은 빨갛게, 미루려면 사유를. 알림·카운트다운·뽀모도로가 한 화면에 있는 습관/일정 플래너.",
   applicationName: "MUST",
   appleWebApp: { capable: true, title: "MUST", statusBarStyle: "black-translucent" },
-  icons: { apple: "/icons/apple-touch-icon.png" },
+  icons: { apple: withBase("/icons/apple-touch-icon.png") },
   formatDetection: { telephone: false },
 };
 

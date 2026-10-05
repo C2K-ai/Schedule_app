@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "./base";
 import { VIBRATIONS } from "./sound";
 import type { AlarmKind, VibrationKey } from "./types";
 
@@ -27,7 +28,7 @@ export function registerServiceWorker(): Promise<ServiceWorkerRegistration | nul
   if (!swReg) {
     const mode = process.env.NODE_ENV === "production" ? "production" : "development";
     swReg = navigator.serviceWorker
-      .register(`/sw.js?mode=${mode}`, { scope: "/", updateViaCache: "none" })
+      .register(withBase(`/sw.js?mode=${mode}`), { scope: withBase("/"), updateViaCache: "none" })
       .then(() => navigator.serviceWorker.ready)
       .catch((e) => {
         console.warn("[must] 서비스 워커 등록 실패", e);
@@ -61,8 +62,8 @@ export async function showSystemNotification(n: LocalNotice) {
   const opts: RichOptions = {
     body: n.body,
     tag: n.tag,
-    icon: "/icons/icon-192.png",
-    badge: "/icons/badge-96.png",
+    icon: withBase("/icons/icon-192.png"),
+    badge: withBase("/icons/badge-96.png"),
     requireInteraction: urgent,
     renotify: n.kind === "overdue",
     vibrate: VIBRATIONS[n.vibration]?.pattern ?? [],

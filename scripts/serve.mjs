@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const root = join(fileURLToPath(new URL("..", import.meta.url)), "out");
 const port = Number(process.env.PORT ?? 4173);
+// GitHub Pages 처럼 하위 경로로 시험: BASE_PATH=/Schedule_app (빌드도 같은 값으로)
+const base = process.env.BASE_PATH ?? process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -30,7 +32,12 @@ if (!existsSync(root)) {
 
 createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
-  let rel = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, "");
+  if (base && !url.pathname.startsWith(base)) {
+    res.writeHead(302, { location: `${base}/` }).end();
+    return;
+  }
+  const path = base ? url.pathname.slice(base.length) || "/" : url.pathname;
+  let rel = normalize(decodeURIComponent(path)).replace(/^([/\\])+/, "");
   if (rel.includes("..")) {
     res.writeHead(400).end();
     return;
@@ -45,7 +52,7 @@ createServer((req, res) => {
   }
   const headers = { "content-type": TYPES[extname(file)] ?? "application/octet-stream" };
   if (file.endsWith("sw.js")) headers["cache-control"] = "no-cache";
-  else if (url.pathname.startsWith("/_next/static/")) headers["cache-control"] = "public, max-age=31536000, immutable";
+  else if (path.startsWith("/_next/static/")) headers["cache-control"] = "public, max-age=31536000, immutable";
   res.writeHead(200, headers);
   createReadStream(file).pipe(res);
-}).listen(port, () => console.log(`MUST → http://localhost:${port}`));
+}).listen(port, () => console.log(`MUST → http://localhost:${port}${base}/`));

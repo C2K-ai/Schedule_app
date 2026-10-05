@@ -3,18 +3,21 @@
  *  - notificationclick: "지금 시작" / "5분 뒤 다시" 버튼 처리 (잠금화면에서도 앱 안 열고 스누즈)
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
  */
-const VERSION = "must-v2";
+const VERSION = "must-v3";
 const DEV = new URL(self.location.href).searchParams.get("mode") === "development";
+// 하위 경로 배포(GitHub Pages /Schedule_app) 대응 — sw.js 가 놓인 폴더가 앱의 뿌리
+const BASE = self.location.pathname.replace(/\/sw\.js$/, "");
+const ROOT = `${BASE}/`;
 const SHELL = [
-  "/",
-  "/manifest.webmanifest",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/badge-96.png",
-  "/sounds/steel-rise.mp3",
-  "/sounds/glass-ping.mp3",
-  "/sounds/hit-alert.mp3",
-  "/sounds/steel-calm.mp3",
+  ROOT,
+  `${BASE}/manifest.webmanifest`,
+  `${BASE}/icons/icon-192.png`,
+  `${BASE}/icons/icon-512.png`,
+  `${BASE}/icons/badge-96.png`,
+  `${BASE}/sounds/steel-rise.mp3`,
+  `${BASE}/sounds/glass-ping.mp3`,
+  `${BASE}/sounds/hit-alert.mp3`,
+  `${BASE}/sounds/steel-calm.mp3`,
 ];
 
 self.addEventListener("install", (event) => {
@@ -54,10 +57,10 @@ self.addEventListener("fetch", (event) => {
         try {
           const res = await fetch(req);
           const cache = await caches.open(VERSION);
-          cache.put("/", res.clone());
+          cache.put(ROOT, res.clone());
           return res;
         } catch {
-          return (await caches.match("/")) || Response.error();
+          return (await caches.match(ROOT)) || Response.error();
         }
       })(),
     );
@@ -65,7 +68,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   // 해시가 붙은 빌드 산출물: 캐시 우선
-  if (url.pathname.startsWith("/_next/static/")) {
+  if (url.pathname.startsWith(`${BASE}/_next/static/`)) {
     event.respondWith(
       (async () => {
         const hit = await caches.match(req);
@@ -103,8 +106,8 @@ function buildOptions(p) {
     renotify: Boolean(p.renotify && p.tag),
     requireInteraction: p.requireInteraction ?? urgent,
     vibrate: p.vibrate || [200, 100, 200],
-    icon: "/icons/icon-192.png",
-    badge: "/icons/badge-96.png",
+    icon: `${BASE}/icons/icon-192.png`,
+    badge: `${BASE}/icons/badge-96.png`,
     timestamp: p.startsAt ? Date.parse(p.startsAt) : Date.now(),
     data: p,
     actions: urgent
@@ -163,8 +166,8 @@ self.addEventListener("notificationclick", (event) => {
           await self.registration.showNotification("⏱ 5분 뒤 다시 알려드릴게요", {
             body: p.title || "",
             tag: `${p.tag || "must"}-ack`,
-            icon: "/icons/icon-192.png",
-            badge: "/icons/badge-96.png",
+            icon: `${BASE}/icons/icon-192.png`,
+            badge: `${BASE}/icons/badge-96.png`,
             silent: true,
           });
           return;
@@ -180,7 +183,7 @@ self.addEventListener("notificationclick", (event) => {
       }
       const q = new URLSearchParams({ from: "notification", action: handled ? "open" : action });
       if (p.taskId) q.set("task", p.taskId);
-      return self.clients.openWindow(`/?${q.toString()}`);
+      return self.clients.openWindow(`${ROOT}?${q.toString()}`);
     })(),
   );
 });

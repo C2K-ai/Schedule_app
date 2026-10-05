@@ -27,6 +27,7 @@ import { findSound, playSound, preloadSounds, speak, unlockAudio, vibrate } from
 import { getSupabase } from "@/lib/supabase";
 import { DAY } from "@/lib/time";
 import type { AlarmKind, Task } from "@/lib/types";
+import { withBase } from "@/lib/base";
 import { usePlanner } from "./PlannerProvider";
 
 const PRIORITY: Record<AlarmKind, number> = { overdue: 5, start: 4, snooze: 3, end: 2, before: 1, focus: 0 };
@@ -275,7 +276,7 @@ export function ReminderEngine() {
     const action = q.get("action");
     if (action) {
       handleAction(action, q.get("task"), false);
-      window.history.replaceState(null, "", "/");
+      window.history.replaceState(null, "", withBase("/"));
     }
   }, [handleAction]);
 

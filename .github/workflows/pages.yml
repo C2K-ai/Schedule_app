@@ -1,0 +1,47 @@
+# main 에 push 하면 자동으로 빌드해서 GitHub Pages 에 올린다.
+#   주소: https://<계정>.github.io/<저장소>/   (예: https://c2k-ai.github.io/Schedule_app/)
+# 처음 한 번만: 저장소 Settings → Pages → Build and deployment → Source: "GitHub Actions"
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build (정적 내보내기)
+        run: npm run build
+        env:
+          # 저장소 이름을 하위 경로로 — 아이콘·소리·서비스 워커 경로에 모두 붙는다
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

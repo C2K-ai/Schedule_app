@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "./base";
 import type { SoundDef, VibrationKey, Wave } from "./types";
 
 /**
@@ -14,7 +15,7 @@ const sample = (id: string, name: string, emoji: string): SoundDef => ({
   id,
   name,
   emoji,
-  src: `/sounds/${id}.mp3`,
+  src: withBase(`/sounds/${id}.mp3`),
   // 아래 값은 합성용 — 음원에서는 쓰지 않는다
   wave: "sine",
   bpm: 120,
