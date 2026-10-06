@@ -10,16 +10,9 @@
   · DB·RLS·알림 큐·1분 크론·서버 함수 3개 배포, 보안 점검 0건, 크론→함수 호출 200 확인
   · **1인 전용** — 처음 만든 계정 하나만 쓸 수 있고 그 뒤 가입은 막힘 (풀려면 `supabase/migrations/20261006000100_single_owner.sql` 맨 위 주석)
   · 비밀값(VAPID 개인키·크론 비밀·버튼 서명키)은 Supabase **Vault** 에만 있음. 저장소에는 공개값(`.env.production`)뿐
-- **폰 주소(배포 후)**: https://c2k-ai.github.io/Schedule_app/
-
-### 남은 2단계 — 직접 해 주세요 (각 1분)
-
-1. 이 폴더에서 업로드
-   ```bash
-   git push -u origin main
-   ```
-2. GitHub 저장소 → **Settings → Pages → Build and deployment → Source: GitHub Actions**
-   → 2~3분 뒤 **Actions** 탭에 초록 체크가 뜨면 위 폰 주소가 열립니다. (이후엔 push 할 때마다 자동 배포)
+- **배포 완료 — 폰 주소: https://c2k-ai.github.io/Schedule_app/**
+  · GitHub Pages(Source: GitHub Actions). `main` 에 push 할 때마다 자동으로 다시 배포됩니다 (`.github/workflows/pages.yml`)
+  · 이 저장소의 push 계정은 `C2K-ai` 로 고정 (`origin = https://C2K-ai@github.com/...`)
 
 ### 처음 쓰는 순서
 
