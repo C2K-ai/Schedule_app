@@ -28,6 +28,12 @@ export function briefingText(tasks: BriefTask[], now: number, tz: string, graceM
   return { title: "☀ 좋은 아침이에요", body: parts.join(" · ") };
 }
 
+/** sendToSubscription 의 오류 문자열("403 ...", "? ...")에서 다시 해 볼 만한지 */
+export function retryable(err: string): boolean {
+  const code = Number(err.split(" ")[0]);
+  return !Number.isFinite(code) || code === 429 || code >= 500;
+}
+
 interface Due {
   id: string;
   user_id: string;
@@ -80,8 +86,8 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
     if (r === "sent") briefed++;
     else if (r !== "removed") {
       failed++;
-      // 못 보냈으면 오늘 표시를 풀어 다음 분에 다시
-      await db.from("push_subscriptions").update({ last_briefing_on: null }).eq("id", d.id);
+      // 잠깐의 실패(네트워크·429·5xx)만 다음 분에 다시 — 계속 거절되는 기기는 오늘은 포기(매분 3시간 재시도 방지)
+      if (retryable(r)) await db.from("push_subscriptions").update({ last_briefing_on: null }).eq("id", d.id);
     }
   }
   return { briefed, failed };

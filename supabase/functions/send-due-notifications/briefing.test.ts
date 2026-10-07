@@ -1,6 +1,6 @@
 // deno test send-due-notifications/briefing.test.ts
 import { assertEquals } from "jsr:@std/assert@1";
-import { briefingText, type BriefTask } from "./briefing.ts";
+import { briefingText, retryable, type BriefTask } from "./briefing.ts";
 
 const now = Date.parse("2026-10-08T01:00:00Z"); // 서울 10:00
 const t = (title: string, startsAt: string, extra: Partial<BriefTask> = {}): BriefTask => ({
@@ -35,4 +35,14 @@ Deno.test("유예 시간 안의 일정은 '다음'으로 보인다", () => {
 
 Deno.test("할 일이 없으면 그렇게 말한다", () => {
   assertEquals(briefingText([], now, "Asia/Seoul", 5, 0).body, "오늘 잡힌 할 일이 없어요");
+});
+
+Deno.test("다시 보낼 오류만 재시도", () => {
+  assertEquals([retryable("? fetch failed"), retryable("429 too many"), retryable("503 down"), retryable("403 forbidden"), retryable("400 bad")], [
+    true,
+    true,
+    true,
+    false,
+    false,
+  ]);
 });
