@@ -1,4 +1,4 @@
-// 배경 사진 받아오기 — Unsplash(무료 사용·출처 표기 불필요 라이선스) 사진을 앱 배경용 webp 로.
+// 배경 사진 받아오기 — Pexels·Unsplash(무료 사용·출처 표기 불필요 라이선스) 사진을 앱 배경용 webp 로.
 //   node scripts/fetch-backgrounds.mjs candidates   → bg-out/ 에 후보 미리보기 + 번호 붙은 모아보기(sheet-*.jpg)
 //   node scripts/fetch-backgrounds.mjs final        → scripts/backgrounds.json 의 사진을 public/themes/bg/ 에
 // 사진은 Unsplash 다운로드 주소에서 받는다. 유료(Unsplash+) 사진은 받아지지 않아 자동으로 빠진다.
@@ -30,7 +30,29 @@ async function imageUrl(id) {
   return og.split("?")[0].replaceAll("&amp;", "&");
 }
 
+/** Pexels(무료·출처 표기 불필요 라이선스) — 이미지 서버 주소 규칙, 안 되면 사진 페이지의 대표 이미지 */
+async function pexels(id, width) {
+  const errs = [];
+  try {
+    return await getImage(`https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=${width}`);
+  } catch (e) {
+    errs.push(`cdn: ${e.message}`);
+  }
+  try {
+    const res = await fetch(`https://www.pexels.com/photo/${id}/`, { redirect: "follow", headers: { "user-agent": UA, accept: "text/html" } });
+    const html = await res.text();
+    if (!res.ok) throw new Error(`page ${res.status}`);
+    const og = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)?.[1];
+    if (!og) throw new Error("og:image 없음");
+    return await getImage(`${og.split("?")[0]}?auto=compress&cs=tinysrgb&w=${width}`);
+  } catch (e) {
+    errs.push(`page: ${e.message}`);
+  }
+  throw new Error(errs.join(" | "));
+}
+
 async function download(id, width) {
+  if (id.startsWith("px:")) return pexels(id.slice(3), width);
   const errs = [];
   try {
     return await getImage(`https://unsplash.com/photos/${id}/download?force=true&w=${width}`);
@@ -50,13 +72,14 @@ if (mode === "candidates") {
   const ids = JSON.parse(await readFile(join(root, "scripts/background-candidates.json"), "utf8"));
   const out = join(root, "bg-out");
   await mkdir(join(out, "cand"), { recursive: true });
+  const safe = (id) => id.replace(/[^A-Za-z0-9_-]/g, "_");
   const ok = [];
   const skipped = [];
   for (const [i, id] of ids.entries()) {
     try {
       const buf = await download(id, 640);
       const meta = await sharp(buf).metadata();
-      await writeFile(join(out, "cand", `${String(i + 1).padStart(2, "0")}-${id}.jpg`), buf);
+      await writeFile(join(out, "cand", `${String(i + 1).padStart(2, "0")}-${safe(id)}.jpg`), buf);
       ok.push({ n: i + 1, id, w: meta.width, h: meta.height, buf });
       console.log("ok", i + 1, id, meta.width, meta.height);
     } catch (e) {
