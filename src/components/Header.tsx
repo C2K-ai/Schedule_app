@@ -76,6 +76,29 @@ export function SyncPill({ className }: { className?: string }) {
   );
 }
 
+/**
+ * PC 에 설치한 앱은 전체 화면으로 — 브라우저는 클릭·키 입력 없이 전체 화면을 못 켜서, 켠 뒤 처음 누르는 순간 켠다.
+ * 한 번 켠 뒤 Esc 로 나오면 그 실행 동안은 다시 켜지 않는다(설정 → 화면·데이터에서 끌 수 있음)
+ */
+export function AutoFullscreen({ enabled }: { enabled: boolean }) {
+  useEffect(() => {
+    if (!enabled || !isStandalone() || !document.fullscreenEnabled) return;
+    if (!window.matchMedia("(pointer: fine)").matches || window.innerWidth < 768) return; // 폰·태블릿은 그대로
+    const go = () => {
+      stop();
+      if (!document.fullscreenElement) void document.documentElement.requestFullscreen().catch(() => {});
+    };
+    const stop = () => {
+      window.removeEventListener("click", go, true);
+      window.removeEventListener("keydown", go, true);
+    };
+    window.addEventListener("click", go, true);
+    window.addEventListener("keydown", go, true);
+    return stop;
+  }, [enabled]);
+  return null;
+}
+
 /** PC: 전체 화면 켜기/끄기 — 창 위쪽 줄과 구석의 창 버튼까지 다 사라진다(F11 과 같음, Esc 로 나옴) */
 function FullscreenButton() {
   const [full, setFull] = useState(false);

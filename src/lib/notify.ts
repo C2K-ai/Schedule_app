@@ -104,10 +104,11 @@ export function setAppBadge(count: number) {
   }
 }
 
+/** 설치한 앱으로 열렸는지 — PC 앱의 제목 줄 숨김 모드·전체 화면도 설치한 앱이다 */
 export function isStandalone() {
   if (typeof window === "undefined") return false;
   return (
-    window.matchMedia("(display-mode: standalone)").matches ||
+    ["standalone", "window-controls-overlay", "fullscreen", "minimal-ui"].some((m) => window.matchMedia(`(display-mode: ${m})`).matches) ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true
   );
 }

@@ -35,7 +35,7 @@ import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
 import { EnforcementModal, OverdueSiren, PostponeDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
-import { TopBar } from "./Header";
+import { AutoFullscreen, TopBar } from "./Header";
 import { HabitsSheet } from "./HabitsSheet";
 import { ListManager } from "./ListManager";
 import { LogSheet } from "./LogSheet";
@@ -260,6 +260,7 @@ export function Shell() {
   return (
     <>
       <Backdrop />
+      <AutoFullscreen enabled={p.settings.pcFullscreen} />
 
       {/* PC: 왼쪽 레일 */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col border-r border-line bg-[color-mix(in_oklab,var(--bg)_72%,transparent)] backdrop-blur-xl md:flex">

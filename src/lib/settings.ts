@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   palette: "dusk",
   background: "swing",
+  pcFullscreen: true,
   launchBriefing: true,
   studyGoalMin: 360,
   studyAutoPause: true,

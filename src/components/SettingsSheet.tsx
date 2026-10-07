@@ -758,6 +758,14 @@ function DataTab() {
           />
         )}
       </Section>
+      <Section title="PC 앱 화면">
+        <Switch
+          checked={settings.pcFullscreen}
+          onChange={(pcFullscreen) => updateSettings({ pcFullscreen })}
+          label="전체 화면으로 쓰기"
+          desc="PC 에 설치한 앱을 켜고 처음 클릭하면 전체 화면이 돼요(창 위쪽 줄·작업표시줄이 사라짐). 나오려면 Esc, 다시 들어가려면 위쪽 막대의 ⛶ 버튼이나 F11."
+        />
+      </Section>
       <Section title="백업" desc="모든 일정·습관·기록·설정을 JSON 파일 하나로 내보내고 가져옵니다. 가져오기는 더 최신인 항목만 덮어씁니다.">
         <div className="flex flex-wrap gap-2">
           <Button
