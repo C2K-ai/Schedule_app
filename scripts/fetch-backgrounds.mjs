@@ -10,14 +10,40 @@ import sharp from "sharp";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mode = process.argv[2] ?? "candidates";
 
-async function download(id, width) {
-  const res = await fetch(`https://unsplash.com/photos/${id}/download?force=true&w=${width}`, {
-    redirect: "follow",
-    headers: { "user-agent": "Mozilla/5.0 (MUST planner background fetch)" },
-  });
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+
+async function getImage(url) {
+  const res = await fetch(url, { redirect: "follow", headers: { "user-agent": UA, accept: "image/avif,image/webp,image/*,*/*" } });
   const type = res.headers.get("content-type") ?? "";
-  if (!res.ok || !type.startsWith("image/")) throw new Error(`${id}: ${res.status} ${type}`);
+  if (!res.ok || !type.startsWith("image/")) throw new Error(`${res.status} ${type} ${res.url.slice(0, 80)}`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+/** 사진 페이지의 대표 이미지 주소(images.unsplash.com) — 유료(plus.unsplash.com)면 거른다 */
+async function imageUrl(id) {
+  const res = await fetch(`https://unsplash.com/photos/${id}`, { headers: { "user-agent": UA, accept: "text/html" } });
+  const html = await res.text();
+  if (!res.ok) throw new Error(`page ${res.status}`);
+  const og = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)?.[1] ?? html.match(/https:\/\/images\.unsplash\.com\/photo-[^"?\s]+/)?.[0];
+  if (!og) throw new Error(html.includes("plus.unsplash.com") ? "unsplash+ (유료)" : "og:image 없음");
+  if (og.includes("plus.unsplash.com") || og.includes("premium_photo")) throw new Error("unsplash+ (유료)");
+  return og.split("?")[0].replaceAll("&amp;", "&");
+}
+
+async function download(id, width) {
+  const errs = [];
+  try {
+    return await getImage(`https://unsplash.com/photos/${id}/download?force=true&w=${width}`);
+  } catch (e) {
+    errs.push(`download: ${e.message}`);
+  }
+  try {
+    const base = await imageUrl(id);
+    return await getImage(`${base}?w=${width}&q=85&fm=jpg&fit=max`);
+  } catch (e) {
+    errs.push(`page: ${e.message}`);
+  }
+  throw new Error(errs.join(" | "));
 }
 
 if (mode === "candidates") {
@@ -25,6 +51,7 @@ if (mode === "candidates") {
   const out = join(root, "bg-out");
   await mkdir(join(out, "cand"), { recursive: true });
   const ok = [];
+  const skipped = [];
   for (const [i, id] of ids.entries()) {
     try {
       const buf = await download(id, 640);
@@ -34,6 +61,7 @@ if (mode === "candidates") {
       console.log("ok", i + 1, id, meta.width, meta.height);
     } catch (e) {
       console.log("skip", i + 1, id, String(e.message ?? e));
+      skipped.push({ n: i + 1, id, why: String(e.message ?? e) });
     }
   }
   // 번호 붙은 모아보기 — 한 장에 12개(4×3)
@@ -59,6 +87,7 @@ if (mode === "candidates") {
       .toFile(join(out, `sheet-${s + 1}.jpg`));
   }
   await writeFile(join(out, "ok.json"), JSON.stringify(ok.map(({ buf, ...r }) => r), null, 2));
+  await writeFile(join(out, "skipped.json"), JSON.stringify(skipped, null, 2));
 } else if (mode === "final") {
   const list = JSON.parse(await readFile(join(root, "scripts/backgrounds.json"), "utf8"));
   const dir = join(root, "public/themes/bg");
