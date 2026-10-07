@@ -1,59 +1,43 @@
-# 화면 개편 — 인수인계 (2026-10-07, 노트북 세션 → 클라우드 세션)
+# 화면 개편 — 인수인계 (2026-10-07 저녁, 클라우드 세션)
 
-작업 브랜치: **`ui-revamp`** — `main` 에 push 하면 GitHub Pages(사용자가 폰에서 쓰는 실제 앱)로 자동 배포되므로,
-개편이 끝나 화면을 확인하기 전까지 `main` 에 합치지 말 것.
+작업 브랜치: **`ui-revamp`** — `main` 에 push 하면 GitHub Pages(사용자가 폰에서 쓰는 실제 앱)로 자동 배포된다.
+이번 클라우드 세션은 **GitHub 에 push 권한이 없었다**(클론·읽기만 됨). 커밋은 이 브랜치에 로컬로 쌓여 있고,
+push 가 되는 세션(노트북 로컬 세션, 또는 GitHub 연결을 고친 뒤의 클라우드 세션)에서 `git push` 해야 반영된다.
 
-## 사용자 요청 요약 (결정 완료)
+## 사용자 요청 (모두 반영)
 
-사용자가 쓰던 폰 To-Do 앱처럼 화면을 바꾸기. 모든 결정은 사용자가 내렸다.
+1. 탭 구조(☰ 메뉴 · 작업 · 타이머 · 캘린더 · 내 것), 폰 하단 탭바 + 둥근 + 버튼, PC 왼쪽 레일. 노을 그네 배경.
+2. 카테고리(작업·개인·위시리스트·생일 + 사용자 추가), 별표, 시간 없는 할 일(날짜만 / 날짜 없음).
+3. 캘린더 월 보기 + 하루 노트(기분 5단계 + 자유 글, 자동 저장). 주/일 타임라인은 그대로.
+4. 내 것(통계): 요약 / 공부 / 기록 세 칸으로 나눔.
+5. **말로 일정 넣기(가장 중요)**: 🎤 → 브라우저 음성 인식(ko-KR) → Edge Function `parse-schedule`(Claude) →
+   미리보기에서 고치기 → 추가. 반복("매일 아침 7시")은 습관으로.
+6. **열품타식 공부 타이머**: 과목별 스톱워치, 오늘 합계·목표·D-Day, 크게 보기(화면 꺼짐 방지),
+   자리 비우면 자동 멈춤(설정 → 집중), 10분 플래너, 구간 지우기·직접 넣기. 통계는 내 것 → 공부.
+7. **커리어 기록**: 기간·종류·메모 + 그 기간에 끝낸 일정·하루 노트 → Edge Function `career-polish`(Claude)가
+   이력서 문장·기술로 다듬음. 전체 복사(마크다운).
+8. 브리핑: 앱 켤 때(작업 탭 한 줄 + 시스템 알림), 폰 매일 10:00 서버 푸시(기기별 시각, 설정 → 알림).
+9. 앱 아이콘: 사용자가 준 탁상 달력 그림(사용자가 자른 범위 그대로, 정사각형). 원본은 `design/icon-source.png`(gitignore).
+10. "화면이 복잡하다" → 작업 홈은 한 줄 '지금/다음' + 목록, 타이머는 합계+과목만, 10분 플래너는 접어 둠.
 
-1. **탭 구조 — 폰·PC 둘 다**: ☰(메뉴) · 작업 · 캘린더 · 내 것.
-   폰은 하단 탭바 + 오른쪽 아래 둥근 + 버튼. PC(넓은 화면)는 왼쪽 세로 레일(메뉴 내용을 항상 펼쳐 둠) + 넓은 본문.
-   지금의 여러 패널 대시보드(`src/components/Dashboard.tsx`)는 이 구조로 대체.
-2. **☰ 메뉴**: 별표 작업, 카테고리 목록(개수 표시 + 새로 만들기·이름 바꾸기·색·삭제), 습관, 테마, 설정.
-3. **카테고리**: 기본 작업·개인·위시리스트·생일(+ '모두' 보기) + 사용자 추가.
-4. **작업 탭**: 위쪽 카테고리 칩 가로 스크롤, 목록형 할 일, 별표, "오늘 완료 (n)" 접히는 묶음,
-   "완료된 모든 작업 확인". 시간 없는 할 일 지원. 맨 위에 지금/다음 카운트다운/오늘 달성률(기존 NowBar) 유지.
-5. **캘린더 탭**: 월 달력 + 할 일 있는 날 점 + 노트 있는 날 다른 색 점. 날짜 누르면 아래(PC는 오른쪽)에 그날 목록 +
-   **하루 노트**(그날 할 것·생각·느낌 자유 입력, 기분 이모지 5단계, 자동 저장). 기존 Timeline 은 일/주 상세 보기로 유지.
-6. **내 것 탭(통계)**: 완료한 작업 수, 완벽한 하루(그날 할 일 전부 완료한 날 수), 연간 히트맵, 카테고리별 완료 도넛(30일),
-   요일별 완료 막대(주간 + 한 줄 코멘트), 완료율·가장 생산적인 요일, 집중 시간 주간 차트, 향후 7일.
-   기존 변명 노트(LogSheet 내용)·습관 스트릭도 여기로. 차트는 dataviz 스킬 지침을 따른다.
-7. **테마**: 사용자가 준 노을·그네 사진의 분위기를 직접 다시 그린 그림 — **완료**.
-8. **브리핑 알림 2종**
-   - 노트북 켤 때: 앱이 켜질 때(세션 첫 실행) "오늘 일정 n개 · 첫 일정 · 미시작 n건" 시스템 알림 + 앱 안 카드
-     (설정 `launchBriefing`, 기본 켜짐). Windows 시작 프로그램 바로가기 등록은 **노트북에서만 가능** — 클라우드에선 하지 말고 남겨 둘 것.
-   - 폰 매일 오전 10시: 서버 푸시. `push_subscriptions` 에 기기 이름·`briefing_time`('HH:MM')·`last_briefing_on` 추가,
-     설정 → 알림에 "이 기기 아침 브리핑 시각"(폰 기본 10:00, 노트북 끔). 기존 1분 크론(send-due-notifications)이 처리,
-     하루 1회, 사용자 시간대 기준. Edge Function 재배포 필요(Supabase MCP 의 deploy_edge_function, `_shared/push.ts` 포함 3개 파일 구조 그대로).
-9. **그다음 단계(개편 뒤)**: 음성으로 일정 넣기. 사용자 핵심 요구는 "개떡같이 말해도 찰떡같이 알아듣는 AI".
-   브라우저 음성인식 → Supabase Edge Function 에서 Claude API(키는 Vault) → 미리보기 확인 후 저장. API 키는 사용자가 발급해야 함.
+## 서버(Supabase `gcnosxcojuefkaaxefug`)에 이미 반영된 것
 
-## 이미 된 것 (이 브랜치)
+- 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`
+  (모두 다시 돌려도 안전, DROP 없음 — DROP 이 있으면 MCP 가 확인 창을 띄워 멈춘다).
+- Edge Functions: `parse-schedule`(v2), `career-polish`(v1), `send-due-notifications`(v2, 브리핑 포함).
+  `notification-action`·`push-test` 는 예전 번들 그대로(동작 같음).
+- 예전 앱(main)과도 호환: 새 열·새 표는 예전 앱이 안 써서 영향 없음.
 
-- 그림: `scripts/gen-background.mjs` → `public/themes/dusk-portrait.webp`(1080×2340), `dusk-landscape.webp`(2400×1350).
-  원본 사진과 SVG 원본은 `design/`(gitignore — 출처 미확인 사진이라 공개 저장소에 올리지 않음).
-- 데이터: `src/lib/types.ts`(Category, DayNote, Task.schedule/category_id/starred, Settings.palette/launchBriefing),
-  `src/lib/ids.ts`(결정적 id: 기본 카테고리·하루 노트), `src/lib/store.ts`(새 테이블·기본 카테고리 생성·로컬→계정 id 재매핑),
-  `src/lib/planner.ts`(isTimed/tasksOnDay/completedOn/liveCategories/dayNoteFor, createTask(schedule…), toggleStar,
-  카테고리 CRUD, saveDayNote). 알림·강제는 `schedule === "timed"` 에만.
-- DB: `supabase/migrations/20261007000000_categories_notes.sql` — **실제 서버에 이미 적용됨**(다시 적용해도 안전하게 작성).
-  테스트 `npm run test:db` 전부 통과.
-- 테마 색: `globals.css` 의 `html[data-palette="dusk"]` 토큰, `layout.tsx`·`PlannerProvider` 가 data-palette 적용,
-  `src/components/Backdrop.tsx`(배경 그림) — **아직 화면에 붙이지 않음**(새 셸에 넣을 것).
+## 사용자가 해야 하는 것
 
-## 남은 순서
+- **Claude API 키**: console.anthropic.com 에서 키 발급 → Supabase SQL Editor 에서
+  `select vault.create_secret('sk-ant-...', 'must_anthropic_key');` (앱 설정 → AI 탭에 복사 버튼·연결 상태 표시).
+- 노트북 부팅 시 자동 실행(Windows 시작 프로그램 바로가기)은 노트북 로컬 세션에서만 가능.
+- 대시보드 Auth 설정의 '유출 비밀번호 보호' 켜기(보안 점검 경고 1건).
 
-1. 새 셸(탭바·PC 레일·☰ 드로어) + Backdrop 붙이기 → 2. 작업 탭(+ 빠른 추가, TaskEditor 에 종류·카테고리·별표)
-→ 3. 캘린더 탭 + 하루 노트 → 4. 내 것 탭 → 5. 브리핑 2종(서버 쪽은 마이그레이션 + 함수 재배포)
-→ 6. 화면 확인(폰·PC 크기) → 7. `main` 에 합쳐 배포.
+## 검증
 
-## 주의
-
-- **Next.js 16** — 코드 쓰기 전에 `node_modules/next/dist/docs/` 의 해당 문서 확인(AGENTS.md).
-- **소리 테스트는 음량 0부터** — 알람이 반복 재생되면 사용자가 싫어함. 테스트 뒤 브라우저 탭·서버 정리.
-- 하위 경로 배포(`/Schedule_app`) — 절대 경로는 `withBase()` 로. 서비스 워커는 자기 위치에서 접두어를 계산.
-- Supabase 프로젝트 `gcnosxcojuefkaaxefug`(서울, 무료). **1인 전용**(첫 가입자만) — 테스트용 계정을 만들지 말 것(주인이 이미 있음).
-  비밀값은 Vault(`must_*`)에만. 보안 점검 경고 1건(유출 비밀번호 보호 꺼짐)은 대시보드 Auth 설정이라 사용자에게 안내만.
-- 검증: `npx tsc --noEmit`, `npx eslint src`, `npm run test:db`, `npm run build`. 한글 줄바꿈은 `word-break: keep-all`.
-- 커밋 작성자: `C2K-ai <338173723+C2K-ai@users.noreply.github.com>`(공개 저장소에 개인 메일 노출 방지).
+- `npx tsc --noEmit`, `npx eslint src`, `npm run test:db`(PGlite), Deno: `deno test supabase/functions`.
+- 화면: 로컬 모드 + 예시 데이터로 폰(390×844)·PC(1440×900) 스크린샷 확인.
+  말로 추가 흐름은 가짜 Supabase(네트워크 가로채기)로 끝까지 확인 — 실제 계정·키는 쓰지 않음.
+- 테스트 계정 만들지 말 것(1인 전용). 소리 테스트는 음량 0.
