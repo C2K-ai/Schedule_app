@@ -45,7 +45,9 @@ await db.exec(readFileSync(new URL("../migrations/20261008000100_study.sql", imp
 await db.exec(readFileSync(new URL("../migrations/20261008000100_study.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
-ok(true, "AI 키·공부 타이머·커리어 마이그레이션 실행됨(두 번)");
+await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
+await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
+ok(true, "AI 키·공부 타이머·커리어·브리핑 마이그레이션 실행됨(두 번)");
 await db.exec(`set role service_role;`);
 const cfg = (await q(`select public.must_function_config() c`))[0].c;
 await db.exec(`reset role;`);
@@ -182,6 +184,46 @@ try {
 ok(badRange, "공부 기록: 끝이 시작보다 앞설 수 없음");
 await q(`update public.subjects set deleted_at = now(), updated_at = now() + interval '1 second' where id = $1`, [SU]);
 ok((await q(`select count(*)::int n from public.study_sessions where subject_id = $1`, [SU]))[0].n === 2, "과목을 지워도(soft) 기록은 남음");
+
+// ── 아침 브리핑 ──
+{
+  // 지금 서울 시각 기준으로 '방금 지난' 시각과 '아직 안 온' 시각을 만든다
+  const seoul = (await q(`select to_char(now() at time zone 'Asia/Seoul', 'HH24:MI') t, (now() at time zone 'Asia/Seoul')::time lt`))[0];
+  const [hh, mm] = seoul.t.split(":").map(Number);
+  const mins = hh * 60 + mm;
+  const fmt = (m) => `${String(Math.floor(((m + 1440) % 1440) / 60)).padStart(2, "0")}:${String(((m % 60) + 60) % 60).padStart(2, "0")}`;
+  const past = fmt(mins - 5);
+  const future = fmt(mins + 30);
+  await q(`insert into public.push_subscriptions (user_id, endpoint, p256dh, auth, briefing_time) values
+    ($1, 'https://push/a', 'k', 'a', $2), ($1, 'https://push/b', 'k', 'a', $3), ($1, 'https://push/c', 'k', 'a', null)`, [A, past, future]);
+  let badTime = false;
+  try {
+    await q(`insert into public.push_subscriptions (user_id, endpoint, p256dh, auth, briefing_time) values ($1, 'https://push/x', 'k', 'a', '25:00')`, [A]);
+  } catch {
+    badTime = true;
+  }
+  ok(badTime, "브리핑 시각 형식 검사");
+  await db.exec(`set role service_role;`);
+  const first = await q(`select endpoint, local_day, day_end - day_start as span from public.claim_due_briefings()`);
+  const second = await q(`select endpoint from public.claim_due_briefings()`);
+  await db.exec(`reset role;`);
+  // 자정 근처(00:00~00:05, 21:00 이후)에는 'past' 가 조건 밖이라 0개가 정상
+  const inWindow = mins >= 5 && mins - 5 < 21 * 60;
+  ok(
+    inWindow ? first.length === 1 && first[0].endpoint === "https://push/a" : first.length === 0,
+    `브리핑: 시각이 지난 기기만 꺼냄 (${first.map((r) => r.endpoint).join(",") || "없음"})`,
+  );
+  ok(second.length === 0, "브리핑: 같은 날 두 번 꺼내지 않음");
+  let claimDenied = false;
+  await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${A}', false);`);
+  try {
+    await q(`select * from public.claim_due_briefings()`);
+  } catch {
+    claimDenied = true;
+  }
+  await db.exec(`reset role;`);
+  ok(claimDenied, "브리핑: 일반 사용자는 꺼낼 수 없음");
+}
 
 // ── 커리어 ──
 await q(

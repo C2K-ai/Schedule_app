@@ -252,6 +252,11 @@ export function ReminderEngine() {
       const data = e.data as { type?: string; payload?: PushPayload; action?: string; taskId?: string; handled?: boolean };
       if (data?.type === "must:push" && data.payload) {
         const pl = data.payload;
+        // 아침 브리핑은 알람이 아니다 — 소리 없이 한 줄만
+        if ((pl.kind as string) === "briefing") {
+          latest.current.toast({ text: `${pl.title} — ${pl.body ?? ""}`, ttl: 8000 });
+          return;
+        }
         const task = pl.taskId ? (latest.current.store.db.tasks[pl.taskId] ?? null) : null;
         const kind = pl.kind ?? "start";
         // 로컬 일정의 starts_at 으로 키를 만든다 — 앱 안 알림과 같은 키라서 둘 다 와도 한 번만 울린다

@@ -2,12 +2,13 @@
 //   배포: npx supabase functions deploy send-due-notifications --no-verify-jwt
 //   보호: x-cron-secret 헤더 == CRON_SECRET
 import { admin, cors, describe, json, sendToUser, setting, signAction, VIBRATIONS, type PushPayload } from "../_shared/push.ts";
+import { sendBriefings } from "./briefing.ts";
 
 interface Job {
   id: number;
   user_id: string;
   task_id: string;
-  kind: PushPayload["kind"];
+  kind: Exclude<PushPayload["kind"], "briefing">;
   seq: number;
   fire_at: string;
 }
@@ -17,10 +18,12 @@ Deno.serve(async (req) => {
   if (req.headers.get("x-cron-secret") !== (await setting("CRON_SECRET"))) return json({ error: "unauthorized" }, 401);
 
   const db = admin();
+  // 기기별 아침 브리핑(하루 한 번) — 실패해도 일정 알림은 계속 보낸다
+  const briefing = await sendBriefings(db).catch((e) => ({ error: String(e) }));
   const { data, error } = await db.rpc("claim_due_notification_jobs", { p_limit: 300 });
   if (error) return json({ error: error.message }, 500);
   const jobs = (data ?? []) as Job[];
-  if (!jobs.length) return json({ claimed: 0 });
+  if (!jobs.length) return json({ claimed: 0, briefing });
 
   const taskIds = [...new Set(jobs.map((j) => j.task_id))];
   const userIds = [...new Set(jobs.map((j) => j.user_id))];
@@ -88,5 +91,5 @@ Deno.serve(async (req) => {
         .eq("id", job.id);
     }
   }
-  return json({ claimed: jobs.length, sent, skipped, failed });
+  return json({ claimed: jobs.length, sent, skipped, failed, briefing });
 });

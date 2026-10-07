@@ -24,13 +24,16 @@ create table if not exists public.career_entries (
 );
 create index if not exists career_entries_user_synced on public.career_entries (user_id, synced_at);
 
-drop trigger if exists career_entries_lww on public.career_entries;
-create trigger career_entries_lww before insert or update on public.career_entries for each row execute function public.lww_guard();
+create or replace trigger career_entries_lww before insert or update on public.career_entries for each row execute function public.lww_guard();
 
 alter table public.career_entries enable row level security;
-drop policy if exists "own career" on public.career_entries;
-create policy "own career" on public.career_entries for all to authenticated
-  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'career_entries' and policyname = 'own career') then
+    create policy "own career" on public.career_entries for all to authenticated
+      using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+  end if;
+end $$;
 grant select, insert, update, delete on public.career_entries to authenticated;
 revoke all on public.career_entries from anon;
 

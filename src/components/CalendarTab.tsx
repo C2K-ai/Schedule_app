@@ -166,7 +166,7 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
               key={k}
               onClick={() => onSelect(d)}
               className={cx(
-                "relative flex aspect-square flex-col items-center justify-start rounded-xl pt-1.5 transition md:aspect-[1.15]",
+                "relative flex aspect-[4/5] flex-col items-center justify-start rounded-xl pt-1 transition md:aspect-[1.15] md:pt-1.5",
                 sel ? "bg-accent text-accent-fg" : "hover:bg-surface-2",
                 !inMonth && !sel && "opacity-35",
               )}
@@ -180,8 +180,8 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
               >
                 {d.getDate()}
               </span>
-              {nt?.mood && <span className="text-[13px] leading-none md:text-base">{MOODS[nt.mood - 1].e}</span>}
-              <span className="absolute bottom-1.5 flex gap-1">
+              {nt?.mood && <span className="text-[12px] leading-none md:text-base">{MOODS[nt.mood - 1].e}</span>}
+              <span className="absolute bottom-1 flex gap-1 md:bottom-1.5">
                 {mk && mk.open > 0 && <span className={cx("size-1.5 rounded-full", sel ? "bg-accent-fg" : "bg-accent")} />}
                 {mk && mk.open === 0 && mk.done > 0 && <span className={cx("size-1.5 rounded-full", sel ? "bg-accent-fg/70" : "bg-ok")} />}
                 {nt?.hasBody && <span className={cx("size-1.5 rounded-full", sel ? "bg-accent-fg/60" : "bg-[#a78bfa]")} />}

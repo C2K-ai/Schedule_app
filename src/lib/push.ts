@@ -33,6 +33,48 @@ export async function currentPushSubscription(): Promise<PushSubscription | null
   return (await reg?.pushManager.getSubscription()) ?? null;
 }
 
+const BRIEFING_KEY = "must:briefing-time";
+const isPhone = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+/** 이 기기의 아침 브리핑 시각 — 폰은 기본 10:00, 노트북·PC 는 끔(앱을 켤 때 브리핑) */
+export function briefingTime(): string | null {
+  try {
+    const v = localStorage.getItem(BRIEFING_KEY);
+    if (v === "off") return null;
+    if (v && /^\d{2}:\d{2}$/.test(v)) return v;
+  } catch {
+    /* 읽지 못하면 기본값 */
+  }
+  return isPhone() ? "10:00" : null;
+}
+
+export function deviceName(): string {
+  const ua = navigator.userAgent;
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua)) return "iPad";
+  if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? "안드로이드 폰" : "안드로이드 태블릿";
+  if (/Windows/i.test(ua)) return "Windows PC";
+  if (/Mac OS X/i.test(ua)) return "Mac";
+  return "기타 기기";
+}
+
+/** 브리핑 시각을 바꾸고, 이 기기가 푸시 등록돼 있으면 서버에도 바로 반영 */
+export async function setBriefingTime(client: SupabaseClient | null, time: string | null) {
+  try {
+    localStorage.setItem(BRIEFING_KEY, time ?? "off");
+  } catch {
+    /* 저장 못 해도 서버엔 반영 */
+  }
+  const sub = await currentPushSubscription();
+  if (client && sub) {
+    const { error } = await client
+      .from("push_subscriptions")
+      .update({ briefing_time: time, last_briefing_on: null })
+      .eq("endpoint", sub.endpoint);
+    if (error) throw new Error(error.message);
+  }
+}
+
 async function save(client: SupabaseClient, userId: string, sub: PushSubscription) {
   const json = sub.toJSON() as { endpoint: string; keys?: { p256dh?: string; auth?: string } };
   const { error } = await client.from("push_subscriptions").upsert(
@@ -42,6 +84,8 @@ async function save(client: SupabaseClient, userId: string, sub: PushSubscriptio
       p256dh: json.keys?.p256dh ?? "",
       auth: json.keys?.auth ?? "",
       user_agent: navigator.userAgent.slice(0, 300),
+      device_name: deviceName(),
+      briefing_time: briefingTime(),
       last_seen_at: new Date().toISOString(),
     },
     { onConflict: "endpoint" },

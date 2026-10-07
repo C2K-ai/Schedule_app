@@ -20,7 +20,7 @@ export interface PushPayload {
   title: string;
   body: string;
   tag: string;
-  kind: "before" | "start" | "overdue" | "snooze";
+  kind: "before" | "start" | "overdue" | "snooze" | "briefing";
   seq?: number;
   taskId?: string;
   startsAt?: string;
@@ -40,6 +40,39 @@ export interface SendResult {
   errors: string[];
 }
 
+export interface PushTarget {
+  id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+/** 기기 하나로 보낸다. 만료된 구독(404/410)이면 지우고 "removed" */
+export async function sendToSubscription(
+  db: SupabaseClient,
+  s: PushTarget,
+  payload: PushPayload,
+  ttlSec = 900,
+): Promise<"sent" | "removed" | string> {
+  await ensureVapid();
+  try {
+    await webpush.sendNotification(
+      { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+      JSON.stringify(payload),
+      // urgency high: 안드로이드 절전(Doze) 중에도 바로 깨워서 보낸다
+      { TTL: ttlSec, urgency: "high" },
+    );
+    return "sent";
+  } catch (e) {
+    const code = (e as { statusCode?: number }).statusCode;
+    if (code === 404 || code === 410) {
+      await db.from("push_subscriptions").delete().eq("id", s.id);
+      return "removed";
+    }
+    return `${code ?? "?"} ${(e as Error).message}`.slice(0, 200);
+  }
+}
+
 /** 이 사용자의 모든 기기로 보낸다. 만료된 구독(404/410)은 지운다. */
 export async function sendToUser(
   db: SupabaseClient,
@@ -47,7 +80,6 @@ export async function sendToUser(
   payload: PushPayload,
   ttlSec = 900,
 ): Promise<SendResult> {
-  await ensureVapid();
   const { data: subs, error } = await db
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
@@ -56,23 +88,12 @@ export async function sendToUser(
   const r: SendResult = { sent: 0, removed: 0, failed: 0, errors: [] };
   await Promise.all(
     (subs ?? []).map(async (s) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          JSON.stringify(payload),
-          // urgency high: 안드로이드 절전(Doze) 중에도 바로 깨워서 보낸다
-          { TTL: ttlSec, urgency: "high" },
-        );
-        r.sent++;
-      } catch (e) {
-        const code = (e as { statusCode?: number }).statusCode;
-        if (code === 404 || code === 410) {
-          await db.from("push_subscriptions").delete().eq("id", s.id);
-          r.removed++;
-        } else {
-          r.failed++;
-          r.errors.push(`${code ?? "?"} ${(e as Error).message}`.slice(0, 200));
-        }
+      const out = await sendToSubscription(db, s, payload, ttlSec);
+      if (out === "sent") r.sent++;
+      else if (out === "removed") r.removed++;
+      else {
+        r.failed++;
+        r.errors.push(out);
       }
     }),
   );
@@ -91,7 +112,7 @@ const span = (ms: number) => {
 };
 
 export function describe(
-  kind: PushPayload["kind"],
+  kind: Exclude<PushPayload["kind"], "briefing">,
   seq: number,
   t: { title: string; starts_at: string; ends_at: string },
   now: number,

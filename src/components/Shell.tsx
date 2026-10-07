@@ -24,7 +24,7 @@ import { MIN } from "@/lib/time";
 import { COLOR_HEX } from "@/lib/types";
 import { AlarmOverlay } from "./AlarmOverlay";
 import { Backdrop } from "./Backdrop";
-import { BriefingCard } from "./Briefing";
+import { BriefingEngine } from "./Briefing";
 import { CalendarTab } from "./CalendarTab";
 import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
@@ -243,7 +243,6 @@ export function Shell() {
 
   const title = TABS.find((t) => t.value === tab)!.label;
   const addNew = () => {
-    if (tab === "timer") return p.openSheet("voice");
     p.openEditor({ start: new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN), categoryId: filter.kind === "category" ? filter.id : undefined });
   };
   const menu = <MenuPanel filter={filter} onFilter={pickFilter} onCategories={() => setCatEdit(true)} onCareer={() => (setCareer(true), setDrawer(false))} />;
@@ -294,7 +293,6 @@ export function Shell() {
               p.closeEditor();
             }}
           />
-          <BriefingCard />
           {tab === "tasks" && <TasksTab filter={filter} setFilter={setFilter} nowRef={nowRef} onManageCategories={() => setCatEdit(true)} />}
           {tab === "timer" && <TimerTab />}
           {tab === "calendar" && <CalendarTab />}
@@ -304,14 +302,7 @@ export function Shell() {
 
       {/* 폰: 아래 탭바 + 둥근 + 버튼 */}
       <div className="md:hidden">
-        <div className="fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom))] z-30 flex flex-col items-center gap-3">
-          <button
-            aria-label="말로 일정 추가"
-            onClick={() => p.openSheet("voice")}
-            className="grid size-11 place-items-center rounded-full border border-line-strong bg-surface text-fg shadow-card backdrop-blur-xl active:scale-95"
-          >
-            <Mic size={20} />
-          </button>
+        <div className="fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom))] z-30">
           <button
             aria-label="추가"
             onClick={addNew}
@@ -391,6 +382,7 @@ export function Shell() {
       <Toasts />
       <ReminderEngine />
       <StudyEngine />
+      <BriefingEngine />
     </>
   );
 }

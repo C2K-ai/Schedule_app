@@ -34,10 +34,12 @@ export function buildBriefing(tasks: Task[], now: number, graceMin: number): Bri
   return { title: `☀ ${hello}`, body: parts.join(" · "), open: open.length, first, overdue };
 }
 
-/** 앱을 켤 때(노트북 부팅 뒤 자동 실행 포함) 한 번 — 시스템 알림 + 화면 위 카드 */
-export function BriefingCard() {
+const CARD_KEY = "must:briefing-card";
+const CARD_EVENT = "must:briefing";
+
+/** 앱을 켤 때(노트북 부팅 뒤 자동 실행 포함) 한 번 — 시스템 알림을 띄우고, 작업 탭 카드에 문구를 넘긴다. 늘 붙어 있는 관리자 */
+export function BriefingEngine() {
   const { tasks, settings, session, snap } = usePlanner();
-  const [brief, setBrief] = useState<Briefing | null>(null);
   const ready = !session.userId || snap.status.lastSyncAt !== null || snap.status.mode === "local";
 
   useEffect(() => {
@@ -49,24 +51,52 @@ export function BriefingCard() {
       return;
     }
     const b = buildBriefing(tasks, Date.now(), settings.graceMin);
-    // 서버에서 받아 온 뒤 한 번만 — 외부(세션 저장소) 상태를 읽어 결정하는 초기화
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setBrief(b);
+    try {
+      sessionStorage.setItem(CARD_KEY, b.body);
+    } catch {
+      /* 카드는 못 보여도 알림은 띄운다 */
+    }
+    window.dispatchEvent(new Event(CARD_EVENT));
     void showSystemNotification({ title: b.title, body: b.body, tag: "must-briefing", kind: "before", vibration: "short" });
   }, [ready, settings.launchBriefing, settings.graceMin, tasks]);
 
-  if (!brief) return null;
+  return null;
+}
+
+const readCard = () => {
+  try {
+    return sessionStorage.getItem(CARD_KEY);
+  } catch {
+    return null;
+  }
+};
+
+/** 작업 탭 맨 위 한 줄 — 닫으면 이번 실행 동안 다시 안 나온다 */
+export function BriefingCard() {
+  const [body, setBody] = useState<string | null>(readCard);
+  useEffect(() => {
+    const on = () => setBody(readCard());
+    window.addEventListener(CARD_EVENT, on);
+    return () => window.removeEventListener(CARD_EVENT, on);
+  }, []);
+  if (!body) return null;
   return (
-    <div className="fade-up flex items-start gap-3 rounded-2xl border border-accent/40 bg-[color-mix(in_oklab,var(--accent)_10%,var(--surface))] px-4 py-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-fg">
-        <Sunrise size={18} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold">{brief.title.replace("☀ ", "")}</p>
-        <p className="mt-0.5 text-sm text-muted">{brief.body}</p>
-      </div>
-      <button aria-label="닫기" onClick={() => setBrief(null)} className="text-muted hover:text-fg">
-        <X size={18} />
+    <div className="fade-up flex items-center gap-3 rounded-2xl bg-[color-mix(in_oklab,var(--accent)_12%,transparent)] px-4 py-2.5">
+      <Sunrise size={18} className="shrink-0 text-accent-text" />
+      <p className="min-w-0 flex-1 text-sm">{body}</p>
+      <button
+        aria-label="닫기"
+        onClick={() => {
+          try {
+            sessionStorage.removeItem(CARD_KEY);
+          } catch {
+            /* 무시 */
+          }
+          setBody(null);
+        }}
+        className="shrink-0 text-muted hover:text-fg"
+      >
+        <X size={16} />
       </button>
     </div>
   );

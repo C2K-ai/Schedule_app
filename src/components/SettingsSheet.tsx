@@ -12,7 +12,7 @@ import {
 } from "@/lib/notify";
 import { aiStatus } from "@/lib/ai";
 import { OFFSET_CHOICES } from "@/lib/settings";
-import { currentPushSubscription, pushSupported, sendTestPush, subscribePush, unsubscribePush } from "@/lib/push";
+import { briefingTime, currentPushSubscription, pushSupported, sendTestPush, setBriefingTime, subscribePush, unsubscribePush } from "@/lib/push";
 import { downloadSound, findSound, playSound, unlockAudio, vibrate, VIBRATIONS } from "@/lib/sound";
 import { hasLocalData, readLocalDb } from "@/lib/store";
 import { cloudEnabled, getSupabase } from "@/lib/supabase";
@@ -84,6 +84,7 @@ function NotifyTab() {
   const [perm, setPerm] = useState<PermissionState>(() => notificationPermission());
   const [pushOn, setPushOn] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [briefing, setBriefing] = useState<string | null>(() => briefingTime());
   const set = (p: Partial<Settings>) => updateSettings(p);
 
   useEffect(() => {
@@ -232,6 +233,45 @@ function NotifyTab() {
             )}
           </div>
         )}
+      </Section>
+
+      <Section title="오늘 브리핑" desc="‘오늘 할 일 n개 · 다음 일정 · 미시작 n건’을 한 줄로 알려 줍니다.">
+        <Switch
+          checked={settings.launchBriefing}
+          onChange={(launchBriefing) => set({ launchBriefing })}
+          label="앱을 켤 때 브리핑"
+          desc="노트북을 켜고 앱이 열릴 때 알림 + 작업 탭 맨 위 한 줄."
+        />
+        <div className="flex items-center justify-between gap-4 py-2">
+          <span>
+            <span className="block text-sm font-semibold">이 기기 아침 브리핑 시각</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-muted">
+              앱을 안 열어도 서버가 이 시각에 푸시로 보냅니다(하루 한 번). ‘3. 서버 푸시’에서 이 기기를 등록해야 와요.
+            </span>
+          </span>
+          <select
+            value={briefing ?? "off"}
+            onChange={async (e) => {
+              const v = e.target.value === "off" ? null : e.target.value;
+              setBriefing(v);
+              try {
+                await setBriefingTime(sb, v);
+                toast({ text: v ? `이 기기는 매일 ${v}에 브리핑을 받아요` : "이 기기 아침 브리핑을 껐어요", tone: "ok" });
+              } catch (err) {
+                toast({ text: `저장 실패: ${(err as Error).message}`, tone: "danger" });
+              }
+            }}
+            className="h-10 shrink-0 rounded-xl border border-line bg-surface-2 px-3 text-sm font-semibold"
+            aria-label="아침 브리핑 시각"
+          >
+            <option value="off">끔</option>
+            {["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00"].map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
       </Section>
 
       <Section title="기본 알림 시점" desc="새 일정을 만들 때 미리 선택되는 알림입니다.">
@@ -395,7 +435,15 @@ function FocusTab() {
         <Range label="긴 휴식까지" value={settings.cyclesPerLong} min={2} max={8} unit="회" onChange={(cyclesPerLong) => updateSettings({ cyclesPerLong })} />
         <Switch checked={settings.autoStartBreak} onChange={(autoStartBreak) => updateSettings({ autoStartBreak })} label="집중이 끝나면 휴식 자동 시작" />
       </Section>
-      <Section title="타임라인" desc="다른 날짜를 열었을 때 처음 보여 줄 시각입니다.">
+      <Section title="공부 타이머" desc="열품타처럼 과목별로 시간을 쌓습니다.">
+        <Switch
+          checked={settings.studyAutoPause}
+          onChange={(studyAutoPause) => updateSettings({ studyAutoPause })}
+          label="자리 비우면 자동 멈춤"
+          desc="공부 중에 앱을 1분 넘게 벗어나면 떠난 시각에 멈춥니다. 딴짓한 시간이 쌓이지 않게."
+        />
+      </Section>
+      <Section title="하루 시작 시각" desc="타임라인을 처음 보여 줄 시각이자, 공부 시간을 하루로 묶는 경계입니다(새벽 공부는 전날로).">
         <Range label="하루 시작" value={settings.dayStartHour} min={0} max={12} unit="시" onChange={(dayStartHour) => updateSettings({ dayStartHour })} />
       </Section>
     </>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, ChevronRight, CircleDashed, Cloud, Mic, Play, Plus, Repeat, Settings2, Share, SlidersHorizontal, Star, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleDashed, Cloud, Plus, Repeat, Settings2, Share, SlidersHorizontal, Star, TriangleAlert, X } from "lucide-react";
 import { useMemo, useState, type ReactNode, type RefObject } from "react";
 import { isIOS, isStandalone } from "@/lib/notify";
 import {
@@ -11,7 +11,6 @@ import {
   liveCategories,
   reopenTask,
   seedDemo,
-  startTask,
   taskState,
   toggleStar,
 } from "@/lib/planner";
@@ -20,7 +19,8 @@ import { addDays, DAY, dayKey, fmtTime, startOfDay, WEEKDAYS } from "@/lib/time"
 import { COLOR_HEX, type Category, type ScheduleKind, type Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { AuthForm } from "./AuthForm";
-import { NowBar } from "./NowBar";
+import { BriefingCard } from "./Briefing";
+import { NowStrip } from "./NowBar";
 import { usePlanner } from "./PlannerProvider";
 import { Card, cx, Empty } from "./ui";
 
@@ -122,7 +122,7 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
   const cat = categories.find((c) => c.id === t.category_id);
   const timed = isTimed(t);
   return (
-    <li className={cx("group flex items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-surface-2/70", st === "overdue" && "bg-danger-soft")}>
+    <li className={cx("group flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-surface-2/70", st === "overdue" && "bg-danger-soft")}>
       <button
         aria-label={done ? "완료 취소" : "완료"}
         onClick={() => {
@@ -161,18 +161,8 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
             </span>
           )}
           {t.postpone_count > 0 && <span className="text-warn">{t.postpone_count}회 미룸</span>}
-          {t.notes && <span className="max-w-[16rem] truncate text-faint">{t.notes}</span>}
         </p>
       </button>
-      {timed && t.status === "planned" && (
-        <button
-          onClick={() => startTask(store, t.id)}
-          className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-accent hover:text-accent-fg md:opacity-0 md:group-hover:opacity-100"
-          aria-label="시작"
-        >
-          <Play size={14} />
-        </button>
-      )}
       <button
         aria-label={t.starred ? "별표 빼기" : "별표"}
         onClick={() => toggleStar(store, t.id)}
@@ -236,7 +226,7 @@ const WHEN: { value: "today" | "tomorrow" | "someday"; label: string }[] = [
 ];
 
 function QuickAdd({ filter }: { filter: TaskFilter }) {
-  const { store, settings, openEditor, openSheet, toast } = usePlanner();
+  const { store, settings, openEditor, toast } = usePlanner();
   const [title, setTitle] = useState("");
   const [when, setWhen] = useState<(typeof WHEN)[number]["value"]>("today");
   const categoryId = filter.kind === "category" ? filter.id : null;
@@ -250,43 +240,32 @@ function QuickAdd({ filter }: { filter: TaskFilter }) {
     setTitle("");
     toast({ text: `추가: ${v}`, tone: "ok" });
   };
+  const label = WHEN.find((w) => w.value === when)!.label;
   return (
-    <div className="rounded-2xl border border-line bg-surface p-2 shadow-card">
-      <div className="flex items-center gap-2">
-        <Plus size={18} className="ml-2 shrink-0 text-muted" />
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && add()}
-          placeholder="할 일 입력 후 Enter"
-          className="h-10 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-faint"
-          aria-label="빠른 추가"
-        />
-        <button onClick={() => openSheet("voice")} aria-label="말로 추가" className="grid size-9 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg">
-          <Mic size={18} />
-        </button>
-        <button
-          onClick={() => openEditor({ schedule, day, categoryId: categoryId ?? undefined, starred, title: title.trim() || undefined })}
-          aria-label="자세히"
-          className="grid size-9 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
-        >
-          <SlidersHorizontal size={17} />
-        </button>
-      </div>
-      <div className="flex gap-1 px-1 pt-1">
-        {WHEN.map((w) => (
-          <button
-            key={w.value}
-            onClick={() => setWhen(w.value)}
-            className={cx(
-              "h-7 rounded-lg px-2.5 text-xs font-semibold transition",
-              when === w.value ? "bg-accent/15 text-accent-text" : "text-muted hover:text-fg",
-            )}
-          >
-            {w.label}
-          </button>
-        ))}
-      </div>
+    <div className="flex items-center gap-1 rounded-2xl border border-line bg-surface py-1.5 pr-1.5 pl-3 shadow-card">
+      <Plus size={18} className="shrink-0 text-muted" />
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && add()}
+        placeholder="할 일 추가"
+        className="h-10 min-w-0 flex-1 bg-transparent px-1 text-[15px] outline-none placeholder:text-faint"
+        aria-label="빠른 추가"
+      />
+      <button
+        onClick={() => setWhen(WHEN[(WHEN.findIndex((w) => w.value === when) + 1) % WHEN.length].value)}
+        title="누를 때마다 바뀌어요"
+        className="h-8 shrink-0 rounded-lg bg-accent/15 px-2.5 text-xs font-bold text-accent-text"
+      >
+        {label}
+      </button>
+      <button
+        onClick={() => openEditor({ schedule, day, categoryId: categoryId ?? undefined, starred, title: title.trim() || undefined })}
+        aria-label="자세히"
+        className="grid size-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
+      >
+        <SlidersHorizontal size={17} />
+      </button>
     </div>
   );
 }
@@ -329,11 +308,12 @@ export function TasksTab({
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <CloudLoginCard />
       <InstallHint />
+      <BriefingCard />
       <div ref={nowRef}>
-        <NowBar />
+        <NowStrip />
       </div>
 
       <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 md:mx-0 md:px-0">
@@ -378,7 +358,7 @@ export function TasksTab({
             }
           />
         ) : (
-          <div className="space-y-1 px-1">
+          <div className="space-y-3 px-1">
             <Group title="지난 일정" tasks={g.overdue} categories={categories} tone="danger" showDate />
             <Group title="오늘" tasks={g.today} categories={categories} />
             <Group title="내일" tasks={g.tomorrow} categories={categories} />

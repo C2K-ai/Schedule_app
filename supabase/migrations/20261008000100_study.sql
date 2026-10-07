@@ -33,19 +33,25 @@ create table if not exists public.study_sessions (
 create index if not exists study_sessions_user_synced on public.study_sessions (user_id, synced_at);
 create index if not exists study_sessions_user_started on public.study_sessions (user_id, started_at);
 
-drop trigger if exists subjects_lww on public.subjects;
-create trigger subjects_lww before insert or update on public.subjects for each row execute function public.lww_guard();
-drop trigger if exists study_sessions_lww on public.study_sessions;
-create trigger study_sessions_lww before insert or update on public.study_sessions for each row execute function public.lww_guard();
+create or replace trigger subjects_lww before insert or update on public.subjects for each row execute function public.lww_guard();
+create or replace trigger study_sessions_lww before insert or update on public.study_sessions for each row execute function public.lww_guard();
 
 alter table public.subjects       enable row level security;
 alter table public.study_sessions enable row level security;
-drop policy if exists "own subjects" on public.subjects;
-create policy "own subjects" on public.subjects for all to authenticated
-  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
-drop policy if exists "own study sessions" on public.study_sessions;
-create policy "own study sessions" on public.study_sessions for all to authenticated
-  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'subjects' and policyname = 'own subjects') then
+    create policy "own subjects" on public.subjects for all to authenticated
+      using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+  end if;
+end $$;
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'study_sessions' and policyname = 'own study sessions') then
+    create policy "own study sessions" on public.study_sessions for all to authenticated
+      using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+  end if;
+end $$;
 grant select, insert, update, delete on public.subjects, public.study_sessions to authenticated;
 revoke all on public.subjects, public.study_sessions from anon;
 
