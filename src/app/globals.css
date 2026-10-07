@@ -315,45 +315,24 @@ select {
   padding-top: env(safe-area-inset-top);
 }
 
-/* PC 에 설치한 앱 — 창 제목 줄 숨김 모드(window-controls-overlay)면 크롬 제목 줄 대신 이 줄을 그린다.
-   크롬은 오른쪽(맥은 왼쪽)에 창 버튼·⋮ 만 남기고, 나머지 자리(titlebar-area)는 앱 몫. 이 줄을 잡고 창을 옮긴다 */
+/* PC 에 설치한 앱 — 창 제목 줄 숨김 모드(window-controls-overlay). 크롬 제목 줄이 없어지고 앱 화면이 창 맨 위까지 올라간다.
+   크롬은 오른쪽 위(맥은 왼쪽 위)에 창 버튼·⋮ 만 겹쳐 그리므로 그 자리만 비워 두고, 위쪽 막대를 잡고 창을 옮긴다 */
 :root {
-  --titlebar-h: 0px;
-}
-.app-titlebar {
-  display: none;
+  --wco-left: 0px;
+  --wco-right: 0px;
 }
 @media (display-mode: window-controls-overlay) {
   :root {
-    --titlebar-h: env(titlebar-area-height, 33px);
+    --wco-left: env(titlebar-area-x, 0px);
+    --wco-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
   }
-  body {
-    padding-top: var(--titlebar-h);
-  }
-  .app-titlebar {
-    position: fixed;
-    z-index: 70;
-    top: env(titlebar-area-y, 0);
-    left: env(titlebar-area-x, 0);
-    width: env(titlebar-area-width, 100%);
-    height: env(titlebar-area-height, 33px);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    background: #0b0920;
-    color: rgb(255 255 255 / 0.72);
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0.16em;
+  .wco-drag {
     app-region: drag;
     -webkit-app-region: drag;
-    user-select: none;
   }
-  .app-titlebar img {
-    width: 16px;
-    height: 16px;
-    border-radius: 4px;
+  .wco-drag :is(button, a, input, select, textarea, [role="button"], [role="tab"]) {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
   }
 }
 

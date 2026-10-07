@@ -1,6 +1,6 @@
 "use client";
 
-import { Cloud, CloudOff, Download, Mic } from "lucide-react";
+import { Cloud, CloudOff, Download, Maximize, Mic, Minimize } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
@@ -76,6 +76,28 @@ export function SyncPill({ className }: { className?: string }) {
   );
 }
 
+/** PC: 전체 화면 켜기/끄기 — 창 위쪽 줄과 구석의 창 버튼까지 다 사라진다(F11 과 같음, Esc 로 나옴) */
+function FullscreenButton() {
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const on = () => setFull(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", on);
+    return () => document.removeEventListener("fullscreenchange", on);
+  }, []);
+  return (
+    <IconButton
+      label={full ? "전체 화면 끄기" : "전체 화면"}
+      className="hidden md:inline-flex"
+      onClick={() => {
+        if (document.fullscreenElement) void document.exitFullscreen();
+        else void document.documentElement.requestFullscreen?.().catch(() => {});
+      }}
+    >
+      {full ? <Minimize size={18} /> : <Maximize size={18} />}
+    </IconButton>
+  );
+}
+
 export function InstallButton() {
   const [evt, setEvt] = useState<BeforeInstallPromptEvent | null>(null);
   useEffect(() => {
@@ -142,14 +164,16 @@ export function TopBar({ title, compact = false, children }: { title: string; co
   const { openSheet } = usePlanner();
   const now = useNow(30_000);
   return (
-    <header className="safe-top sticky top-[var(--titlebar-h)] z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_70%,transparent)] backdrop-blur-xl">
-      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 px-4 md:h-16 md:px-8">
+    // PC 설치 앱(창 제목 줄 숨김 모드)에선 이 막대가 창 맨 위 — 잡고 끌면 창이 움직이고, 오른쪽 위 창 버튼 자리는 비운다
+    <header className="safe-top wco-drag sticky top-0 z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_70%,transparent)] backdrop-blur-xl">
+      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 pr-[calc(1rem+var(--wco-right))] pl-4 md:h-16 md:pr-[calc(2rem+var(--wco-right))] md:pl-8">
         <h1 className="text-xl font-black tracking-tight md:text-2xl">{title}</h1>
         <span className="hidden items-baseline gap-2 text-sm md:flex">
           <span className="font-semibold text-muted">{fmtDate(new Date(now))}</span>
           <span className="font-mono text-faint tabular-nums">{fmtTime(new Date(now))}</span>
         </span>
         <div className="ml-auto flex items-center gap-1.5">
+          <FullscreenButton />
           <InstallButton />
           <SyncPill />
           <button

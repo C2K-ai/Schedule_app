@@ -32,15 +32,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-dvh antialiased">
-        {/* PC 설치 앱의 제목 줄(창 제목 줄 숨김 모드에서만 보임 — globals.css .app-titlebar) */}
-        <div className="app-titlebar" aria-hidden>
-          {/* eslint-disable-next-line @next/next/no-img-element -- 정적 내보내기라 next/image 최적화를 못 쓴다 */}
-          <img src={withBase("/icons/icon-192.png")} alt="" width={16} height={16} />
-          <span>DREAM</span>
-        </div>
-        {children}
-      </body>
+      <body className="min-h-dvh antialiased">{children}</body>
     </html>
   );
 }
