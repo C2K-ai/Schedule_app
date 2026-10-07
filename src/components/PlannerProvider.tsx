@@ -15,6 +15,7 @@ import { liveHabits, liveTasks, materializeHabits } from "@/lib/planner";
 import { mergeSettings } from "@/lib/settings";
 import { unsubscribePush } from "@/lib/push";
 import { PlannerStore, type Snapshot } from "@/lib/store";
+import { inRecovery, linkErrorMessage, markRecovery, RECOVERY_EVENT } from "@/lib/authLinks";
 import { getSupabase } from "@/lib/supabase";
 import { addDays, startOfDay, uuid } from "@/lib/time";
 import type { AlarmKind, Habit, ScheduleKind, Settings, Task } from "@/lib/types";
@@ -38,7 +39,7 @@ export interface Alarm {
   at: number;
 }
 
-export type Sheet = null | "settings" | "habits" | "log" | "voice" | "completed";
+export type Sheet = null | "settings" | "habits" | "log" | "voice" | "completed" | "admin";
 
 export interface EditorState {
   taskId?: string;
@@ -129,7 +130,9 @@ export function PlannerProvider({ children, splash }: { children: ReactNode; spl
       void sb.auth.getSession().then(({ data }) => {
         if (!cancelled) boot(data.session?.user.id ?? null, data.session?.user.email ?? null);
       });
-      const { data } = sb.auth.onAuthStateChange((_e, s) => {
+      const { data } = sb.auth.onAuthStateChange((e, s) => {
+        // 비밀번호 재설정 메일 링크로 들어옴 → 새 비밀번호 칸을 연다(Inner 가 받는다)
+        if (e === "PASSWORD_RECOVERY") markRecovery();
         if (!cancelled) boot(s?.user.id ?? null, s?.user.email ?? null);
       });
       unsub = () => data.subscription.unsubscribe();
@@ -236,6 +239,25 @@ function Inner({
     await unsubscribePush(sb).catch(() => {});
     await sb.auth.signOut();
   }, []);
+
+  // 메일 링크로 들어온 경우 — 재설정 링크면 새 비밀번호 칸으로, 만료된 링크면 안내
+  useEffect(() => {
+    const openRecovery = () => {
+      setSheet("settings");
+      setSheetTab("account");
+    };
+    // 재설정 링크는 이 화면이 뜨기 전에 처리되기도 해서, 표시해 둔 것도 본다
+    if (inRecovery()) openRecovery();
+    window.addEventListener(RECOVERY_EVENT, openRecovery);
+    const msg = linkErrorMessage(window.location.hash);
+    if (msg) {
+      // 앱을 연 그 순간 한 번만 — 외부(주소창)에서 온 값을 알리는 것
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      toast({ text: msg, tone: "danger", ttl: 15_000 });
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+    return () => window.removeEventListener(RECOVERY_EVENT, openRecovery);
+  }, [toast]);
 
   // 서버가 습관 회차·알림 문구를 이 기기 시간대로 만들도록 프로필에 시간대를 맞춰 둔다
   const profileTz = snap.db.profile?.timezone;

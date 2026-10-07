@@ -10,7 +10,6 @@ import {
   isTimed,
   liveCategories,
   reopenTask,
-  seedDemo,
   taskState,
   toggleStar,
 } from "@/lib/planner";
@@ -281,7 +280,7 @@ export function TasksTab({
   nowRef: RefObject<HTMLDivElement | null>;
   onManageCategories: () => void;
 }) {
-  const { tasks, snap, store, settings, toast, openSheet } = usePlanner();
+  const { tasks, snap, openSheet } = usePlanner();
   const now = useNow(60_000);
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const filtered = useMemo(
@@ -343,19 +342,6 @@ export function TasksTab({
             icon={<CircleDashed size={22} />}
             title={filter.kind === "all" ? "할 일이 없어요" : "여기엔 아직 없어요"}
             desc="위 칸에 적거나, 🎤 로 말해서 넣어 보세요."
-            action={
-              tasks.length === 0 ? (
-                <button
-                  onClick={() => {
-                    seedDemo(store, settings);
-                    toast({ text: "예시 일정 4개와 습관 1개를 넣었어요 — 마음대로 고치거나 지우세요", tone: "ok", ttl: 6000 });
-                  }}
-                  className="text-sm font-bold text-accent-text"
-                >
-                  예시 일정으로 둘러보기 →
-                </button>
-              ) : undefined
-            }
           />
         ) : (
           <div className="space-y-3 px-1">

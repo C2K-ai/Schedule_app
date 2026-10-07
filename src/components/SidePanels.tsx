@@ -1,33 +1,12 @@
 "use client";
 
-import { Check, CircleDashed, Flame, ListChecks, NotebookPen, Play, Plus, Repeat, TriangleAlert } from "lucide-react";
+import { Check, Flame, NotebookPen, Repeat } from "lucide-react";
 import { useMemo } from "react";
-import {
-  completeTask,
-  habitStreak,
-  recentLogs,
-  seedDemo,
-  startTask,
-  taskState,
-  tasksOnDay,
-  type TaskState,
-} from "@/lib/planner";
-import { addDays, DAY, dayKey, fmtTime, startOfDay, WEEKDAYS } from "@/lib/time";
-import { COLOR_HEX } from "@/lib/types";
+import { completeTask, habitStreak, recentLogs } from "@/lib/planner";
+import { addDays, DAY, dayKey, fmtTime, startOfDay } from "@/lib/time";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
 import { Card, cx, Empty } from "./ui";
-
-const STATE_LABEL: Record<TaskState, { text: string; cls: string }> = {
-  upcoming: { text: "예정", cls: "text-muted" },
-  soon: { text: "곧", cls: "text-accent-text" },
-  late: { text: "시작 전", cls: "text-warn" },
-  overdue: { text: "미시작", cls: "text-danger" },
-  in_progress: { text: "진행 중", cls: "text-accent-text" },
-  done: { text: "완료", cls: "text-ok" },
-  skipped: { text: "건너뜀", cls: "text-faint" },
-  missed: { text: "놓침", cls: "text-danger" },
-};
 
 function PanelTitle({ icon, children, action }: { icon: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }) {
   return (
@@ -37,103 +16,6 @@ function PanelTitle({ icon, children, action }: { icon: React.ReactNode; childre
       <div className="ml-auto">{action}</div>
     </div>
   );
-}
-
-export function Agenda({ day }: { day: Date }) {
-  const { tasks, settings, store, openEditor, toast } = usePlanner();
-  const now = useNow(15_000);
-  const list = tasksOnDay(tasks, day);
-  return (
-    <Card>
-      <PanelTitle
-        icon={<ListChecks size={16} />}
-        action={
-          <button onClick={() => openEditor({})} className="grid size-7 place-items-center rounded-lg text-muted hover:bg-surface-2" aria-label="추가">
-            <Plus size={16} />
-          </button>
-        }
-      >
-        {sameDayLabel(day)} 할 일 <span className="font-mono text-muted tabular-nums">{list.length}</span>
-      </PanelTitle>
-      {list.length === 0 ? (
-        <Empty
-          icon={<CircleDashed size={22} />}
-          title="비어 있어요"
-          desc="타임라인 빈 곳을 누르거나 + 로 추가하세요."
-          action={
-            tasks.length === 0 ? (
-              <button
-                onClick={() => {
-                  seedDemo(store, settings);
-                  toast({ text: "예시 일정 4개와 습관 1개를 넣었어요 — 마음대로 고치거나 지우세요", tone: "ok", ttl: 6000 });
-                }}
-                className="text-sm font-bold text-accent-text"
-              >
-                예시 일정으로 둘러보기 →
-              </button>
-            ) : undefined
-          }
-        />
-      ) : (
-        <ul className="px-2 pb-2">
-          {list.map((t) => {
-            const st = taskState(t, now, settings.graceMin);
-            const lab = STATE_LABEL[st];
-            const closed = st === "done" || st === "skipped" || st === "missed";
-            return (
-              <li key={t.id} className="group flex items-center gap-2.5 rounded-xl px-2 py-2 hover:bg-surface-2">
-                <button
-                  aria-label={closed ? "완료됨" : "완료"}
-                  onClick={() => {
-                    if (closed) return;
-                    completeTask(store, t.id);
-                    toast({ text: `✓ ${t.title}`, tone: "ok" });
-                  }}
-                  className={cx(
-                    "grid size-6 shrink-0 place-items-center rounded-lg border-2 transition",
-                    st === "done" ? "border-ok bg-ok text-white" : st === "overdue" ? "border-danger" : "border-line-strong hover:border-accent",
-                  )}
-                >
-                  {st === "done" && <Check size={14} strokeWidth={3} />}
-                  {st === "overdue" && <TriangleAlert size={12} className="text-danger" />}
-                </button>
-                <button onClick={() => openEditor({ taskId: t.id })} className="min-w-0 flex-1 text-left">
-                  <p className={cx("truncate text-sm font-semibold", closed && "text-muted line-through")}>
-                    {t.habit_id && <Repeat size={11} className="mr-1 inline text-muted" />}
-                    {t.title}
-                  </p>
-                  <p className="flex items-center gap-1.5 font-mono text-[11px] text-muted tabular-nums">
-                    <span className="size-1.5 rounded-full" style={{ background: COLOR_HEX[t.color] }} />
-                    {fmtTime(t.starts_at)}–{fmtTime(t.ends_at)}
-                    <span className={cx("font-sans font-bold", lab.cls)}>{lab.text}</span>
-                    {t.postpone_count > 0 && <span className="font-sans text-warn">· {t.postpone_count}회 미룸</span>}
-                  </p>
-                </button>
-                {t.status === "planned" && (
-                  <button
-                    onClick={() => startTask(store, t.id)}
-                    className="grid size-8 shrink-0 place-items-center rounded-lg text-muted opacity-100 hover:bg-accent hover:text-accent-fg md:opacity-0 md:group-hover:opacity-100"
-                    aria-label="시작"
-                  >
-                    <Play size={14} />
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-function sameDayLabel(d: Date) {
-  const t = startOfDay(new Date());
-  const diff = Math.round((startOfDay(d).getTime() - t.getTime()) / DAY);
-  if (diff === 0) return "오늘";
-  if (diff === 1) return "내일";
-  if (diff === -1) return "어제";
-  return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
 }
 
 export function HabitMini() {

@@ -12,6 +12,7 @@ import {
   Plus,
   Repeat,
   Settings as SettingsIcon,
+  ShieldCheck,
   Star,
   Tag,
   Timer,
@@ -19,10 +20,12 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useIsAdmin } from "@/lib/admin";
 import { createCategory, deleteCategory, liveCategories, updateCategory } from "@/lib/planner";
 import { MIN } from "@/lib/time";
 import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
+import { AdminSheet } from "./AdminSheet";
 import { AlarmOverlay } from "./AlarmOverlay";
 import { Backdrop } from "./Backdrop";
 import { BriefingEngine } from "./Briefing";
@@ -119,6 +122,7 @@ function MenuPanel({
   onCareer: () => void;
 }) {
   const p = usePlanner();
+  const isAdmin = useIsAdmin(p.session.userId);
   const categories = useMemo(() => liveCategories(p.snap.db), [p.snap.db]);
   const open = p.tasks.filter((t) => t.status === "planned" || t.status === "in_progress");
   const count = (fn: (t: (typeof open)[number]) => boolean) => open.filter(fn).length;
@@ -184,6 +188,7 @@ function MenuPanel({
       </div>
       <div className="pt-3">
         <MenuItem icon={<SettingsIcon size={17} />} label="설정" onClick={() => p.openSheet("settings")} />
+        {isAdmin && <MenuItem icon={<ShieldCheck size={17} />} label="관리자" onClick={() => p.openSheet("admin")} />}
       </div>
     </nav>
   );
@@ -385,6 +390,7 @@ export function Shell() {
       <HabitsSheet />
       <LogSheet />
       <SettingsSheet />
+      <AdminSheet />
       <VoiceAdd />
       <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.postpone)} />
       <AlarmOverlay />

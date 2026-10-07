@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellRing, Cloud, Download, LogOut, Monitor, Moon, RefreshCw, Smartphone, Sun, Upload, Vibrate, Volume2 } from "lucide-react";
+import { Bell, BellRing, Cloud, Download, KeyRound, LogOut, Monitor, Moon, RefreshCw, Smartphone, Sun, Upload, Vibrate, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   isIOS,
@@ -11,6 +11,7 @@ import {
   type PermissionState,
 } from "@/lib/notify";
 import { aiStatus } from "@/lib/ai";
+import { clearRecovery, inRecovery } from "@/lib/authLinks";
 import { OFFSET_CHOICES } from "@/lib/settings";
 import { briefingTime, currentPushSubscription, pushSupported, sendTestPush, setBriefingTime, subscribePush, unsubscribePush } from "@/lib/push";
 import { downloadSound, findSound, playSound, unlockAudio, vibrate, VIBRATIONS } from "@/lib/sound";
@@ -19,10 +20,10 @@ import { cloudEnabled, getSupabase } from "@/lib/supabase";
 import { fmtOffset, uuid } from "@/lib/time";
 import type { AlarmTheme, Settings, VibrationKey } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
-import { AuthForm } from "./AuthForm";
+import { AuthForm, friendly } from "./AuthForm";
 import { SoundOptions } from "./SoundOptions";
 import { SoundStudio } from "./SoundStudio";
-import { Button, Chip, cx, Label, Modal, Segmented, Switch } from "./ui";
+import { Button, Chip, cx, inputCls, Label, Modal, Segmented, Switch } from "./ui";
 
 type Tab = "notify" | "sound" | "rules" | "focus" | "ai" | "account" | "data";
 
@@ -526,6 +527,85 @@ function AiTab() {
   );
 }
 
+/** 비밀번호 바꾸기 — 재설정 메일 링크로 들어왔으면 '새 비밀번호 정하기'로 */
+function PasswordSection() {
+  const { toast } = usePlanner();
+  const [recovering, setRecovering] = useState(inRecovery);
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [open, setOpen] = useState(recovering);
+  const sb = getSupabase();
+  if (!sb) return null;
+  const submit = async () => {
+    if (pw.length < 6) return setErr("비밀번호는 6자 이상이어야 해요.");
+    if (pw !== pw2) return setErr("두 칸의 비밀번호가 달라요.");
+    setBusy(true);
+    setErr(null);
+    const { error } = await sb.auth.updateUser({ password: pw });
+    setBusy(false);
+    if (error) return setErr(friendly(error.message));
+    clearRecovery();
+    setRecovering(false);
+    setOpen(false);
+    setPw("");
+    setPw2("");
+    toast({ text: "비밀번호를 바꿨어요 — 다음부터 새 비밀번호로 로그인하세요", tone: "ok", ttl: 6000 });
+  };
+  return (
+    <Section
+      title={recovering ? "새 비밀번호 정하기" : "비밀번호"}
+      desc={recovering ? "메일 링크로 들어왔어요. 새 비밀번호를 정하면 끝나요." : "비밀번호는 암호화돼 저장돼서 운영자도 볼 수 없어요."}
+    >
+      {!open ? (
+        <Button onClick={() => setOpen(true)}>
+          <KeyRound size={16} /> 비밀번호 바꾸기
+        </Button>
+      ) : (
+        <form
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <input
+            type="password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder="새 비밀번호 (6자 이상)"
+            autoComplete="new-password"
+            className={inputCls}
+            minLength={6}
+            required
+          />
+          <input
+            type="password"
+            value={pw2}
+            onChange={(e) => setPw2(e.target.value)}
+            placeholder="한 번 더"
+            autoComplete="new-password"
+            className={inputCls}
+            required
+          />
+          {err && <p className="text-sm font-semibold text-danger">{err}</p>}
+          <div className="flex gap-2">
+            <Button variant="primary" disabled={busy}>
+              {busy ? "바꾸는 중…" : "저장"}
+            </Button>
+            {!recovering && (
+              <Button type="button" variant="ghost" onClick={() => (setOpen(false), setErr(null))}>
+                취소
+              </Button>
+            )}
+          </div>
+        </form>
+      )}
+    </Section>
+  );
+}
+
 function AccountTab() {
   const { session, snap, store, signOut, toast } = usePlanner();
   const importedKey = session.userId ? `must:local-imported:${session.userId}` : "";
@@ -573,6 +653,7 @@ function AccountTab() {
             </Button>
           </div>
         </Section>
+        <PasswordSection />
         <Section title="동기화 상태">
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl bg-surface-2 p-3">

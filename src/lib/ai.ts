@@ -24,6 +24,8 @@ const MESSAGES: Record<string, string> = {
   no_api_key: "AI 키가 아직 서버에 없어요. 설정 → AI 에서 넣는 방법을 확인하세요.",
   bad_api_key: "서버에 넣은 AI 키가 올바르지 않아요. 키를 다시 확인해 주세요.",
   rate_limited: "AI 요청이 잠깐 몰렸어요. 몇 초 뒤 다시 눌러 주세요.",
+  daily_limit: "오늘 쓸 수 있는 AI 횟수를 다 썼어요. 내일 다시 쓸 수 있어요.",
+  quota_check: "AI 사용량을 확인하지 못했어요. 잠시 뒤 다시 해 주세요.",
   refused: "AI 가 이 내용을 처리하지 않았어요. 표현을 바꿔 다시 말해 주세요.",
   too_long: "내용이 너무 길어요. 나눠서 말해 주세요.",
   unauthorized: "로그인이 풀렸어요. 다시 로그인해 주세요.",

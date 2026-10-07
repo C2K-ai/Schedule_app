@@ -16,7 +16,16 @@ const q = async (sql, params) => (await db.query(sql, params)).rows;
 await db.exec(`
   create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   create schema auth;
-  create table auth.users (id uuid primary key, email text);
+  create table auth.users (
+    id uuid primary key, email text, created_at timestamptz not null default clock_timestamp(),
+    last_sign_in_at timestamptz, banned_until timestamptz, email_confirmed_at timestamptz,
+    raw_app_meta_data jsonb not null default '{}'::jsonb
+  );
+  create table auth.sessions (
+    id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users (id) on delete cascade,
+    created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+    refreshed_at timestamp, not_after timestamptz
+  );
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to authenticated, anon;
@@ -47,7 +56,9 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-ok(true, "AI 키·공부 타이머·커리어·브리핑 마이그레이션 실행됨(두 번)");
+await db.exec(readFileSync(new URL("../migrations/20261008000400_admin.sql", import.meta.url), "utf8"));
+await db.exec(readFileSync(new URL("../migrations/20261008000400_admin.sql", import.meta.url), "utf8"));
+ok(true, "AI 키·공부 타이머·커리어·브리핑·관리자 마이그레이션 실행됨(두 번)");
 await db.exec(`set role service_role;`);
 const cfg = (await q(`select public.must_function_config() c`))[0].c;
 await db.exec(`reset role;`);
@@ -301,6 +312,104 @@ try {
 }
 ok(threw, "일반 사용자는 Vault 설정 못 읽음");
 await db.exec(`reset role;`);
+
+// ── 관리자 ──
+{
+  const admins = await q(`select user_id from public.must_admins`);
+  ok(admins.length === 1 && admins[0].user_id === A, "첫 가입자(A)만 자동으로 관리자");
+  await db.exec(readFileSync(new URL("../migrations/20261008000400_admin.sql", import.meta.url), "utf8"));
+  ok((await q(`select count(*)::int n from public.must_admins`))[0].n === 1, "마이그레이션을 다시 돌려도 관리자 그대로");
+
+  const as = async (uid, sql) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const fails = async (uid, sql) => {
+    try {
+      const r = await as(uid, sql);
+      return r.length === 0;
+    } catch {
+      return true;
+    }
+  };
+  ok((await as(A, `select public.must_is_admin() v`))[0].v === true, "must_is_admin: 관리자는 true");
+  ok((await as(B, `select public.must_is_admin() v`))[0].v === false, "must_is_admin: 일반 사용자는 false");
+  ok(await fails(B, `select * from public.must_admins`), "일반 사용자는 관리자 목록 못 읽음");
+  ok(await fails(A, `select * from public.must_admins`), "관리자도 앱에서 직접은 못 읽음(Edge Function 경유)");
+  ok(await fails(B, `select * from public.must_app_settings`), "앱 설정 표는 직접 못 읽음");
+  ok(await fails(B, `insert into public.must_admins (user_id) values ('${B}') returning user_id`), "스스로 관리자 등록 불가");
+  ok(await fails(A, `select * from public.must_admin_users()`), "관리자 통계 함수는 앱에서 직접 못 부름");
+  ok(await fails(A, `select public.must_admin_overview()`), "관리자 개요 함수도 직접 못 부름");
+  ok(await fails(B, `select public.must_admin_signout('${A}')`), "남을 로그아웃시키는 함수 직접 호출 불가");
+  ok(await fails(B, `select public.must_ai_quota('${B}')`), "AI 한도 함수 직접 호출 불가");
+  ok(await fails(B, `insert into public.ai_usage (user_id, fn, model) values ('${B}', 'x', 'm') returning id`), "AI 사용 기록은 앱이 못 씀");
+
+  // AI 사용 기록·한도
+  await db.exec(`insert into public.ai_usage (user_id, fn, model, input_tokens, output_tokens, created_at) values
+    ('${B}', 'parse-schedule', 'claude-haiku-4-5', 1000, 200, now()),
+    ('${B}', 'parse-schedule', 'claude-haiku-4-5', 1200, 300, now()),
+    ('${B}', 'career-polish', 'claude-haiku-4-5', 3000, 600, now()),
+    ('${B}', 'parse-schedule', 'claude-haiku-4-5', 900, 100, now() - interval '2 days'),
+    ('${A}', 'parse-schedule', 'claude-haiku-4-5', 800, 150, now())`);
+  ok((await as(B, `select count(*)::int n from public.ai_usage`))[0].n === 4, "AI 사용 기록: 내 것만 보임");
+  await db.exec(`set role service_role;`);
+  const qb = (await q(`select public.must_ai_quota('${B}') v`))[0].v;
+  const qa = (await q(`select public.must_ai_quota('${A}') v`))[0].v;
+  ok(qb.used === 3 && qb.limit === 30 && qb.admin === false, `AI 한도: 오늘 쓴 횟수만 셈 → ${JSON.stringify(qb)}`);
+  ok(qa.used === 1 && qa.admin === true, "AI 한도: 관리자 표시");
+
+  // 통계
+  await db.exec(`reset role;`);
+  await db.exec(`insert into auth.sessions (user_id, updated_at) values ('${B}', now()), ('${B}', now() - interval '1 hour');
+                 update auth.users set last_sign_in_at = now() - interval '30 days' where id = '${B}';`);
+  await db.exec(`set role service_role;`);
+  const users = await q(`select * from public.must_admin_users()`);
+  const ub = users.find((u) => u.id === B);
+  const ua = users.find((u) => u.id === A);
+  ok(users.length === 2 && ua.is_admin && !ub.is_admin, "사용자 목록: 2명, 관리자 표시");
+  ok(ub.ai_today === 3 && ub.ai_month_calls >= 3 && Number(ub.ai_month_input) >= 5200, `사용자 목록: AI 사용량 → 오늘 ${ub.ai_today}, 이번 달 ${ub.ai_month_calls}`);
+  ok(ub.sessions === 2 && ub.last_active_at && Date.now() - new Date(ub.last_active_at).getTime() < 3600e3, "사용자 목록: 세션 수·최근 활동(세션 기준)");
+  ok(typeof ua.tasks === "number" && ua.tasks >= 1 && ub.provider === "email", "사용자 목록: 일정 수·로그인 방식");
+  const ov = (await q(`select public.must_admin_overview() v`))[0].v;
+  ok(ov.users === 2 && ov.ai_today === 4 && ov.settings.signups_open === false && ov.settings.ai_daily_limit === 30, `개요: ${JSON.stringify({ users: ov.users, ai: ov.ai_today, settings: ov.settings })}`);
+  ok(Array.isArray(ov.ai_month) && ov.ai_month[0]?.model === "claude-haiku-4-5" && Array.isArray(ov.cron), "개요: 모델별 이번 달 사용량, 크론(없으면 빈 목록)");
+  const n = (await q(`select public.must_admin_signout('${B}') n`))[0].n;
+  await db.exec(`reset role;`);
+  ok(n === 2 && (await q(`select count(*)::int n from auth.sessions where user_id = '${B}'`))[0].n === 0, "모든 기기 로그아웃: 세션 삭제");
+
+  // 1인 전용 잠금 ↔ 가입 받기
+  await db.exec(readFileSync(new URL("../migrations/20261006000100_single_owner.sql", import.meta.url), "utf8"));
+  await db.exec(readFileSync(new URL("../migrations/20261008000400_admin.sql", import.meta.url), "utf8"));
+  const C = "cccccccc-0000-4000-8000-000000000003";
+  threw = false;
+  try {
+    await q(`insert into auth.users (id, email) values ('${C}', 'c@x')`);
+  } catch {
+    threw = true;
+  }
+  ok(threw, "가입 받기 꺼짐: 새 가입 막힘");
+  await db.exec(`set role anon;`);
+  ok((await q(`select public.must_signups_open() v`))[0].v === false, "로그인 화면: 가입 닫힘을 알 수 있음(익명)");
+  await db.exec(`reset role;`);
+  await db.exec(`update public.must_app_settings set signups_open = true`);
+  await q(`insert into auth.users (id, email) values ('${C}', 'c@x')`);
+  ok((await q(`select count(*)::int n from public.must_admins where user_id = '${C}'`))[0].n === 0, "가입 받기 켜짐: 가입됨, 관리자는 아님");
+  await db.exec(`set role anon;`);
+  ok((await q(`select public.must_signups_open() v`))[0].v === true, "로그인 화면: 가입 열림");
+  await db.exec(`reset role;`);
+  await db.exec(`update public.must_app_settings set signups_open = false`);
+  threw = false;
+  try {
+    await db.exec(`update public.must_app_settings set ai_daily_limit = -1`);
+  } catch {
+    threw = true;
+  }
+  ok(threw, "AI 한도는 0~1000 만");
+}
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");
 process.exit(failures ? 1 : 0);

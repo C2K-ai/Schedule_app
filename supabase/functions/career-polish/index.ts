@@ -2,6 +2,7 @@
 //   배포: npx supabase functions deploy career-polish   (JWT 검증 켠 채로 — 로그인한 주인만)
 //   키:   parse-schedule 과 같은 Vault 'must_anthropic_key' / ANTHROPIC_API_KEY
 import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
+import { logUsage, overLimit, quota } from "../_shared/ai_usage.ts";
 import { admin, cors, json, setting } from "../_shared/env.ts";
 import { buildPrompt, cleanPolished, SCHEMA, SYSTEM, type Material, type Polished } from "./logic.ts";
 
@@ -11,9 +12,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method" }, 405);
 
+  const db = admin();
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const { data: auth, error: authErr } = await admin().auth.getUser(jwt);
+  const { data: auth, error: authErr } = await db.auth.getUser(jwt);
   if (authErr || !auth.user) return json({ error: "unauthorized" }, 401);
+  const userId = auth.user.id;
 
   let body: Material;
   try {
@@ -31,6 +34,15 @@ Deno.serve(async (req) => {
     return json({ error: "no_api_key" }, 503);
   }
 
+  // 한 사람의 하루 한도(관리자 화면 → 설정). 확인을 못 하면 비용이 새지 않게 막는다
+  try {
+    const q = await quota(db, userId);
+    if (overLimit(q)) return json({ error: "daily_limit", limit: q.limit }, 429);
+  } catch (e) {
+    console.error(e);
+    return json({ error: "quota_check" }, 503);
+  }
+
   const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 60_000 });
   try {
     const res = await client.messages.create({
@@ -40,6 +52,7 @@ Deno.serve(async (req) => {
       system: SYSTEM,
       messages: [{ role: "user", content: prompt }],
     });
+    await logUsage(db, userId, "career-polish", res.model ?? MODEL, res.usage);
     if (res.stop_reason === "refusal") return json({ error: "refused" }, 422);
     if (res.stop_reason === "max_tokens") return json({ error: "too_long" }, 422);
     const out = res.content.find((b) => b.type === "text");
