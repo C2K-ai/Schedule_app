@@ -175,7 +175,7 @@ function TenMinutePlanner({ dayStart, sessions, subjects }: { dayStart: Date; se
 }
 
 function ManualAdd({ day, subjects, onClose }: { day: Date; subjects: Subject[]; onClose: () => void }) {
-  const { store } = usePlanner();
+  const { store, settings } = usePlanner();
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? "");
   const [from, setFrom] = useState("09:00");
   const [to, setTo] = useState("10:00");
@@ -183,8 +183,13 @@ function ManualAdd({ day, subjects, onClose }: { day: Date; subjects: Subject[];
   const save = () => {
     const [fh, fm] = from.split(":").map(Number);
     const [th, tm] = to.split(":").map(Number);
-    const s = new Date(day.getFullYear(), day.getMonth(), day.getDate(), fh, fm);
-    let e = new Date(day.getFullYear(), day.getMonth(), day.getDate(), th, tm);
+    // 공부 하루는 dayStartHour 에 시작한다 — 그보다 이른 시각(새벽)은 다음 날짜의 시각
+    const at = (h: number, m: number) => {
+      const d = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+      return h < settings.dayStartHour ? addDays(d, 1) : d;
+    };
+    const s = at(fh, fm);
+    let e = at(th, tm);
     if (e <= s) e = addDays(e, 1); // 자정을 넘긴 공부
     if (e.getTime() > Date.now()) return setErr("아직 오지 않은 시간은 넣을 수 없어요");
     if (e.getTime() - s.getTime() > 16 * 3600_000) return setErr("16시간을 넘을 수 없어요");

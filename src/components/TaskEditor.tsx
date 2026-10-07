@@ -44,18 +44,22 @@ interface Draft {
 function initialDraft(task: Task | null, editor: EditorState, settings: Settings): Draft {
   if (task) {
     const s = new Date(task.starts_at);
+    const kind = task.schedule ?? "timed";
+    // 날짜만·날짜 없음의 시작·끝은 정렬용 가짜 값(0시~24시, 만든 시각) — '시간 지정'으로 바꿀 때 쓸 기본값을 따로 둔다
+    const timed = kind === "timed";
+    const next = new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN);
     return {
-      schedule: task.schedule ?? "timed",
+      schedule: kind,
       categoryId: task.category_id ?? null,
       starred: task.starred ?? false,
       title: task.title,
-      date: toDateInput(s),
-      time: toHHMM(s),
-      duration: Math.round((Date.parse(task.ends_at) - s.getTime()) / MIN),
+      date: kind === "someday" ? toDateInput(new Date()) : toDateInput(s),
+      time: timed ? toHHMM(s) : toHHMM(next),
+      duration: timed ? Math.round((Date.parse(task.ends_at) - s.getTime()) / MIN) : 30,
       color: task.color,
-      offsets: task.reminder_offsets,
+      offsets: timed ? task.reminder_offsets : settings.defaultOffsets,
       soundId: task.sound_id,
-      strict: task.strict,
+      strict: timed ? task.strict : true,
       notes: task.notes ?? "",
       repeat: false,
       days: [s.getDay()],
@@ -113,7 +117,8 @@ function EditorBody({ editor }: { editor: EditorState }) {
           : scheduleWindow(d.schedule, { day: d.date });
     if (task) {
       // 이미 시작 시각이 지난 미시작 일정을 뒤로 미는 건 '미루기' — 사유 화면으로
-      const movingLater = Date.parse(win.starts_at) > Date.parse(task.starts_at);
+      // 시각이 없는 일정으로 바꾸는 것도 강제(알림·경고)에서 빠져나가는 길이라 같이 막는다
+      const movingLater = Date.parse(win.starts_at) > Date.parse(task.starts_at) || d.schedule !== "timed";
       if (task.status === "planned" && task.strict && (task.schedule ?? "timed") === "timed" && Date.parse(task.starts_at) <= now && movingLater) {
         return setErr("이미 시작했어야 하는 일정입니다. 뒤로 미루려면 메인 화면의 경고창에서 사유와 함께 미루세요.");
       }

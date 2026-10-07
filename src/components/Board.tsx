@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useMemo } from "react";
-import { dayStats, moveTask, tasksOnDay, weekDays } from "@/lib/planner";
+import { dayStats, isTimed, moveTask, tasksOnDay, weekDays } from "@/lib/planner";
 import { addDays, dayKey, fmtDate, fmtTime, MIN, sameDay, startOfDay, WEEKDAYS } from "@/lib/time";
 import type { Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
@@ -70,6 +70,8 @@ export function Board({
   const now = useNow(60_000);
 
   const days = useMemo(() => (view === "day" ? [startOfDay(selected)] : weekDays(selected)), [selected, view]);
+  // 타임라인엔 시각이 정해진 일정만 — 날짜만·날짜 없음은 24시간 블록처럼 보이고 끌면 시각이 생겨 버린다
+  const timed = useMemo(() => tasks.filter(isTimed), [tasks]);
   const rates = useMemo(() => {
     const out: Record<string, number> = {};
     for (const d of weekDays(selected)) {
@@ -138,7 +140,7 @@ export function Board({
       {view === "day" && <WeekStrip selected={selected} onSelect={setSelected} rates={rates} />}
       <Timeline
         days={days}
-        tasks={tasks}
+        tasks={timed}
         graceMin={settings.graceMin}
         dayStartHour={settings.dayStartHour}
         onCreate={(start) => openEditor({ start })}

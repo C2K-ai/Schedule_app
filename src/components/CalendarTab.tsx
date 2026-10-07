@@ -206,7 +206,7 @@ export function CalendarTab() {
   const wide = useMedia("(min-width: 1024px)");
   const pick = (d: Date) => {
     setSelected(startOfDay(d));
-    if (d.getMonth() !== month.getMonth()) setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    if (d.getMonth() !== month.getMonth() || d.getFullYear() !== month.getFullYear()) setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
   };
 
   return (

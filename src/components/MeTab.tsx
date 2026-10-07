@@ -119,7 +119,7 @@ export function MeTab({ onCareer }: { onCareer: () => void }) {
     const monthKey = dayKey(today).slice(0, 7);
     const doneMonth = [...byDay.entries()].filter(([k]) => k.startsWith(monthKey)).reduce((n, [, v]) => n + v, 0);
     const perfect = perfectDays(tasks, today);
-    const rate = completionRate(tasks, today);
+    const rate = completionRate(tasks, new Date(now));
     const avg = weekdayAverages(byDay, today);
     const best = avg.some((x) => x > 0) ? avg.indexOf(Math.max(...avg)) : null;
     const monday = startOfWeek(today);
@@ -145,11 +145,14 @@ export function MeTab({ onCareer }: { onCareer: () => void }) {
     return { byDay, doneAll, doneMonth, perfect, rate, avg, best, week, donut };
   }, [tasks, today, categories]);
 
-  const studyDays = useMemo(() => studyWeek(sessions, today, settings.dayStartHour, now), [sessions, today, settings.dayStartHour, now]);
+  // 공부는 '공부 하루'(dayStartHour 경계) 기준 — 새벽 1시는 아직 어제
+  const studyToday = useMemo(() => startOfDay(studyDayStart(new Date(now), settings.dayStartHour)), [now, settings.dayStartHour]);
+  const studyDays = useMemo(() => studyWeek(sessions, studyToday, settings.dayStartHour, now), [sessions, studyToday, settings.dayStartHour, now]);
   const studyTotalWeek = studyDays.reduce((n, x) => n + x, 0);
-  const weekFrom = studyDayStart(new Date(startOfWeek(today).getTime() + settings.dayStartHour * 3600_000), settings.dayStartHour).getTime();
+  const weekFrom = studyDayStart(new Date(startOfWeek(studyToday).getTime() + settings.dayStartHour * 3600_000), settings.dayStartHour).getTime();
   const subjWeek = useMemo(() => studyBySubject(sessions, weekFrom, weekFrom + 7 * DAY, now), [sessions, weekFrom, now]);
   const todayIdx = (today.getDay() + 6) % 7;
+  const studyIdx = (studyToday.getDay() + 6) % 7;
   const bestWeek = s.week.reduce((m, x, i) => (x.n > s.week[m].n ? i : m), 0);
   const weekComment = s.week.every((x) => x.n === 0)
     ? "이번 주는 아직 끝낸 일이 없어요. 하나만 끝내도 시작이에요."
@@ -203,9 +206,9 @@ export function MeTab({ onCareer }: { onCareer: () => void }) {
         <>
           <Panel title="이번 주 공부" sub={fmtHM(studyTotalWeek)}>
             <Columns
-              data={studyDays.map((sec, i) => ({ label: WEEKDAYS[MON_FIRST[i]], value: sec, detail: `${fmtDate(addDays(startOfWeek(today), i))} · ${fmtHM(sec)}` }))}
+              data={studyDays.map((sec, i) => ({ label: WEEKDAYS[MON_FIRST[i]], value: sec, detail: `${fmtDate(addDays(startOfWeek(studyToday), i))} · ${fmtHM(sec)}` }))}
               format={(v) => fmtHM(v)}
-              highlight={todayIdx}
+              highlight={studyIdx}
             />
             {subjWeek.size > 0 && (
               <ul className="mt-4 space-y-2">

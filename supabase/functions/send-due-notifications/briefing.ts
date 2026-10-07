@@ -13,14 +13,13 @@ export interface BriefTask {
 const hhmm = (iso: string, tz: string) =>
   new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(new Date(iso));
 
-/** 앱의 buildBriefing(src/components/Briefing.tsx)과 같은 문구 */
-export function briefingText(tasks: BriefTask[], now: number, tz: string, graceMin = 5): { title: string; body: string } {
+/** 앱의 buildBriefing(src/components/Briefing.tsx)과 같은 문구. overdue = 최근 7일 미시작 강제 일정 수(앱의 enforcementQueue 와 같은 기준) */
+export function briefingText(tasks: BriefTask[], now: number, tz: string, graceMin: number, overdue: number): { title: string; body: string } {
   const open = tasks.filter((t) => t.status === "planned" || t.status === "in_progress");
   const timed = (t: BriefTask) => (t.schedule ?? "timed") === "timed";
   const first = open
     .filter((t) => timed(t) && Date.parse(t.starts_at) >= now - graceMin * 60_000)
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
-  const overdue = open.filter((t) => timed(t) && t.strict && t.status === "planned" && Date.parse(t.starts_at) < now - graceMin * 60_000).length;
   const parts = [
     open.length ? `오늘 할 일 ${open.length}개` : "오늘 잡힌 할 일이 없어요",
     first ? `다음 ${hhmm(first.starts_at, tz)} ${first.title}` : null,
@@ -55,7 +54,20 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
       .neq("schedule", "someday")
       .gte("starts_at", d.day_start)
       .lt("starts_at", d.day_end);
-    const text = briefingText((tasks ?? []) as BriefTask[], Date.now(), d.tz);
+    const now = Date.now();
+    const { data: prof } = await db.from("profiles").select("grace_min").eq("id", d.user_id).maybeSingle();
+    const grace = prof?.grace_min ?? 5;
+    const { count: overdue } = await db
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", d.user_id)
+      .is("deleted_at", null)
+      .eq("status", "planned")
+      .eq("strict", true)
+      .eq("schedule", "timed")
+      .lt("starts_at", new Date(now - grace * 60_000).toISOString())
+      .gt("starts_at", new Date(now - 7 * 86_400_000).toISOString());
+    const text = briefingText((tasks ?? []) as BriefTask[], now, d.tz, grace, overdue ?? 0);
     const payload: PushPayload = {
       ...text,
       tag: `must-briefing-${d.local_day}`,
