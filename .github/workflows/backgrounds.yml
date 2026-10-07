@@ -12,7 +12,7 @@ on:
     branches: [bg-fetch]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   fetch:
@@ -25,10 +25,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/fetch-backgrounds.mjs ${{ inputs.mode || 'candidates' }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: backgrounds
-          path: |
-            bg-out
-            public/themes/bg
-          if-no-files-found: warn
+      # 결과를 bg-results 브랜치에 올린다(작업 환경에서 artifact 저장소에 못 닿아서). 확인 뒤 필요한 파일만 가져간다
+      - name: Push results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B bg-results
+          rm -rf bg-out/cand
+          git add -f bg-out public/themes/bg 2>/dev/null || true
+          git commit -m "background fetch results (${{ inputs.mode || 'candidates' }})" || exit 0
+          git push -f origin bg-results
