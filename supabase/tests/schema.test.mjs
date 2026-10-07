@@ -26,6 +26,7 @@ await db.exec(`
     created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
     refreshed_at timestamp, not_after timestamptz
   );
+  create table auth.refresh_tokens (id bigserial primary key, user_id varchar, session_id uuid, revoked boolean, token varchar);
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to authenticated, anon;
@@ -56,8 +57,10 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-await db.exec(readFileSync(new URL("../migrations/20261008000400_admin.sql", import.meta.url), "utf8"));
-await db.exec(readFileSync(new URL("../migrations/20261008000400_admin.sql", import.meta.url), "utf8"));
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql"]) {
+  await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
+  await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
+}
 ok(true, "AI 키·공부 타이머·커리어·브리핑·관리자 마이그레이션 실행됨(두 번)");
 await db.exec(`set role service_role;`);
 const cfg = (await q(`select public.must_function_config() c`))[0].c;
@@ -66,7 +69,8 @@ ok(cfg.must_vapid_public === "PUB" && cfg.must_cron_secret === "CRON" && !("othe
 
 const A = "aaaaaaaa-0000-4000-8000-000000000001";
 const B = "bbbbbbbb-0000-4000-8000-000000000002";
-await db.exec(`insert into auth.users (id, email) values ('${A}', 'a@x'), ('${B}', 'b@x');`);
+// 실제 가입처럼 한 명씩(관리자 자동 지정은 '다른 사용자가 없을 때'만)
+await db.exec(`insert into auth.users (id, email) values ('${A}', 'a@x'); insert into auth.users (id, email) values ('${B}', 'b@x');`);
 const profs = await q(`select id, timezone, grace_min from public.profiles order by id`);
 ok(profs.length === 2 && profs[0].timezone === "Asia/Seoul", "가입 시 프로필 자동 생성");
 
@@ -345,7 +349,7 @@ await db.exec(`reset role;`);
   ok(await fails(A, `select * from public.must_admin_users()`), "관리자 통계 함수는 앱에서 직접 못 부름");
   ok(await fails(A, `select public.must_admin_overview()`), "관리자 개요 함수도 직접 못 부름");
   ok(await fails(B, `select public.must_admin_signout('${A}')`), "남을 로그아웃시키는 함수 직접 호출 불가");
-  ok(await fails(B, `select public.must_ai_quota('${B}')`), "AI 한도 함수 직접 호출 불가");
+  ok(await fails(B, `select public.must_ai_claim('${B}', 'parse-schedule', 'm')`), "AI 한도 예약 함수 직접 호출 불가");
   ok(await fails(B, `insert into public.ai_usage (user_id, fn, model) values ('${B}', 'x', 'm') returning id`), "AI 사용 기록은 앱이 못 씀");
 
   // AI 사용 기록·한도
@@ -356,15 +360,11 @@ await db.exec(`reset role;`);
     ('${B}', 'parse-schedule', 'claude-haiku-4-5', 900, 100, now() - interval '2 days'),
     ('${A}', 'parse-schedule', 'claude-haiku-4-5', 800, 150, now())`);
   ok((await as(B, `select count(*)::int n from public.ai_usage`))[0].n === 4, "AI 사용 기록: 내 것만 보임");
-  await db.exec(`set role service_role;`);
-  const qb = (await q(`select public.must_ai_quota('${B}') v`))[0].v;
-  const qa = (await q(`select public.must_ai_quota('${A}') v`))[0].v;
-  ok(qb.used === 3 && qb.limit === 30 && qb.admin === false, `AI 한도: 오늘 쓴 횟수만 셈 → ${JSON.stringify(qb)}`);
-  ok(qa.used === 1 && qa.admin === true, "AI 한도: 관리자 표시");
 
   // 통계
   await db.exec(`reset role;`);
   await db.exec(`insert into auth.sessions (user_id, updated_at) values ('${B}', now()), ('${B}', now() - interval '1 hour');
+                 insert into auth.refresh_tokens (user_id, revoked, token) values ('${B}', false, 't1'), ('${A}', false, 't2');
                  update auth.users set last_sign_in_at = now() - interval '30 days' where id = '${B}';`);
   await db.exec(`set role service_role;`);
   const users = await q(`select * from public.must_admin_users()`);
@@ -379,7 +379,50 @@ await db.exec(`reset role;`);
   ok(Array.isArray(ov.ai_month) && ov.ai_month[0]?.model === "claude-haiku-4-5" && Array.isArray(ov.cron), "개요: 모델별 이번 달 사용량, 크론(없으면 빈 목록)");
   const n = (await q(`select public.must_admin_signout('${B}') n`))[0].n;
   await db.exec(`reset role;`);
-  ok(n === 2 && (await q(`select count(*)::int n from auth.sessions where user_id = '${B}'`))[0].n === 0, "모든 기기 로그아웃: 세션 삭제");
+  ok(
+    n === 2 && (await q(`select count(*)::int n from auth.sessions where user_id = '${B}' and (not_after is null or not_after > now())`))[0].n === 0,
+    "모든 기기 로그아웃: 세션 만료",
+  );
+  const rt = await q(`select user_id, revoked from auth.refresh_tokens order by id`);
+  ok(rt[0].revoked === true && rt[1].revoked === false, "모든 기기 로그아웃: 그 사람 갱신 토큰만 무효");
+  await db.exec(`set role service_role;`);
+  ok((await q(`select sessions from public.must_admin_users() where id = '${B}'`))[0].sessions === 0, "로그아웃 뒤 로그인 기기 0");
+  await db.exec(`reset role;`);
+
+  // AI 한도 예약(원자적) — 한국 자정 기준, 프로필 시간대와 무관
+  await db.exec(`update public.must_app_settings set ai_daily_limit = 5`);
+  await db.exec(`set role service_role;`);
+  const claim = async (u) => (await q(`select public.must_ai_claim('${u}', 'parse-schedule', 'claude-haiku-4-5') v`))[0].v;
+  const c1 = await claim(B);
+  const c2 = await claim(B);
+  const c3 = await claim(B);
+  ok(c1.ok && c1.used === 4 && c2.used === 5 && c3.ok === false && c3.limit === 5, `AI 예약: 오늘 3회 + 2회 → 6번째는 막힘 (${c1.used},${c2.used},${c3.ok})`);
+  await db.exec(`reset role;`);
+  // 시간대를 바꿔 '오늘'을 당기는 꼼수가 안 통함 + 이상한 시간대는 서울로
+  await as(B, `update public.profiles set timezone = '<X>-9:14:07', updated_at = now() + interval '1 minute' where id = '${B}' returning id`);
+  await db.exec(`set role service_role;`);
+  ok((await claim(B)).ok === false, "AI 예약: 프로필 시간대를 바꿔도 한도 그대로");
+  await db.exec(`reset role;`);
+  await as(B, `update public.profiles set timezone = 'Not/AZone', updated_at = now() + interval '2 minutes' where id = '${B}' returning id`);
+  ok((await q(`select timezone from public.profiles where id = '${B}'`))[0].timezone === "Asia/Seoul", "잘못된 시간대는 서울로 되돌림(크론 보호)");
+  await db.exec(`set role service_role;`);
+  const ca = await claim(A);
+  ok(ca.ok && ca.admin === true, "AI 예약: 관리자는 한도 없음");
+  const placeholder = (await q(`select model, input_tokens from public.ai_usage where id = ${ca.id}`))[0];
+  ok(placeholder.model === "claude-haiku-4-5" && placeholder.input_tokens === 0, "AI 예약: 자리 표시 행이 생김(나중에 토큰 채움)");
+  await db.exec(`reset role;`);
+  // 관리자 해제: 마지막 관리자는 못 뺀다(트리거)
+  threw = false;
+  try {
+    await q(`delete from public.must_admins where user_id = '${A}'`);
+  } catch (e) {
+    threw = String(e.message).includes("last_admin");
+  }
+  ok(threw, "마지막 관리자는 뺄 수 없음");
+  await q(`insert into public.must_admins (user_id) values ('${B}')`);
+  await q(`delete from public.must_admins where user_id = '${B}'`);
+  ok((await q(`select count(*)::int n from public.must_admins`))[0].n === 1, "다른 관리자는 뺄 수 있고 한 명 남음");
+  await db.exec(`update public.must_app_settings set ai_daily_limit = 30`);
 
   // 1인 전용 잠금 ↔ 가입 받기
   await db.exec(readFileSync(new URL("../migrations/20261006000100_single_owner.sql", import.meta.url), "utf8"));
@@ -398,6 +441,13 @@ await db.exec(`reset role;`);
   await db.exec(`update public.must_app_settings set signups_open = true`);
   await q(`insert into auth.users (id, email) values ('${C}', 'c@x')`);
   ok((await q(`select count(*)::int n from public.must_admins where user_id = '${C}'`))[0].n === 0, "가입 받기 켜짐: 가입됨, 관리자는 아님");
+  // 관리자가 아무도 없게 된 서버에서도, 다른 사용자가 있으면 새 가입자는 관리자가 되지 않는다
+  await db.exec(`alter table public.must_admins disable trigger must_keep_one_admin; delete from public.must_admins;
+                 alter table public.must_admins enable trigger must_keep_one_admin;`);
+  const D = "dddddddd-0000-4000-8000-000000000004";
+  await q(`insert into auth.users (id, email) values ('${D}', 'd@x')`);
+  ok((await q(`select count(*)::int n from public.must_admins`))[0].n === 0, "관리자 없는 서버: 새 가입자가 자동 관리자 안 됨");
+  await q(`insert into public.must_admins (user_id) values ('${A}')`);
   await db.exec(`set role anon;`);
   ok((await q(`select public.must_signups_open() v`))[0].v === true, "로그인 화면: 가입 열림");
   await db.exec(`reset role;`);

@@ -15,7 +15,7 @@ import { liveHabits, liveTasks, materializeHabits } from "@/lib/planner";
 import { mergeSettings } from "@/lib/settings";
 import { unsubscribePush } from "@/lib/push";
 import { PlannerStore, type Snapshot } from "@/lib/store";
-import { inRecovery, linkErrorMessage, markRecovery, RECOVERY_EVENT } from "@/lib/authLinks";
+import { clearRecovery, inRecovery, linkErrorMessage, markRecovery, RECOVERY_EVENT } from "@/lib/authLinks";
 import { getSupabase } from "@/lib/supabase";
 import { addDays, startOfDay, uuid } from "@/lib/time";
 import type { AlarmKind, Habit, ScheduleKind, Settings, Task } from "@/lib/types";
@@ -132,7 +132,8 @@ export function PlannerProvider({ children, splash }: { children: ReactNode; spl
       });
       const { data } = sb.auth.onAuthStateChange((e, s) => {
         // 비밀번호 재설정 메일 링크로 들어옴 → 새 비밀번호 칸을 연다(Inner 가 받는다)
-        if (e === "PASSWORD_RECOVERY") markRecovery();
+        if (e === "PASSWORD_RECOVERY" && s?.user.id) markRecovery(s.user.id);
+        if (e === "SIGNED_OUT") clearRecovery();
         if (!cancelled) boot(s?.user.id ?? null, s?.user.email ?? null);
       });
       unsub = () => data.subscription.unsubscribe();
@@ -247,7 +248,7 @@ function Inner({
       setSheetTab("account");
     };
     // 재설정 링크는 이 화면이 뜨기 전에 처리되기도 해서, 표시해 둔 것도 본다
-    if (inRecovery()) openRecovery();
+    if (inRecovery(session.userId)) openRecovery();
     window.addEventListener(RECOVERY_EVENT, openRecovery);
     const msg = linkErrorMessage(window.location.hash);
     if (msg) {
@@ -257,7 +258,7 @@ function Inner({
       history.replaceState(null, "", window.location.pathname + window.location.search);
     }
     return () => window.removeEventListener(RECOVERY_EVENT, openRecovery);
-  }, [toast]);
+  }, [toast, session.userId]);
 
   // 서버가 습관 회차·알림 문구를 이 기기 시간대로 만들도록 프로필에 시간대를 맞춰 둔다
   const profileTz = snap.db.profile?.timezone;

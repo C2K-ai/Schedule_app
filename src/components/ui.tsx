@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useId, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { withBase } from "@/lib/base";
 import { COLOR_HEX, COLOR_KEYS, type ColorKey } from "@/lib/types";
 
@@ -206,6 +206,38 @@ export const inputCls =
  * 모달 — 모바일은 아래에서 올라오는 시트, 데스크톱은 가운데 카드.
  * onClose 를 주지 않으면 닫을 수 없다(강제 모달).
  */
+// 겹쳐 열린 창(모달·서랍) — Esc 는 맨 위 창만 닫고, 뒤 화면 스크롤 잠금은 마지막 창이 닫힐 때 푼다
+const layers: number[] = [];
+let layerSeq = 0;
+let lockCount = 0;
+let savedOverflow = "";
+
+export function useLayer(active: boolean, onEscape?: () => void) {
+  const escRef = useRef(onEscape);
+  useEffect(() => {
+    escRef.current = onEscape;
+  });
+  useEffect(() => {
+    if (!active) return;
+    const id = ++layerSeq;
+    layers.push(id);
+    if (lockCount++ === 0) {
+      savedOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && layers[layers.length - 1] === id) escRef.current?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      const i = layers.indexOf(id);
+      if (i >= 0) layers.splice(i, 1);
+      if (--lockCount === 0) document.body.style.overflow = savedOverflow;
+    };
+  }, [active]);
+}
+
 export function Modal({
   open,
   onClose,
@@ -227,21 +259,7 @@ export function Modal({
   tone?: "default" | "danger";
   className?: string;
 }) {
-  useEffect(() => {
-    if (!open || !onClose) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  useLayer(open, onClose);
 
   if (!open) return null;
   const width = { sm: "md:max-w-md", md: "md:max-w-lg", lg: "md:max-w-2xl", xl: "md:max-w-4xl" }[size];

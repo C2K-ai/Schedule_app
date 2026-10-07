@@ -1,16 +1,27 @@
 // admin 함수의 순수 로직(요청 검사·금지 규칙) — index.ts 와 테스트가 같이 쓴다
 
-export type TargetAction = "ban" | "unban" | "signout" | "reset_password" | "make_admin" | "remove_admin" | "delete";
+export type TargetAction =
+  | "ban"
+  | "unban"
+  | "signout"
+  | "reset_password"
+  | "recovery_link"
+  | "confirm"
+  | "make_admin"
+  | "remove_admin"
+  | "delete";
+
+type LinkAction = "reset_password" | "recovery_link";
 
 export type Action =
   | { action: "overview" }
   | { action: "users" }
   | { action: "settings"; signups_open?: boolean; ai_daily_limit?: number }
-  | { action: Exclude<TargetAction, "delete" | "reset_password">; user_id: string }
-  | { action: "reset_password"; user_id: string; redirect_to: string | null }
+  | { action: Exclude<TargetAction, "delete" | LinkAction>; user_id: string }
+  | { action: LinkAction; user_id: string; redirect_to: string | null }
   | { action: "delete"; user_id: string; confirm_email: string };
 
-const TARGET: TargetAction[] = ["ban", "unban", "signout", "reset_password", "make_admin", "remove_admin", "delete"];
+const TARGET: TargetAction[] = ["ban", "unban", "signout", "reset_password", "recovery_link", "confirm", "make_admin", "remove_admin", "delete"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 스스로 잠그는 사고를 막는다 — 나를 정지·삭제하거나 내 관리자 권한을 뺄 수 없다 */
@@ -58,8 +69,8 @@ export function parseAction(body: unknown): Action | { error: string } {
       if (typeof b.confirm_email !== "string" || !b.confirm_email.trim()) return { error: "confirm_email" };
       return { action: "delete", user_id, confirm_email: b.confirm_email.trim() };
     }
-    if (a === "reset_password") return { action: "reset_password", user_id, redirect_to: safeRedirect(b.redirect_to) };
-    return { action: a as Exclude<TargetAction, "delete" | "reset_password">, user_id };
+    if (a === "reset_password" || a === "recovery_link") return { action: a, user_id, redirect_to: safeRedirect(b.redirect_to) };
+    return { action: a as Exclude<TargetAction, "delete" | LinkAction>, user_id };
   }
   return { error: "unknown_action" };
 }

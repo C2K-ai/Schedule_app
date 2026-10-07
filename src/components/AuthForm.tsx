@@ -20,6 +20,8 @@ export function friendly(message: string): string {
   if (m.includes("already registered") || m.includes("already been registered")) return "이미 가입된 이메일이에요. ‘로그인’으로 들어가세요.";
   if (m.includes("rate limit")) return "메일 발송 한도를 넘었어요(무료는 시간당 몇 통). 잠시 뒤 다시 하거나 비밀번호로 로그인하세요.";
   if (m.includes("password") && m.includes("6")) return "비밀번호는 6자 이상이어야 해요.";
+  if (m.includes("for security purposes") || m.includes("only request this after")) return "잠시 뒤(1분쯤) 다시 눌러 주세요.";
+  if (m.includes("signups not allowed")) return "가입된 이메일이 아니에요. 가입할 때 쓴 주소를 넣어 주세요.";
   if (m.includes("token has expired") || m.includes("otp")) return "코드가 틀렸거나 만료됐어요. 다시 받아 주세요.";
   if (m.includes("should be different")) return "지금 비밀번호와 다른 비밀번호를 써 주세요.";
   if (m.includes("reauthentication")) return "보안을 위해 다시 로그인한 뒤 바꿔 주세요.";
@@ -155,7 +157,9 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
                 void run(async () => {
                   const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: redirect });
                   if (error) throw error;
-                  setInfo("비밀번호 재설정 메일을 보냈어요. 가장 최근 메일의 링크를 1시간 안에 이 기기에서 누르면 새 비밀번호를 정하는 칸이 열려요.");
+                  setInfo(
+                    "가입된 이메일이면 몇 분 안에 재설정 메일이 와요(안 오면 스팸함과, 가입할 때 쓴 주소가 맞는지 확인). 가장 최근 메일의 링크를 1시간 안에 이 기기에서 누르면 새 비밀번호를 정하는 칸이 열려요.",
+                  );
                 });
               }}
               className="w-full text-center text-xs font-semibold text-muted hover:text-fg"

@@ -65,9 +65,19 @@ export interface AdminUser {
   ai_month_calls: number;
   ai_month_input: number;
   ai_month_output: number;
+  ai_month_models: { model: string; input: number; output: number }[];
 }
 
-export type UserAction = "ban" | "unban" | "signout" | "reset_password" | "make_admin" | "remove_admin" | "delete";
+export type UserAction =
+  | "ban"
+  | "unban"
+  | "signout"
+  | "reset_password"
+  | "recovery_link"
+  | "confirm"
+  | "make_admin"
+  | "remove_admin"
+  | "delete";
 
 const MESSAGES: Record<string, string> = {
   forbidden: "관리자만 쓸 수 있어요.",
@@ -79,6 +89,7 @@ const MESSAGES: Record<string, string> = {
   no_email: "이메일이 없는 계정이라 메일을 보낼 수 없어요.",
   mail: "메일을 보내지 못했어요. 기본 메일 서버는 시간당 몇 통만, Supabase 팀원 주소로만 보내요 — 대시보드에서 SMTP 를 연결하면 풀려요.",
   bad_ai_daily_limit: "AI 하루 한도는 0~1000 사이 정수예요.",
+  last_admin: "관리자가 최소 한 명은 있어야 해요.",
 };
 
 async function call<T>(client: SupabaseClient, body: Record<string, unknown>): Promise<T> {
@@ -102,10 +113,10 @@ export const adminUsers = (c: SupabaseClient) => call<{ users: AdminUser[]; me: 
 export const adminSettings = (c: SupabaseClient, patch: Partial<Pick<AdminSettings, "signups_open" | "ai_daily_limit">>) =>
   call<{ settings: AdminSettings }>(c, { action: "settings", ...patch });
 export const adminUserAction = (c: SupabaseClient, action: UserAction, userId: string, extra: Record<string, unknown> = {}) =>
-  call<{ ok: true; sessions?: number }>(c, {
+  call<{ ok: true; sessions?: number | null; link?: string | null }>(c, {
     action,
     user_id: userId,
-    ...(action === "reset_password" ? { redirect_to: `${window.location.origin}${BASE_PATH}/` } : {}),
+    ...(action === "reset_password" || action === "recovery_link" ? { redirect_to: `${window.location.origin}${BASE_PATH}/` } : {}),
     ...extra,
   });
 
@@ -129,6 +140,7 @@ export function useIsAdmin(userId: string | null): boolean {
 // ── 비용 어림 ── 모델별 100만 토큰당 달러(입력, 출력). 모르는 모델은 비용을 안 보여 준다.
 const PRICE_PER_MTOK: Record<string, [number, number]> = {
   "claude-haiku-4-5": [1, 5],
+  "claude-sonnet-5-5": [2, 10],
 };
 /** 원화 환산용 어림 환율 */
 export const KRW_PER_USD = 1400;
@@ -143,9 +155,12 @@ export function costKrw(model: string, input: number, output: number): number | 
   return ((input * p[0] + output * p[1]) / 1e6) * KRW_PER_USD;
 }
 
-/** 사용자 한 명의 이번 달 비용 — 지금은 한 모델(Haiku)만 쓰므로 그 값으로 어림 */
-export const userCostKrw = (u: Pick<AdminUser, "ai_month_input" | "ai_month_output">) =>
-  costKrw("claude-haiku-4-5", Number(u.ai_month_input), Number(u.ai_month_output)) ?? 0;
+/** 사용자 한 명의 이번 달 비용(모델별 합) — 모르는 모델은 Haiku 값으로 어림 */
+export const userCostKrw = (u: Pick<AdminUser, "ai_month_models">) =>
+  (u.ai_month_models ?? []).reduce(
+    (sum, m) => sum + (costKrw(m.model, Number(m.input), Number(m.output)) ?? costKrw("claude-haiku-4-5", Number(m.input), Number(m.output)) ?? 0),
+    0,
+  );
 
 export const fmtKrw = (n: number) => (n < 10 ? `${n.toFixed(1)}원` : `${Math.round(n).toLocaleString("ko-KR")}원`);
 

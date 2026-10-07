@@ -49,7 +49,7 @@ import { TasksTab, type TaskFilter } from "./TasksTab";
 import { TimerTab } from "./TimerTab";
 import { Toasts } from "./Toasts";
 import { VoiceAdd } from "./VoiceAdd";
-import { cx, Logo, Segmented } from "./ui";
+import { cx, Logo, Segmented, useLayer } from "./ui";
 
 export type Tab = "tasks" | "timer" | "calendar" | "me";
 
@@ -242,18 +242,8 @@ export function Shell() {
     if (wide) setDrawer(false);
   }, [wide]);
 
-  // 서랍 열린 동안 뒤 화면 스크롤 막기 + Esc 로 닫기
-  useEffect(() => {
-    if (!drawer) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [drawer]);
+  // 서랍 열린 동안 뒤 화면 스크롤 막기 + Esc 로 닫기(위에 창이 떠 있으면 그 창부터)
+  useLayer(drawer, () => setDrawer(false));
 
   const title = TABS.find((t) => t.value === tab)!.label;
   const addNew = () => {

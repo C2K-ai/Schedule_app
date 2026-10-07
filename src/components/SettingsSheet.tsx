@@ -520,7 +520,7 @@ function AiTab() {
           </Button>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-muted">
-          비용: 빠르고 싼 Claude Haiku 를 써서 말로 정리 한 번에 약 5~10원, 커리어 다듬기는 10~20원 — $5 충전이면 수백 번 넉넉해요. 이 탭을 다시 열면 연결 상태가 바뀌어 있을 거예요.
+          비용: 말로 정리는 빠르고 싼 Claude Haiku(한 번 약 5원), 커리어 다듬기는 글을 더 잘 쓰는 Sonnet(한 번 약 20~40원) — 혼자 쓰면 $5 로 3~4달쯤. 이 탭을 다시 열면 연결 상태가 바뀌어 있을 거예요.
         </p>
       </Section>
     </>
@@ -529,8 +529,8 @@ function AiTab() {
 
 /** 비밀번호 바꾸기 — 재설정 메일 링크로 들어왔으면 '새 비밀번호 정하기'로 */
 function PasswordSection() {
-  const { toast } = usePlanner();
-  const [recovering, setRecovering] = useState(inRecovery);
+  const { toast, session } = usePlanner();
+  const [recovering, setRecovering] = useState(() => inRecovery(session.userId));
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [busy, setBusy] = useState(false);
@@ -594,11 +594,18 @@ function PasswordSection() {
             <Button variant="primary" disabled={busy}>
               {busy ? "바꾸는 중…" : "저장"}
             </Button>
-            {!recovering && (
-              <Button type="button" variant="ghost" onClick={() => (setOpen(false), setErr(null))}>
-                취소
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                clearRecovery();
+                setRecovering(false);
+                setOpen(false);
+                setErr(null);
+              }}
+            >
+              {recovering ? "나중에" : "취소"}
+            </Button>
           </div>
         </form>
       )}

@@ -1,7 +1,7 @@
 // deno test admin/logic.test.ts
 import { assertEquals } from "jsr:@std/assert@1";
 import { emailMatches, guard, parseAction, safeRedirect } from "./logic.ts";
-import { overLimit, tokens } from "../_shared/ai_usage.ts";
+import { tokens, unbilled } from "../_shared/ai_usage.ts";
 
 const U = "11111111-2222-4333-8444-555555555555";
 
@@ -31,6 +31,8 @@ Deno.test("요청 검사: 사용자 작업", () => {
     redirect_to: "https://c2k-ai.github.io/Schedule_app/",
   });
   assertEquals(parseAction({ action: "reset_password", user_id: U, redirect_to: "javascript:alert(1)" }), { action: "reset_password", user_id: U, redirect_to: null });
+  assertEquals(parseAction({ action: "recovery_link", user_id: U, redirect_to: "https://a.b/" }), { action: "recovery_link", user_id: U, redirect_to: "https://a.b/" });
+  assertEquals(parseAction({ action: "confirm", user_id: U }), { action: "confirm", user_id: U });
 });
 
 Deno.test("돌아올 주소: https 와 내 컴퓨터만", () => {
@@ -59,11 +61,11 @@ Deno.test("삭제 확인 이메일", () => {
   assertEquals(emailMatches("a@x.com", null), false);
 });
 
-Deno.test("AI 하루 한도·토큰 계산", () => {
-  assertEquals(overLimit({ used: 30, limit: 30, admin: false }), true);
-  assertEquals(overLimit({ used: 29, limit: 30, admin: false }), false);
-  assertEquals(overLimit({ used: 0, limit: 0, admin: false }), true);
-  assertEquals(overLimit({ used: 999, limit: 30, admin: true }), false);
+Deno.test("AI 사용 기록: 토큰 계산·청구 안 된 오류 구분", () => {
+  assertEquals(unbilled({ status: 529 }), true);
+  assertEquals(unbilled({ status: undefined }), false);
+  assertEquals(unbilled(new SyntaxError("x")), false);
+  assertEquals(unbilled(null), false);
   assertEquals(tokens({ input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 5, cache_creation_input_tokens: null }), { input_tokens: 105, output_tokens: 20 });
   assertEquals(tokens(undefined), { input_tokens: 0, output_tokens: 0 });
   assertEquals(tokens({ input_tokens: -3, output_tokens: Number.NaN }), { input_tokens: 0, output_tokens: 0 });

@@ -65,9 +65,10 @@ Deno.serve(async (req) => {
       case "ban": {
         const { error } = await db.auth.admin.updateUserById(a.user_id, { ban_duration: BAN_FOREVER });
         if (error) throw error;
-        // 로그인 세션도 바로 끊는다(남은 접속 토큰은 길어야 1시간)
-        const { data: n } = await db.rpc("must_admin_signout", { p_user: a.user_id });
-        return json({ ok: true, sessions: n ?? 0 });
+        // 로그인 세션도 바로 끊는다(남은 접속 토큰은 길어야 1시간). 실패해도 정지는 됐고, 다음 토큰 갱신 때 막힌다
+        const { data: n, error: soErr } = await db.rpc("must_admin_signout", { p_user: a.user_id });
+        if (soErr) console.error("admin ban signout", soErr.message);
+        return json({ ok: true, sessions: soErr ? null : (n ?? 0) });
       }
       case "unban": {
         const { error } = await db.auth.admin.updateUserById(a.user_id, { ban_duration: "none" });
@@ -78,6 +79,24 @@ Deno.serve(async (req) => {
         const { data: n, error } = await db.rpc("must_admin_signout", { p_user: a.user_id });
         if (error) throw error;
         return json({ ok: true, sessions: n ?? 0 });
+      }
+      case "recovery_link": {
+        // 메일이 안 갈 때(기본 메일 서버 한도·스팸함) — 링크를 직접 만들어 다른 길(메신저 등)로 전한다
+        const email = target.user.email;
+        if (!email) return json({ error: "no_email" }, 400);
+        const { data, error } = await db.auth.admin.generateLink({
+          type: "recovery",
+          email,
+          options: a.redirect_to ? { redirectTo: a.redirect_to } : undefined,
+        });
+        if (error) throw error;
+        return json({ ok: true, link: data.properties?.action_link ?? null });
+      }
+      case "confirm": {
+        // 확인 메일을 못 받은 사람 — 운영자가 대신 '메일 확인됨'으로
+        const { error } = await db.auth.admin.updateUserById(a.user_id, { email_confirm: true });
+        if (error) throw error;
+        return json({ ok: true });
       }
       case "reset_password": {
         const email = target.user.email;
@@ -92,8 +111,12 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
       case "remove_admin": {
+        // 나 자신은 guard 가 막으니 부른 관리자는 남는다. 두 관리자가 동시에 서로를 빼는 경우는 DB 트리거가 막는다
         const { error } = await db.from("must_admins").delete().eq("user_id", a.user_id);
-        if (error) throw error;
+        if (error) {
+          if (error.message.includes("last_admin")) return json({ error: "last_admin" }, 400);
+          throw error;
+        }
         return json({ ok: true });
       }
       case "delete": {

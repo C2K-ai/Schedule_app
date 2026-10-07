@@ -2,7 +2,7 @@
 //   배포: npx supabase functions deploy parse-schedule   (JWT 검증 켠 채로 — 로그인한 주인만)
 //   키:   Vault 'must_anthropic_key' 또는 Edge Function 비밀값 ANTHROPIC_API_KEY
 import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
-import { logUsage, overLimit, quota } from "../_shared/ai_usage.ts";
+import { claim, finish, release, unbilled } from "../_shared/ai_usage.ts";
 import { admin, cors, json, setting } from "../_shared/env.ts";
 import { calendarTable, clean, isDate, isTime, SCHEMA, SYSTEM, WEEKDAYS, type RawItem } from "./logic.ts";
 
@@ -57,10 +57,12 @@ Deno.serve(async (req) => {
     return json({ error: "no_api_key" }, 503);
   }
 
-  // 한 사람의 하루 한도(관리자 화면 → 설정). 확인을 못 하면 비용이 새지 않게 막는다
+  // 한 사람의 하루 한도(관리자 화면 → 설정) — 한 칸 예약. 확인을 못 하면 비용이 새지 않게 막는다
+  let slot: number;
   try {
-    const q = await quota(db, userId);
-    if (overLimit(q)) return json({ error: "daily_limit", limit: q.limit }, 429);
+    const c = await claim(db, userId, "parse-schedule", MODEL);
+    if (!c.ok || c.id === null) return json({ error: "daily_limit", limit: c.limit }, 429);
+    slot = c.id;
   } catch (e) {
     console.error(e);
     return json({ error: "quota_check" }, 503);
@@ -82,7 +84,7 @@ Deno.serve(async (req) => {
       system: SYSTEM,
       messages: [{ role: "user", content: userMsg }],
     });
-    await logUsage(db, userId, "parse-schedule", res.model ?? MODEL, res.usage);
+    await finish(db, slot, res.model ?? MODEL, res.usage);
     if (res.stop_reason === "refusal") return json({ error: "refused" }, 422);
     if (res.stop_reason === "max_tokens") return json({ error: "too_long" }, 422);
     const out = res.content.find((b) => b.type === "text");
@@ -91,6 +93,7 @@ Deno.serve(async (req) => {
     const items = parsed.items.map((r) => clean(r, categories, today)).filter((x) => x !== null);
     return json({ items, reply: parsed.reply });
   } catch (e) {
+    if (unbilled(e)) await release(db, slot);
     if (e instanceof Anthropic.AuthenticationError) return json({ error: "bad_api_key" }, 503);
     if (e instanceof Anthropic.RateLimitError) return json({ error: "rate_limited" }, 429);
     if (e instanceof Anthropic.APIError) return json({ error: "api", status: e.status, message: e.message }, 502);

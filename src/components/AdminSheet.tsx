@@ -4,8 +4,11 @@ import {
   Activity,
   Ban,
   Bot,
+  Copy,
   KeyRound,
+  Link2,
   LogOut,
+  MailCheck,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -84,6 +87,7 @@ function AdminBody() {
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [link, setLink] = useState<{ who: string; link: string } | null>(null);
 
   useEffect(() => {
     if (!sb) return;
@@ -114,11 +118,17 @@ function AdminBody() {
   const runAction = async (action: UserAction, u: AdminUser, extra?: Record<string, unknown>) => {
     const r = await adminUserAction(sb, action, u.id, extra);
     const who = u.email ?? "사용자";
-    const text: Record<UserAction, string> = {
+    if (action === "recovery_link") {
+      if (r.link) setLink({ who, link: r.link });
+      else toast({ text: "링크를 만들지 못했어요.", tone: "danger" });
+      return;
+    }
+    const text: Record<Exclude<UserAction, "recovery_link">, string> = {
       ban: `${who} 정지 — 모든 기기에서 로그아웃돼요`,
       unban: `${who} 정지를 풀었어요`,
       signout: `${who} 로그인 세션 ${r.sessions ?? 0}개를 끊었어요`,
       reset_password: `${who} 로 비밀번호 재설정 메일을 보냈어요`,
+      confirm: `${who} 을(를) 메일 확인됨으로 바꿨어요 — 이제 로그인할 수 있어요`,
       make_admin: `${who} 을(를) 관리자로 지정했어요`,
       remove_admin: `${who} 의 관리자 권한을 뺐어요`,
       delete: `${who} 계정과 데이터를 지웠어요`,
@@ -184,6 +194,7 @@ function AdminBody() {
         )}
       </Modal>
       {confirm && <ConfirmDialog c={confirm} onClose={() => setConfirm(null)} />}
+      {link && <LinkDialog who={link.who} link={link.link} onClose={() => setLink(null)} />}
     </>
   );
 }
@@ -405,6 +416,39 @@ function UserCard({
           onClick={() =>
             confirmThen(
               {
+                title: "재설정 링크 만들기",
+                body: (
+                  <>
+                    메일이 안 갈 때 쓰는 방법이에요. <b>{who}</b> 의 새 비밀번호를 정하는 링크를 만들어 보여 줄게요 — 메신저 등으로 본인에게 전해 주세요.
+                    링크는 한 번만, 1시간 안에 쓸 수 있고, 받은 사람은 그 계정으로 로그인돼요.
+                  </>
+                ),
+                cta: "링크 만들기",
+              },
+              "recovery_link",
+            )
+          }
+        >
+          <Link2 size={14} /> 재설정 링크
+        </Button>
+        {!u.confirmed && (
+          <Button
+            size="sm"
+            onClick={() =>
+              confirmThen(
+                { title: "메일 확인 처리", body: <><b>{who}</b> 가 확인 메일을 못 받았다면, 운영자가 대신 ‘확인됨’으로 바꿔 바로 로그인할 수 있게 해요.</>, cta: "확인됨으로" },
+                "confirm",
+              )
+            }
+          >
+            <MailCheck size={14} /> 메일 확인 처리
+          </Button>
+        )}
+        <Button
+          size="sm"
+          onClick={() =>
+            confirmThen(
+              {
                 title: "모든 기기에서 로그아웃",
                 body: (
                   <>
@@ -536,7 +580,7 @@ function SettingsTab({
       <section>
         <h3 className="font-bold">AI 하루 한도 (한 사람당)</h3>
         <p className="mt-1 text-sm leading-relaxed text-muted">
-          말로 일정 추가와 커리어 다듬기를 합쳐 하루에 몇 번까지 쓸 수 있는지예요. 관리자는 한도가 없어요. 0 이면 관리자 말고는 못 써요. 1번에 약 5~10원.
+          말로 일정 추가와 커리어 다듬기를 합쳐 하루에 몇 번까지 쓸 수 있는지예요(한국 시간 자정에 초기화). 관리자는 한도가 없어요. 0 이면 관리자 말고는 못 써요. 1번에 약 5원(커리어 다듬기는 20~40원).
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {LIMIT_CHOICES.map((n) => (
@@ -638,6 +682,40 @@ function ConfirmDialog({ c, onClose }: { c: Confirm; onClose: () => void }) {
         />
       )}
       {err && <p className="mt-3 text-sm font-semibold text-danger">{err}</p>}
+    </Modal>
+  );
+}
+
+/** 만든 재설정 링크 — 복사해서 본인에게 전한다 */
+function LinkDialog({ who, link, onClose }: { who: string; link: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title="재설정 링크"
+      footer={
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            닫기
+          </Button>
+          <Button
+            variant="primary"
+            className="ml-auto"
+            onClick={() => {
+              void navigator.clipboard?.writeText(link).then(() => setCopied(true));
+            }}
+          >
+            <Copy size={15} /> {copied ? "복사됨" : "복사"}
+          </Button>
+        </div>
+      }
+    >
+      <p className="text-sm leading-relaxed">
+        <b>{who}</b> 에게만 전하세요. 이 링크를 누른 사람은 그 계정으로 로그인되고, 새 비밀번호를 정하는 칸이 열려요(1시간 안에 한 번).
+      </p>
+      <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 font-mono text-xs leading-relaxed break-all select-all">{link}</p>
     </Modal>
   );
 }

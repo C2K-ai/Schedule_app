@@ -31,6 +31,20 @@ const MESSAGES: Record<string, string> = {
   unauthorized: "로그인이 풀렸어요. 다시 로그인해 주세요.",
 };
 
+/** 함수가 돌려준 오류 본문 {error, limit} */
+async function errorBody(error: unknown): Promise<{ code: string; limit: number | null }> {
+  const ctx = (error as { context?: Response }).context;
+  if (!ctx || typeof ctx.json !== "function") return { code: "", limit: null };
+  const j = (await ctx.json().catch(() => ({}))) as { error?: string; limit?: number };
+  return { code: j.error ?? "", limit: typeof j.limit === "number" ? j.limit : null };
+}
+
+function message(code: string, limit: number | null): string | undefined {
+  if (code === "daily_limit" && limit === 0) return "지금은 AI 기능이 꺼져 있어요(운영자 설정).";
+  if (code === "daily_limit" && limit) return `오늘 쓸 수 있는 AI ${limit}회를 다 썼어요. 내일 다시 쓸 수 있어요.`;
+  return MESSAGES[code];
+}
+
 export async function parseSchedule(
   client: SupabaseClient,
   text: string,
@@ -46,12 +60,8 @@ export async function parseSchedule(
     },
   });
   if (error) {
-    let code = "";
-    const ctx = (error as { context?: Response }).context;
-    if (ctx && typeof ctx.json === "function") {
-      code = ((await ctx.json().catch(() => ({}))) as { error?: string }).error ?? "";
-    }
-    throw new Error(MESSAGES[code] ?? (navigator.onLine ? "AI 정리에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
+    const { code, limit } = await errorBody(error);
+    throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 정리에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
   }
   return data as { items: ParsedItem[]; reply: string };
 }
@@ -125,13 +135,9 @@ export async function polishCareer(
 ): Promise<Polished> {
   const { data, error } = await client.functions.invoke("career-polish", { body: input });
   if (error) {
-    let code = "";
-    const ctx = (error as { context?: Response }).context;
-    if (ctx && typeof ctx.json === "function") {
-      code = ((await ctx.json().catch(() => ({}))) as { error?: string }).error ?? "";
-    }
+    const { code, limit } = await errorBody(error);
     if (code === "empty") throw new Error("메모를 적거나 관련 일정을 하나 이상 골라 주세요.");
-    throw new Error(MESSAGES[code] ?? (navigator.onLine ? "AI 다듬기에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
+    throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 다듬기에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
   }
   return data as Polished;
 }
