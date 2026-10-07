@@ -49,6 +49,30 @@
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
+/* 노을 그네 테마 — 밤하늘 남보라 + 노을 주황. 카드는 그림 위에 반투명으로 뜬다.
+   위험(빨강)은 포인트(주황)와 확실히 구분되는 붉은 분홍으로 남겨 둔다. */
+html[data-palette="dusk"] {
+  color-scheme: dark;
+  --bg: #0b0920;
+  --bg-glow: rgba(255, 150, 120, 0.05);
+  --surface: rgba(19, 15, 42, 0.8);
+  --surface-2: rgba(46, 38, 88, 0.55);
+  --surface-3: rgba(74, 62, 124, 0.55);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --fg: #f6f3ff;
+  --muted: #b6afd6;
+  --faint: #7d779e;
+  --accent: #ffa36c;
+  --accent-fg: #1d0f1c;
+  --accent-text: #ffb487;
+  --danger: #ff4f73;
+  --danger-soft: rgba(255, 79, 115, 0.17);
+  --warn: #ffd36b;
+  --ok: #6ee7b7;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 36px rgba(3, 2, 15, 0.5);
+}
+
 @media (min-width: 768px) {
   :root {
     --hour: 72px;

@@ -18,17 +18,17 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f3f4f6" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0b0f" },
+    { media: "(prefers-color-scheme: light)", color: "#0b0920" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0920" },
   ],
 };
 
 // 첫 페인트 전에 테마를 정해 깜빡임을 막는다
-const themeScript = `(()=>{try{var t=localStorage.getItem('must:theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light'}catch(e){document.documentElement.dataset.theme='dark'}})()`;
+const themeScript = `(()=>{var h=document.documentElement;try{var t=localStorage.getItem('must:theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);h.dataset.theme=d?'dark':'light';h.dataset.palette=localStorage.getItem('must:palette')||'dusk'}catch(e){h.dataset.theme='dark';h.dataset.palette='dusk'}})()`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ko" data-theme="dark" suppressHydrationWarning>
+    <html lang="ko" data-theme="dark" data-palette="dusk" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

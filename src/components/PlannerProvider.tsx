@@ -181,8 +181,10 @@ function Inner({
         settings.theme === "dark" ||
         (settings.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
       document.documentElement.dataset.theme = dark ? "dark" : "light";
+      document.documentElement.dataset.palette = settings.palette;
       try {
         localStorage.setItem("must:theme", settings.theme);
+        localStorage.setItem("must:palette", settings.palette);
       } catch {
         /* 무시 */
       }
@@ -191,7 +193,7 @@ function Inner({
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
-  }, [settings.theme]);
+  }, [settings.theme, settings.palette]);
 
   // 습관 → 오늘부터 7일치 회차 생성
   const habitsRef = snap.db.habits;
