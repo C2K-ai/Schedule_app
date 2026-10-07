@@ -11,6 +11,7 @@ import {
 
   Plus,
   Repeat,
+  PanelLeftClose,
   Settings as SettingsIcon,
   ShieldCheck,
   Star,
@@ -50,7 +51,7 @@ import { TasksTab, type TaskFilter } from "./TasksTab";
 import { TimerTab } from "./TimerTab";
 import { Toasts } from "./Toasts";
 import { VoiceAdd } from "./VoiceAdd";
-import { cx, Logo, Segmented, useLayer } from "./ui";
+import { cx, IconButton, Logo, Segmented, useLayer } from "./ui";
 
 export type Tab = "tasks" | "timer" | "calendar" | "me";
 
@@ -62,6 +63,15 @@ const TABS: { value: Tab; label: string; icon: typeof ListChecks }[] = [
 ];
 
 const TAB_KEY = "must:tab";
+/** PC 왼쪽 메뉴를 접어 뒀는지 — 기기마다 따로 기억 */
+const RAIL_KEY = "must:rail-hidden";
+function readRailHidden(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 function readTab(): Tab {
   try {
     const t = localStorage.getItem(TAB_KEY);
@@ -207,6 +217,16 @@ export function Shell() {
   const [drawer, setDrawer] = useState(false);
   const [catEdit, setCatEdit] = useState(false);
   const [career, setCareer] = useState(false);
+  const [railHidden, setRailHidden] = useState(readRailHidden);
+  const toggleRail = () =>
+    setRailHidden((h) => {
+      try {
+        localStorage.setItem(RAIL_KEY, h ? "0" : "1");
+      } catch {
+        /* 저장 못 해도 이번엔 바뀜 */
+      }
+      return !h;
+    });
   const categories = useMemo(() => liveCategories(p.snap.db), [p.snap.db]);
   const catCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -263,10 +283,20 @@ export function Shell() {
       <AutoFullscreen enabled={p.settings.pcFullscreen} />
 
       {/* PC: 왼쪽 레일 */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col border-r border-line bg-[color-mix(in_oklab,var(--bg)_72%,transparent)] backdrop-blur-xl md:flex">
+      <aside
+        aria-hidden={railHidden}
+        inert={railHidden}
+        className={cx(
+          "fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col border-r border-line bg-[color-mix(in_oklab,var(--bg)_72%,transparent)] backdrop-blur-xl transition-transform duration-200 md:flex",
+          railHidden && "-translate-x-full",
+        )}
+      >
         {/* PC 설치 앱에선 이 줄과 위쪽 막대를 잡고 창을 옮긴다(맥은 왼쪽 위 창 버튼만큼 비움) */}
-        <div className="wco-drag flex h-16 items-center pr-5 pl-[calc(1.25rem+var(--wco-left))]">
+        <div className="wco-drag flex h-16 items-center pr-3 pl-[calc(1.25rem+var(--wco-left))]">
           <Logo />
+          <IconButton label="메뉴 숨기기" onClick={toggleRail} className="ml-auto size-9">
+            <PanelLeftClose size={19} />
+          </IconButton>
         </div>
         <div className="flex-1 overflow-y-auto px-3 pb-6">
           <div className="space-y-0.5">
@@ -293,8 +323,8 @@ export function Shell() {
         </div>
       </aside>
 
-      <div className="min-h-dvh md:pl-[264px]">
-        <TopBar title={title} compact={tab === "tasks" && !nowVisible}>
+      <div className={cx("min-h-dvh transition-[padding] duration-200", railHidden ? "md:pl-0" : "md:pl-[264px]")}>
+        <TopBar title={title} compact={tab === "tasks" && !nowVisible} onShowRail={railHidden ? toggleRail : undefined}>
           <StudyDock onOpen={() => setTab("timer")} hidden={tab === "timer"} />
         </TopBar>
         <main className="mx-auto max-w-[1200px] space-y-4 px-4 pt-4 pb-40 md:px-8 md:pt-6 md:pb-24">

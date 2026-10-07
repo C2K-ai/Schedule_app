@@ -1,6 +1,6 @@
 "use client";
 
-import { Cloud, CloudOff, Download, Maximize, Mic, Minimize } from "lucide-react";
+import { Cloud, CloudOff, Download, Maximize, Mic, Minimize, PanelLeftOpen } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
@@ -183,13 +183,29 @@ function MiniStatus() {
 }
 
 /** 위쪽 막대 — 탭 이름 · 날짜 · 동기화 · 말로 추가. compact 면 지금/다음/달성률 한 줄을 붙인다 */
-export function TopBar({ title, compact = false, children }: { title: string; compact?: boolean; children?: ReactNode }) {
+export function TopBar({
+  title,
+  compact = false,
+  onShowRail,
+  children,
+}: {
+  title: string;
+  compact?: boolean;
+  /** PC 왼쪽 메뉴를 숨겨 뒀을 때 — 다시 여는 버튼을 제목 앞에 둔다 */
+  onShowRail?: () => void;
+  children?: ReactNode;
+}) {
   const { openSheet } = usePlanner();
   const now = useNow(30_000);
   return (
     // PC 설치 앱(창 제목 줄 숨김 모드)에선 이 막대가 창 맨 위 — 잡고 끌면 창이 움직이고, 오른쪽 위 창 버튼 자리는 비운다
     <header className="safe-top wco-drag sticky top-0 z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_70%,transparent)] backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 pr-[calc(1rem+var(--wco-right))] pl-4 md:h-16 md:pr-[calc(2rem+var(--wco-right))] md:pl-8">
+        {onShowRail && (
+          <IconButton label="메뉴 보이기" onClick={onShowRail} className="-ml-2 hidden size-9 md:inline-flex md:ml-[calc(var(--wco-left)-0.5rem)]">
+            <PanelLeftOpen size={19} />
+          </IconButton>
+        )}
         <h1 className="text-xl font-black tracking-tight md:text-2xl">{title}</h1>
         <span className="hidden items-baseline gap-2 text-sm md:flex">
           <span className="font-semibold text-muted">{fmtDate(new Date(now))}</span>
