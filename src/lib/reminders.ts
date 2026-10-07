@@ -45,6 +45,7 @@ export function computeTriggers(tasks: Task[], settings: Settings, snoozes: Snoo
 
   for (const t of tasks) {
     if (t.deleted_at) continue;
+    if ((t.schedule ?? "timed") !== "timed") continue; // 날짜만·날짜 없음은 알림 없음
     const start = Date.parse(t.starts_at);
     if (t.status === "planned") {
       const created = Date.parse(t.created_at);

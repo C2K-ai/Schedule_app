@@ -37,6 +37,8 @@ await db.exec(`
   insert into vault.decrypted_secrets values ('must_vapid_public', 'PUB'), ('must_cron_secret', 'CRON'), ('other_app_secret', 'NOPE');
 `);
 await db.exec(readFileSync(new URL("../migrations/20261006000000_config.sql", import.meta.url), "utf8"));
+await db.exec(readFileSync(new URL("../migrations/20261007000000_categories_notes.sql", import.meta.url), "utf8"));
+ok(true, "카테고리·노트 마이그레이션 실행됨");
 await db.exec(`set role service_role;`);
 const cfg = (await q(`select public.must_function_config() c`))[0].c;
 await db.exec(`reset role;`);
@@ -126,13 +128,48 @@ ok(kst.startsWith("07:00"), `회차 시작이 현지(Asia/Seoul) 07:00 → ${kst
 ok(new Date(inst[0].updated_at).getTime() === 0, "자동 회차 updated_at = epoch (사람이 고친 값이 이김)");
 ok((await q(`select public.materialize_habits() n`))[0].n === 0, "두 번 돌려도 중복 없음");
 
+// ── 일정 종류 ──
+const TD = "dddddddd-0000-4000-8000-000000000001";
+await q(
+  `insert into public.tasks (id, user_id, title, starts_at, ends_at, schedule, reminder_offsets, created_at, updated_at)
+   values ($1, $2, '날짜만 할 일', $3, $4, 'day', '{10,0}', $5, $5)`,
+  [TD, A, iso(now + 2 * 3600e3), iso(now + 26 * 3600e3), iso(now)],
+);
+ok((await q(`select count(*)::int n from public.notification_jobs where task_id=$1`, [TD]))[0].n === 0, "날짜만 할 일은 알림 큐가 안 생김");
+const TT = "dddddddd-0000-4000-8000-000000000002";
+await q(
+  `insert into public.tasks (id, user_id, title, starts_at, ends_at, created_at, updated_at)
+   values ($1, $2, '시각 지정', $3, $4, $5, $5)`,
+  [TT, A, iso(now + 40 * 60e3), iso(now + 70 * 60e3), iso(now)],
+);
+const before = (await q(`select count(*)::int n from public.notification_jobs where task_id=$1 and sent_at is null`, [TT]))[0].n;
+await q(`update public.tasks set schedule='day', updated_at=$2 where id=$1`, [TT, iso(now + 5000)]);
+const after = (await q(`select count(*)::int n from public.notification_jobs where task_id=$1 and sent_at is null`, [TT]))[0].n;
+ok(before > 0 && after === 0, `시각→날짜만으로 바꾸면 알림 큐 비움 (${before}→${after})`);
+ok((await q(`select schedule, starred from public.tasks where id=$1`, [TD]))[0].starred === false, "starred 기본값 false");
+
+// ── 카테고리·노트 ──
+const CA = "cccccccc-0000-4000-8000-000000000001";
+await q(`insert into public.categories (id, user_id, name, color, sort) values ($1, $2, '작업', 'blue', 1)`, [CA, A]);
+await q(`update public.tasks set category_id=$2, updated_at=$3 where id=$1`, [TD, CA, iso(now + 6000)]);
+await q(`insert into public.day_notes (user_id, day, body, mood) values ($1, '2026-10-07', '오늘은 단어 50개', 4)`, [A]);
+let dup = false;
+try {
+  await q(`insert into public.day_notes (user_id, day, body) values ($1, '2026-10-07', '두 번째')`, [A]);
+} catch {
+  dup = true;
+}
+ok(dup, "하루 노트는 사용자·날짜당 하나");
+
 // ── RLS ──
 await db.exec(`insert into public.task_logs (id, user_id, kind, reason, title) values
   ('99999999-0000-4000-8000-000000000001', '${A}', 'postponed', '회의가 길어짐', '독일어');`);
 await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${B}', false);`);
 ok((await q(`select count(*)::int n from public.tasks`))[0].n === 0, "RLS: B 는 A 의 일정을 못 봄");
+ok((await q(`select count(*)::int n from public.categories`))[0].n === 0, "RLS: B 는 A 의 카테고리를 못 봄");
+ok((await q(`select count(*)::int n from public.day_notes`))[0].n === 0, "RLS: B 는 A 의 하루 노트를 못 봄");
 await db.exec(`select set_config('request.jwt.claim.sub', '${A}', false);`);
-ok((await q(`select count(*)::int n from public.tasks`))[0].n === 4, "RLS: A 는 자기 일정 4개를 봄");
+ok((await q(`select count(*)::int n from public.tasks`))[0].n === 6, "RLS: A 는 자기 일정 6개를 봄");
 // 트리거 함수 EXECUTE 를 회수해도 로그인 사용자의 쓰기에서 트리거는 그대로 돈다
 const T9 = "99999999-0000-4000-8000-0000000000aa";
 await q(`insert into public.tasks (id, user_id, title, starts_at, ends_at) values ($1, $2, '트리거 확인', now() + interval '1 hour', now() + interval '2 hours')`, [T9, A]);
