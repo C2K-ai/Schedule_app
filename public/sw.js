@@ -3,7 +3,7 @@
  *  - notificationclick: "지금 시작" / "5분 뒤 다시" 버튼 처리 (잠금화면에서도 앱 안 열고 스누즈)
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
  */
-const VERSION = "must-v3";
+const VERSION = "must-v4";
 const DEV = new URL(self.location.href).searchParams.get("mode") === "development";
 // 하위 경로 배포(GitHub Pages /Schedule_app) 대응 — sw.js 가 놓인 폴더가 앱의 뿌리
 const BASE = self.location.pathname.replace(/\/sw\.js$/, "");

@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { useEffect, useId, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { withBase } from "@/lib/base";
 import { COLOR_HEX, COLOR_KEYS, type ColorKey } from "@/lib/types";
 
 export function cx(...parts: (string | false | null | undefined)[]) {
@@ -324,12 +325,8 @@ export function ProgressRing({
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cx("inline-flex items-center gap-2", className)}>
-      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden>
-        <rect width="64" height="64" rx="15" fill="#0B0C10" />
-        <path d="M32 13.5a18.5 18.5 0 1 1 -16.02 9.25" fill="none" stroke="#C8FF2E" strokeWidth="5.5" strokeLinecap="round" />
-        <rect x="29.6" y="22" width="4.8" height="13" rx="2.4" fill="#F4F6F8" />
-        <circle cx="32" cy="40.8" r="2.7" fill="#C8FF2E" />
-      </svg>
+      {/* eslint-disable-next-line @next/next/no-img-element -- 정적 내보내기라 next/image 최적화를 못 쓴다 */}
+      <img src={withBase("/icons/icon-192.png")} alt="" width={28} height={28} className="size-7 rounded-lg" />
       <span className="text-[17px] font-black tracking-[0.18em]">MUST</span>
     </span>
   );
