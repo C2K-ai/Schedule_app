@@ -1,8 +1,10 @@
 # 화면 개편 — 인수인계 (2026-10-07 저녁, 클라우드 세션)
 
-작업 브랜치: **`ui-revamp`** — `main` 에 push 하면 GitHub Pages(사용자가 폰에서 쓰는 실제 앱)로 자동 배포된다.
-이번 클라우드 세션은 **GitHub 에 push 권한이 없었다**(클론·읽기만 됨). 커밋은 이 브랜치에 로컬로 쌓여 있고,
-push 가 되는 세션(노트북 로컬 세션, 또는 GitHub 연결을 고친 뒤의 클라우드 세션)에서 `git push` 해야 반영된다.
+**상태: 개편 완료 · `main` 에 합쳐 GitHub Pages 배포 완료(2026-10-07, b369cdd).**
+`ui-revamp` 와 `main` 이 같은 커밋. 사용자가 세션 중간에 Claude GitHub App 을 설치해서 push 가 가능해졌다.
+
+배포 전 검토: 5개 영역(데이터·동기화 / 날짜·시간 / React / Edge Function·보안 / 예전 화면 대비 회귀)을
+리뷰어 + 반박 검증으로 훑어 확인된 문제 26건을 모두 고쳤다(커밋 d9c370f, 8c14f88, cc72089, 1dafa22, b369cdd).
 
 ## 사용자 요청 (모두 반영)
 
@@ -24,9 +26,10 @@ push 가 되는 세션(노트북 로컬 세션, 또는 GitHub 연결을 고친 �
 
 - 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`
   (모두 다시 돌려도 안전, DROP 없음 — DROP 이 있으면 MCP 가 확인 창을 띄워 멈춘다).
-- Edge Functions: `parse-schedule`(v2), `career-polish`(v1), `send-due-notifications`(v2, 브리핑 포함).
+- Edge Functions: `parse-schedule`(v2), `career-polish`(v1), `send-due-notifications`(v3, 브리핑 포함).
   `notification-action`·`push-test` 는 예전 번들 그대로(동작 같음).
-- 예전 앱(main)과도 호환: 새 열·새 표는 예전 앱이 안 써서 영향 없음.
+- 이미 설치된 폰 앱은 서비스 워커 버전(must-v4)이 바뀌어 다음 실행 때 새 화면으로 바뀐다.
+  홈 화면 아이콘은 안드로이드가 하루 안에 갱신(바로 바꾸려면 앱 삭제 후 다시 설치).
 
 ## 사용자가 해야 하는 것
 
