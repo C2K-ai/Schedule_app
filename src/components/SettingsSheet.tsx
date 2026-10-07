@@ -519,7 +519,7 @@ function AiTab() {
           </Button>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-muted">
-          비용: 한 번 정리할 때 약 20~40원(입력 짧은 기준). 이 탭을 다시 열면 연결 상태가 바뀌어 있을 거예요.
+          비용: 빠르고 싼 Claude Haiku 를 써서 말로 정리 한 번에 약 5~10원, 커리어 다듬기는 10~20원 — $5 충전이면 수백 번 넉넉해요. 이 탭을 다시 열면 연결 상태가 바뀌어 있을 거예요.
         </p>
       </Section>
     </>

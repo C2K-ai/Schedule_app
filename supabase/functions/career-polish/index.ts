@@ -5,7 +5,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
 import { admin, cors, json, setting } from "../_shared/env.ts";
 import { buildPrompt, cleanPolished, SCHEMA, SYSTEM, type Material, type Polished } from "./logic.ts";
 
-const MODEL = "claude-opus-5-5";
+const MODEL = "claude-haiku-4-5";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -33,13 +33,10 @@ Deno.serve(async (req) => {
 
   const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 60_000 });
   try {
-    const res = await client.beta.messages.create({
+    const res = await client.messages.create({
       model: MODEL,
       max_tokens: 8000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      // 사실만 골라 문장으로 다듬는 일 — 기본(medium)으로
-      output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } },
+      output_config: { format: { type: "json_schema", schema: SCHEMA } },
       system: SYSTEM,
       messages: [{ role: "user", content: prompt }],
     });

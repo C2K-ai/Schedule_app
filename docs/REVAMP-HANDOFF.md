@@ -26,7 +26,10 @@
 
 - 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`
   (모두 다시 돌려도 안전, DROP 없음 — DROP 이 있으면 MCP 가 확인 창을 띄워 멈춘다).
-- Edge Functions: `parse-schedule`(v2), `career-polish`(v1), `send-due-notifications`(v3, 브리핑 포함).
+- Edge Functions: `parse-schedule`(v3), `career-polish`(v2), `send-due-notifications`(v3, 브리핑 포함).
+  AI 두 함수는 사용자 요청으로 **Claude Haiku 4.5**(`claude-haiku-4-5`)를 쓴다 — 한 번 약 5~10원.
+  Haiku 4.5 는 `effort`·서버 측 fallbacks 를 받지 않아 뺐다(구조화 출력 `output_config.format` 은 그대로).
+  더 똑똑한 모델이 필요하면 각 `index.ts` 의 `MODEL` 만 바꾸면 된다.
   `notification-action`·`push-test` 는 예전 번들 그대로(동작 같음).
 - 이미 설치된 폰 앱은 서비스 워커 버전(must-v4)이 바뀌어 다음 실행 때 새 화면으로 바뀐다.
   홈 화면 아이콘은 안드로이드가 하루 안에 갱신(바로 바꾸려면 앱 삭제 후 다시 설치).

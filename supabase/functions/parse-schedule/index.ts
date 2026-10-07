@@ -5,7 +5,8 @@ import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
 import { admin, cors, json, setting } from "../_shared/env.ts";
 import { calendarTable, clean, isDate, isTime, SCHEMA, SYSTEM, WEEKDAYS, type RawItem } from "./logic.ts";
 
-const MODEL = "claude-opus-5-5";
+// 짧은 추출이라 빠르고 싼 Haiku 로 충분하다(한 번 약 5~10원)
+const MODEL = "claude-haiku-4-5";
 const MAX_TEXT = 2000;
 
 interface Body {
@@ -62,13 +63,10 @@ Deno.serve(async (req) => {
   ].join("\n\n");
 
   try {
-    const res = await client.beta.messages.create({
+    const res = await client.messages.create({
       model: MODEL,
       max_tokens: 8000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      // 짧은 추출이라 낮은 effort 로 빠르게 — 이해력이 부족하면 "medium" 으로 올린다
-      output_config: { effort: (Deno.env.get("AI_EFFORT") as "low" | "medium" | "high") ?? "low", format: { type: "json_schema", schema: SCHEMA } },
+      output_config: { format: { type: "json_schema", schema: SCHEMA } },
       system: SYSTEM,
       messages: [{ role: "user", content: userMsg }],
     });
