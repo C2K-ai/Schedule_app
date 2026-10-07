@@ -118,8 +118,8 @@ if (mode === "candidates") {
   for (const b of list) {
     const buf = await download(b.id, 2400);
     const img = sharp(buf).rotate();
-    // 폰(세로)·PC(가로) 둘 다 cover 로 잘라 쓰므로 큰 쪽 2000px 이면 충분
-    await img.clone().resize(2000, 2000, { fit: "inside", withoutEnlargement: true }).webp({ quality: 74, effort: 6 }).toFile(join(dir, `${b.key}.webp`));
+    // 폰(세로)·PC(가로) 둘 다 cover 로 잘라 쓴다 — 가로 사진도 세로 화면에서 덜 흐리게 큰 쪽 2400px
+    await img.clone().resize(2400, 2400, { fit: "inside", withoutEnlargement: true }).webp({ quality: 72, effort: 6 }).toFile(join(dir, `${b.key}.webp`));
     await img.clone().resize(240, 160, { fit: "cover" }).webp({ quality: 70 }).toFile(join(dir, `${b.key}-thumb.webp`));
     console.log("saved", b.key, b.id);
   }

@@ -24,7 +24,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: node scripts/fetch-backgrounds.mjs ${{ inputs.mode || 'candidates' }}
+      - run: node scripts/fetch-backgrounds.mjs ${{ inputs.mode || 'final' }}
       # 결과를 bg-results 브랜치에 올린다(작업 환경에서 artifact 저장소에 못 닿아서). 확인 뒤 필요한 파일만 가져간다
       - name: Push results
         run: |
@@ -34,5 +34,5 @@ jobs:
           rm -rf bg-out/cand
           [ -d bg-out ] && git add -f bg-out
           [ -d public/themes/bg ] && git add -f public/themes/bg
-          git commit -m "background fetch results (${{ inputs.mode || 'candidates' }})" || exit 0
+          git commit -m "background fetch results (${{ inputs.mode || 'final' }})" || exit 0
           git push -f origin bg-results
