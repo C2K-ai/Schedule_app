@@ -242,6 +242,11 @@ function NotifyTab() {
           label="앱을 켤 때 브리핑"
           desc="노트북을 켜고 앱이 열릴 때 알림 + 작업 탭 맨 위 한 줄."
         />
+        <p className="rounded-xl bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
+          노트북을 켤 때 앱이 저절로 열리게 하려면(설치한 앱 기준) — <b className="text-fg">Chrome</b>: 주소창에{" "}
+          <code>chrome://apps</code> → MUST 아이콘 우클릭 → ‘로그인 시 앱 시작’. <b className="text-fg">Edge</b>:{" "}
+          <code>edge://apps</code> → MUST 의 ⋯ → ‘디바이스 로그인 시 자동 시작’.
+        </p>
         <div className="flex items-center justify-between gap-4 py-2">
           <span>
             <span className="block text-sm font-semibold">이 기기 아침 브리핑 시각</span>
