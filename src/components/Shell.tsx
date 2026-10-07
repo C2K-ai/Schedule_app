@@ -378,8 +378,9 @@ export function Shell() {
 
       <FocusDock />
       <FocusScreen />
-      <TaskEditor />
+      {/* 완료 목록에서 일정을 누르면 편집 창이 그 위에 떠야 한다 — 편집기를 뒤에 둔다 */}
       <CompletedSheet />
+      <TaskEditor />
       <PostponeDialog />
       <HabitsSheet />
       <LogSheet />

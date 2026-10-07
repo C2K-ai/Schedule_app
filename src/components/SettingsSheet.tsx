@@ -641,16 +641,27 @@ function DataTab() {
   const fileRef = useRef<HTMLInputElement>(null);
   return (
     <>
-      <Section title="테마">
+      <Section title="테마" desc="노을 그네는 늘 어두운 그림 테마예요. 밝게/어둡게를 고르려면 라임을 고르세요.">
         <Segmented
-          value={settings.theme}
-          onChange={(theme) => updateSettings({ theme })}
+          value={settings.palette}
+          onChange={(palette) => updateSettings({ palette })}
           options={[
-            { value: "system", label: <span className="inline-flex items-center gap-1"><Monitor size={14} /> 시스템</span> },
-            { value: "dark", label: <span className="inline-flex items-center gap-1"><Moon size={14} /> 다크</span> },
-            { value: "light", label: <span className="inline-flex items-center gap-1"><Sun size={14} /> 라이트</span> },
+            { value: "dusk", label: "노을 그네" },
+            { value: "lime", label: "라임" },
           ]}
         />
+        {settings.palette === "lime" && (
+          <Segmented
+            className="mt-2"
+            value={settings.theme}
+            onChange={(theme) => updateSettings({ theme })}
+            options={[
+              { value: "system", label: <span className="inline-flex items-center gap-1"><Monitor size={14} /> 시스템</span> },
+              { value: "dark", label: <span className="inline-flex items-center gap-1"><Moon size={14} /> 다크</span> },
+              { value: "light", label: <span className="inline-flex items-center gap-1"><Sun size={14} /> 라이트</span> },
+            ]}
+          />
+        )}
       </Section>
       <Section title="백업" desc="모든 일정·습관·기록·설정을 JSON 파일 하나로 내보내고 가져옵니다. 가져오기는 더 최신인 항목만 덮어씁니다.">
         <div className="flex flex-wrap gap-2">

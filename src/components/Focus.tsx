@@ -95,16 +95,17 @@ export function FocusDock() {
                 />
               </div>
             )}
-            <div className="flex items-center gap-3 p-2.5 pl-4">
+            {/* 폰은 + 버튼 자리를 비워 둬서 폭이 좁다 — 아이콘·제목은 숨기고 시간과 버튼만 */}
+            <div className="flex items-center gap-2 p-2.5 pl-3 sm:gap-3 sm:pl-4">
               <div
                 className={cx(
-                  "grid size-9 shrink-0 place-items-center rounded-xl",
+                  "grid size-9 shrink-0 place-items-center rounded-xl max-sm:hidden",
                   f ? (isBreak ? "bg-ok/15 text-ok" : "bg-accent text-accent-fg") : "bg-surface-2 text-muted",
                 )}
               >
                 {isBreak ? <Coffee size={18} /> : <Brain size={18} />}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 max-sm:hidden">
                 <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-muted uppercase">
                   {f ? (isBreak ? "휴식" : `집중 ${f.cycle}회차`) : "집중 모드"}
                   {f && !isBreak && (
@@ -119,7 +120,12 @@ export function FocusDock() {
                 </p>
               </div>
               {f && (
-                <p className="font-mono text-2xl font-bold tracking-tight tabular-nums md:text-3xl">
+                <p
+                  className={cx(
+                    "shrink-0 font-mono text-xl font-bold tracking-tight whitespace-nowrap tabular-nums max-sm:flex-1 sm:text-2xl md:text-3xl",
+                    isBreak && "max-sm:text-ok",
+                  )}
+                >
                   {fmtCountdown(remaining)}
                 </p>
               )}
