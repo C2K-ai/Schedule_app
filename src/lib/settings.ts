@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   customSounds: [],
   theme: "system",
   palette: "dusk",
+  background: "swing",
   launchBriefing: true,
   studyGoalMin: 360,
   studyAutoPause: true,

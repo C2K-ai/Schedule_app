@@ -1,0 +1,38 @@
+# 배경 사진 받아오기(수동) — Unsplash 사진을 받아 결과를 artifact 로 올린다. 저장소에는 사람이 확인한 뒤 커밋.
+#   candidates: 후보 미리보기·모아보기 / final: scripts/backgrounds.json 의 사진을 webp 로
+name: Fetch backgrounds
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: candidates 또는 final
+        default: candidates
+  push:
+    branches: [bg-fetch]
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/fetch-backgrounds.mjs ${{ inputs.mode || 'final' }}
+      # 결과를 bg-results 브랜치에 올린다(작업 환경에서 artifact 저장소에 못 닿아서). 확인 뒤 필요한 파일만 가져간다
+      - name: Push results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B bg-results
+          rm -rf bg-out/cand
+          [ -d bg-out ] && git add -f bg-out
+          [ -d public/themes/bg ] && git add -f public/themes/bg
+          git commit -m "background fetch results (${{ inputs.mode || 'final' }})" || exit 0
+          git push -f origin bg-results

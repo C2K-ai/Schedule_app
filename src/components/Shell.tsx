@@ -27,6 +27,7 @@ import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
 import { AdminSheet } from "./AdminSheet";
 import { AlarmOverlay } from "./AlarmOverlay";
+import { BackgroundPicker } from "./BackgroundPicker";
 import { Backdrop } from "./Backdrop";
 import { BriefingEngine } from "./Briefing";
 import { CalendarTab } from "./CalendarTab";
@@ -57,7 +58,7 @@ const TABS: { value: Tab; label: string; icon: typeof ListChecks }[] = [
   { value: "tasks", label: "작업", icon: ListChecks },
   { value: "timer", label: "타이머", icon: Timer },
   { value: "calendar", label: "캘린더", icon: CalendarDays },
-  { value: "me", label: "내 것", icon: UserRound },
+  { value: "me", label: "프로필", icon: UserRound },
 ];
 
 const TAB_KEY = "must:tab";
@@ -169,10 +170,15 @@ function MenuPanel({
           value={p.settings.palette}
           onChange={(palette) => p.updateSettings({ palette })}
           options={[
-            { value: "dusk", label: "노을 그네" },
+            { value: "dusk", label: "사진 배경" },
             { value: "lime", label: "라임" },
           ]}
         />
+        {p.settings.palette === "dusk" && (
+          <div className="mt-2.5">
+            <BackgroundPicker compact />
+          </div>
+        )}
         {p.settings.palette === "lime" && (
           <Segmented
             className="mt-2"

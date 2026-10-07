@@ -1,0 +1,12 @@
+[
+  { "key": "milkyway", "id": "px:574115", "name": "은하수" },
+  { "key": "aurora", "id": "px:13158695", "name": "오로라" },
+  { "key": "aurora-lake", "id": "px:3307194", "name": "오로라 호수" },
+  { "key": "pink-clouds", "id": "px:1831234", "name": "분홍 구름" },
+  { "key": "cotton-sky", "id": "px:19779597", "name": "노을 구름" },
+  { "key": "misty-hills", "id": "px:28986376", "name": "안개 숲" },
+  { "key": "nebula", "id": "px:11814657", "name": "보랏빛 은하" },
+  { "key": "full-moon", "id": "px:13592310", "name": "보름달" },
+  { "key": "violet-sunset", "id": "px:29269514", "name": "보랏빛 노을" },
+  { "key": "lavender", "id": "px:1166209", "name": "라벤더 들판" }
+]

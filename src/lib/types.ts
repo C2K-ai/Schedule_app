@@ -212,6 +212,8 @@ export interface Settings {
   theme: "system" | "dark" | "light";
   /** dusk = 노을 그네 그림 테마(기본) / lime = 처음 디자인 */
   palette: "dusk" | "lime";
+  /** 노을 그네 테마의 배경 그림·사진(lib/backgrounds.ts 의 key) */
+  background: string;
   /** 앱이 켜질 때(노트북 부팅 후 자동 실행 포함) 오늘 브리핑 알림 */
   launchBriefing: boolean;
   /** 하루 공부 목표(분) */

@@ -22,22 +22,32 @@
 9. 앱 아이콘: 사용자가 준 탁상 달력 그림(사용자가 자른 범위 그대로, 정사각형). 원본은 `design/icon-source.png`(gitignore).
 10. "화면이 복잡하다" → 작업 홈은 한 줄 '지금/다음' + 목록, 타이머는 합계+과목만, 10분 플래너는 접어 둠.
 
+11. **관리자 화면**(☰ 메뉴 → 관리자, 관리자에게만 보임): 개요(사용자·AI 비용·알림 기기·크론 상태) /
+    사용자(가입일·최근 활동·일정·공부·AI 사용량, 재설정 메일·재설정 링크·메일 확인 처리·모든 기기 로그아웃·정지·관리자 지정·삭제) /
+    설정(새 가입 받기, 한 사람 하루 AI 한도). 비밀번호는 누구도 볼 수 없다(해시) — 재설정만.
+12. 로그인: '비밀번호를 잊었어요', 재설정 링크로 들어오면 새 비밀번호 칸, 만료된 메일 링크 안내,
+    이미 있는 이메일로 가입 시도 시 안내, 가입이 닫혀 있으면 '처음이에요' 탭 숨김.
+13. 배경: '사진 배경' 테마에서 노을 그네 + Pexels 무료 사진 10장 중 고르기(☰ 메뉴 → 테마, 설정 → 화면·데이터).
+    출처 `public/themes/bg/CREDITS.md`. 다시 받기: `scripts/backgrounds.json` + "Fetch backgrounds" 워크플로(bg-fetch 브랜치에 push).
+14. '내 것' 탭 이름 → '프로필'. 빈 목록의 '예시 일정으로 둘러보기' 버튼 제거.
+
 ## 서버(Supabase `gcnosxcojuefkaaxefug`)에 이미 반영된 것
 
-- 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`
+- 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`, `20261008000400_admin`
+  (`20261008000500_admin_guards` — 마지막 관리자 보호 트리거·크론 기록 정리 — 는 아직 미적용: DELETE 문이 있어 MCP 승인 창이 뜬다. SQL Editor 에서 실행)
   (모두 다시 돌려도 안전, DROP 없음 — DROP 이 있으면 MCP 가 확인 창을 띄워 멈춘다).
-- Edge Functions: `parse-schedule`(v3), `career-polish`(v2), `send-due-notifications`(v3, 브리핑 포함).
-  AI 두 함수는 사용자 요청으로 **Claude Haiku 4.5**(`claude-haiku-4-5`)를 쓴다 — 한 번 약 5~10원.
-  Haiku 4.5 는 `effort`·서버 측 fallbacks 를 받지 않아 뺐다(구조화 출력 `output_config.format` 은 그대로).
-  더 똑똑한 모델이 필요하면 각 `index.ts` 의 `MODEL` 만 바꾸면 된다.
+- Edge Functions: `parse-schedule`(v4, Haiku 4.5), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v1),
+  `send-due-notifications`(v3, 브리핑 포함). AI 함수는 부르기 전에 `must_ai_claim` 으로 한 칸 예약(하루 한도, 한국 자정 기준,
+  관리자 무제한)하고 끝나면 토큰을 채운다. 모델은 각 `index.ts` 의 `MODEL` 만 바꾸면 된다.
+- Claude API 키: Vault `must_anthropic_key` 에 넣고 Anthropic 에 확인 완료(2026-10-07).
   `notification-action`·`push-test` 는 예전 번들 그대로(동작 같음).
 - 이미 설치된 폰 앱은 서비스 워커 버전(must-v4)이 바뀌어 다음 실행 때 새 화면으로 바뀐다.
   홈 화면 아이콘은 안드로이드가 하루 안에 갱신(바로 바꾸려면 앱 삭제 후 다시 설치).
 
 ## 사용자가 해야 하는 것
 
-- **Claude API 키**: console.anthropic.com 에서 키 발급 → Supabase SQL Editor 에서
-  `select vault.create_secret('sk-ant-...', 'must_anthropic_key');` (앱 설정 → AI 탭에 복사 버튼·연결 상태 표시).
+- Supabase Auth → URL Configuration: Site URL `https://c2k-ai.github.io/Schedule_app/`, Redirect URLs 에
+  `https://c2k-ai.github.io/Schedule_app/**` (지금은 기본값 localhost 라 메일 링크가 localhost 로 간다).
 - 노트북 부팅 시 자동 실행(Windows 시작 프로그램 바로가기)은 노트북 로컬 세션에서만 가능.
 - 대시보드 Auth 설정의 '유출 비밀번호 보호' 켜기(보안 점검 경고 1건).
 

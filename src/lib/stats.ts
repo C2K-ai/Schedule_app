@@ -1,4 +1,4 @@
-// 내 것(통계) 탭 계산 — 화면과 떨어진 순수 함수
+// 프로필(통계) 탭 계산 — 화면과 떨어진 순수 함수
 import { isSomeday, studyDayStart, studySeconds, tasksOnDay } from "./planner";
 import { addDays, DAY, dayKey, startOfDay, startOfWeek } from "./time";
 import type { StudySession, Task } from "./types";

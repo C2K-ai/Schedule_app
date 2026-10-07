@@ -21,6 +21,7 @@ import { fmtOffset, uuid } from "@/lib/time";
 import type { AlarmTheme, Settings, VibrationKey } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
 import { AuthForm, friendly } from "./AuthForm";
+import { BackgroundPicker } from "./BackgroundPicker";
 import { SoundOptions } from "./SoundOptions";
 import { SoundStudio } from "./SoundStudio";
 import { Button, Chip, cx, inputCls, Label, Modal, Segmented, Switch } from "./ui";
@@ -729,15 +730,21 @@ function DataTab() {
   const fileRef = useRef<HTMLInputElement>(null);
   return (
     <>
-      <Section title="테마" desc="노을 그네는 늘 어두운 그림 테마예요. 밝게/어둡게를 고르려면 라임을 고르세요.">
+      <Section title="테마" desc="사진 배경은 늘 어두운 테마예요(배경 사진은 아래에서 골라요). 밝게/어둡게를 고르려면 라임을 고르세요.">
         <Segmented
           value={settings.palette}
           onChange={(palette) => updateSettings({ palette })}
           options={[
-            { value: "dusk", label: "노을 그네" },
+            { value: "dusk", label: "사진 배경" },
             { value: "lime", label: "라임" },
           ]}
         />
+        {settings.palette === "dusk" && (
+          <div className="mt-3">
+            <BackgroundPicker />
+            <p className="mt-2 text-xs text-faint">사진: Pexels(무료 사용·출처 표기 불필요 라이선스)</p>
+          </div>
+        )}
         {settings.palette === "lime" && (
           <Segmented
             className="mt-2"
