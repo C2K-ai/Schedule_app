@@ -344,7 +344,7 @@ export function SoundStudio() {
         </div>
         <p className="mt-3 text-xs leading-relaxed text-muted">
           앱이 열려 있으면(백그라운드 탭 포함) 이 소리로 울립니다. 앱이 닫혀 있을 때 오는 푸시는 OS 알림음이 나는데,
-          안드로이드는 <b>WAV로 내보낸 뒤</b> 설정 → 앱 → MUST(또는 Chrome) → 알림 → 소리에서 이 파일을 고르면 닫혀
+          안드로이드는 <b>WAV로 내보낸 뒤</b> 설정 → 앱 → DREAM(또는 Chrome) → 알림 → 소리에서 이 파일을 고르면 닫혀
           있어도 내 소리로 울립니다.
         </p>
       </div>

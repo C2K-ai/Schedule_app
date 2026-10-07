@@ -132,7 +132,7 @@ function NotifyTab() {
             onClick={async () => {
               unlockAudio();
               const ok = await showSystemNotification({
-                title: "🔔 MUST 알림 테스트",
+                title: "🔔 DREAM 알림 테스트",
                 body: "이게 보이면 시스템 알림이 정상입니다.",
                 tag: `must-test-${uuid()}`,
                 kind: "start",
@@ -246,8 +246,8 @@ function NotifyTab() {
         />
         <p className="rounded-xl bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
           노트북을 켤 때 앱이 저절로 열리게 하려면(설치한 앱 기준) — <b className="text-fg">Chrome</b>: 주소창에{" "}
-          <code>chrome://apps</code> → MUST 아이콘 우클릭 → ‘로그인 시 앱 시작’. <b className="text-fg">Edge</b>:{" "}
-          <code>edge://apps</code> → MUST 의 ⋯ → ‘디바이스 로그인 시 자동 시작’.
+          <code>chrome://apps</code> → DREAM 아이콘 우클릭 → ‘로그인 시 앱 시작’. <b className="text-fg">Edge</b>:{" "}
+          <code>edge://apps</code> → DREAM 의 ⋯ → ‘디바이스 로그인 시 자동 시작’.
         </p>
         <div className="flex items-center justify-between gap-4 py-2">
           <span>
@@ -766,7 +766,7 @@ function DataTab() {
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = `must-backup-${new Date().toISOString().slice(0, 10)}.json`;
+              a.download = `dream-backup-${new Date().toISOString().slice(0, 10)}.json`;
               a.click();
               window.setTimeout(() => URL.revokeObjectURL(url), 2000);
             }}

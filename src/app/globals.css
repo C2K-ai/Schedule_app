@@ -315,6 +315,48 @@ select {
   padding-top: env(safe-area-inset-top);
 }
 
+/* PC 에 설치한 앱 — 창 제목 줄 숨김 모드(window-controls-overlay)면 크롬 제목 줄 대신 이 줄을 그린다.
+   크롬은 오른쪽(맥은 왼쪽)에 창 버튼·⋮ 만 남기고, 나머지 자리(titlebar-area)는 앱 몫. 이 줄을 잡고 창을 옮긴다 */
+:root {
+  --titlebar-h: 0px;
+}
+.app-titlebar {
+  display: none;
+}
+@media (display-mode: window-controls-overlay) {
+  :root {
+    --titlebar-h: env(titlebar-area-height, 33px);
+  }
+  body {
+    padding-top: var(--titlebar-h);
+  }
+  .app-titlebar {
+    position: fixed;
+    z-index: 70;
+    top: env(titlebar-area-y, 0);
+    left: env(titlebar-area-x, 0);
+    width: env(titlebar-area-width, 100%);
+    height: env(titlebar-area-height, 33px);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    background: #0b0920;
+    color: rgb(255 255 255 / 0.72);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    app-region: drag;
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  .app-titlebar img {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tape,
   .overdue-pulse,

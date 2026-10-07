@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
   if (error || !data.user) return json({ error: "unauthorized" }, 401);
 
   const r = await sendToUser(db, data.user.id, {
-    title: "🔔 MUST 서버 푸시 테스트",
+    title: "🔔 DREAM 서버 푸시 테스트",
     body: "앱을 완전히 닫아도 정각·미시작 알림이 이렇게 옵니다.",
     tag: `must-test-${Date.now()}`,
     kind: "before",

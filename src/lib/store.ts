@@ -331,7 +331,7 @@ export class PlannerStore {
 
   importJson(text: string): number {
     const parsed = JSON.parse(text) as { app?: string; db?: DB };
-    if (parsed.app !== "must-planner" || !parsed.db) throw new Error("MUST 백업 파일이 아닙니다");
+    if (parsed.app !== "must-planner" || !parsed.db) throw new Error("DREAM(예전 이름 MUST) 백업 파일이 아닙니다");
     const before = this.countRows();
     this.importDb({ ...emptyDb(), ...parsed.db });
     return this.countRows() - before;

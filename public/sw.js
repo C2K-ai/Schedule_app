@@ -1,9 +1,9 @@
-/* MUST 서비스 워커
+/* DREAM(예전 이름 MUST) 서비스 워커
  *  - push            : 서버 푸시 → 시스템 알림 + 열린 앱에 전달(앱이 자체 알람 소리를 울림)
  *  - notificationclick: "지금 시작" / "5분 뒤 다시" 버튼 처리 (잠금화면에서도 앱 안 열고 스누즈)
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
  */
-const VERSION = "must-v5";
+const VERSION = "must-v6";
 const DEV = new URL(self.location.href).searchParams.get("mode") === "development";
 // 하위 경로 배포(GitHub Pages /Schedule_app) 대응 — sw.js 가 놓인 폴더가 앱의 뿌리
 const BASE = self.location.pathname.replace(/\/sw\.js$/, "");
@@ -125,14 +125,14 @@ self.addEventListener("push", (event) => {
   try {
     p = event.data ? event.data.json() : {};
   } catch {
-    p = { title: "MUST", body: event.data ? event.data.text() : "" };
+    p = { title: "DREAM", body: event.data ? event.data.text() : "" };
   }
   event.waitUntil(
     (async () => {
       const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       // 열려 있는 앱에 넘겨서 자체 알람 소리·전체화면 경고를 울리게 한다
       wins.forEach((w) => w.postMessage({ type: "must:push", payload: p }));
-      await self.registration.showNotification(p.title || "MUST", buildOptions(p));
+      await self.registration.showNotification(p.title || "DREAM", buildOptions(p));
       if (typeof p.badgeCount === "number" && self.navigator.setAppBadge) {
         try {
           await self.navigator.setAppBadge(p.badgeCount);

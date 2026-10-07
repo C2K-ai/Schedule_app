@@ -4,10 +4,10 @@ import "./globals.css";
 import { withBase } from "@/lib/base";
 
 export const metadata: Metadata = {
-  title: "MUST — 미루지 못하는 플래너",
+  title: "DREAM — 미루지 못하는 플래너",
   description: "미시작 일정은 빨갛게, 미루려면 사유를. 알림·카운트다운·뽀모도로가 한 화면에 있는 습관/일정 플래너.",
-  applicationName: "MUST",
-  appleWebApp: { capable: true, title: "MUST", statusBarStyle: "black-translucent" },
+  applicationName: "DREAM",
+  appleWebApp: { capable: true, title: "DREAM", statusBarStyle: "black-translucent" },
   icons: { apple: withBase("/icons/apple-touch-icon.png") },
   formatDetection: { telephone: false },
 };
@@ -32,7 +32,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh antialiased">
+        {/* PC 설치 앱의 제목 줄(창 제목 줄 숨김 모드에서만 보임 — globals.css .app-titlebar) */}
+        <div className="app-titlebar" aria-hidden>
+          {/* eslint-disable-next-line @next/next/no-img-element -- 정적 내보내기라 next/image 최적화를 못 쓴다 */}
+          <img src={withBase("/icons/icon-192.png")} alt="" width={16} height={16} />
+          <span>DREAM</span>
+        </div>
+        {children}
+      </body>
     </html>
   );
 }

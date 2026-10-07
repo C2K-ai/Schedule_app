@@ -48,7 +48,7 @@ function InstallHint() {
           {ios
             ? "Safari 아래쪽 공유 버튼 → ‘홈 화면에 추가’ → 설치된 앱을 열고 설정 → 알림 켜기. (iOS는 설치해야만 알림이 옵니다)"
             : android
-              ? "Chrome 오른쪽 위 ⋮ → ‘앱 설치’ → 홈 화면의 MUST 로 열고 설정 → 알림 켜기. 배터리는 ‘제한 없음’으로."
+              ? "Chrome 오른쪽 위 ⋮ → ‘앱 설치’ → 홈 화면의 DREAM 으로 열고 설정 → 알림 켜기. 배터리는 ‘제한 없음’으로."
               : "주소창 오른쪽 설치 아이콘(또는 상단 ‘앱 설치’)을 누르세요. 설치 후 설정 → 알림에서 권한을 켜면 됩니다."}
         </p>
         <button onClick={() => openSheet("settings", "notify")} className="mt-1.5 text-sm font-bold text-accent-text">

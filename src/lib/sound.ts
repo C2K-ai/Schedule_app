@@ -492,13 +492,13 @@ export async function downloadSound(def: SoundDef) {
   const safe = def.name.replace(/[^\w가-힣-]+/g, "_");
   if (def.src) {
     a.href = def.src;
-    a.download = `MUST-${safe}.mp3`;
+    a.download = `DREAM-${safe}.mp3`;
     a.click();
     return;
   }
   const url = URL.createObjectURL(await renderWav(def, 2));
   a.href = url;
-  a.download = `MUST-${safe}.wav`;
+  a.download = `DREAM-${safe}.wav`;
   a.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }

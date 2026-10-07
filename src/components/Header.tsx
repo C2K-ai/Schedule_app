@@ -142,7 +142,7 @@ export function TopBar({ title, compact = false, children }: { title: string; co
   const { openSheet } = usePlanner();
   const now = useNow(30_000);
   return (
-    <header className="safe-top sticky top-0 z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_70%,transparent)] backdrop-blur-xl">
+    <header className="safe-top sticky top-[var(--titlebar-h)] z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_70%,transparent)] backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 px-4 md:h-16 md:px-8">
         <h1 className="text-xl font-black tracking-tight md:text-2xl">{title}</h1>
         <span className="hidden items-baseline gap-2 text-sm md:flex">

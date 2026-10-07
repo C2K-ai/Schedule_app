@@ -262,7 +262,7 @@ export function Shell() {
       <Backdrop />
 
       {/* PC: 왼쪽 레일 */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col border-r border-line bg-[color-mix(in_oklab,var(--bg)_72%,transparent)] backdrop-blur-xl md:flex">
+      <aside className="fixed top-[var(--titlebar-h)] bottom-0 left-0 z-30 hidden w-[264px] flex-col border-r border-line bg-[color-mix(in_oklab,var(--bg)_72%,transparent)] backdrop-blur-xl md:flex">
         <div className="flex h-16 items-center px-5">
           <Logo />
         </div>
@@ -344,7 +344,7 @@ export function Shell() {
           </div>
         </nav>
         {drawer && (
-          <div className="fixed inset-0 z-40" role="dialog" aria-modal aria-label="메뉴">
+          <div className="fixed inset-x-0 top-[var(--titlebar-h)] bottom-0 z-40" role="dialog" aria-modal aria-label="메뉴">
             <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={() => setDrawer(false)} />
             <div className="drawer-in safe-top absolute inset-y-0 left-0 flex w-[84%] max-w-[320px] flex-col border-r border-line bg-[color-mix(in_oklab,var(--bg)_92%,transparent)] backdrop-blur-xl">
               <div className="flex h-14 items-center justify-between px-4">

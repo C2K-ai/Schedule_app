@@ -30,6 +30,10 @@
 13. 배경: '사진 배경' 테마에서 노을 그네 + Pexels 무료 사진 10장 중 고르기(☰ 메뉴 → 테마, 설정 → 화면·데이터).
     출처 `public/themes/bg/CREDITS.md`. 다시 받기: `scripts/backgrounds.json` + "Fetch backgrounds" 워크플로(bg-fetch 브랜치에 push).
 14. '내 것' 탭 이름 → '프로필'. 빈 목록의 '예시 일정으로 둘러보기' 버튼 제거.
+15. 앱 이름 MUST → **DREAM**(화면·매니페스트·알림 제목·내려받는 파일 이름). 내부 이름(`must_` DB 함수, `must:` 저장 키, 캐시 이름)은 그대로.
+16. PC 설치 앱: 매니페스트 `display_override: ["window-controls-overlay"]` — 크롬 제목 줄(확장·다운로드 아이콘) 대신
+    앱이 그린 제목 줄(`.app-titlebar`, globals.css)이 보이고 크롬은 창 버튼·⋮ 만 남긴다. 고정 요소는 `--titlebar-h` 만큼 내려 둔다.
+    서비스 워커는 페이지를 no-cache 로 받아 배포 직후 다시 열면 새 화면이 뜬다(must-v6).
 
 ## 서버(Supabase `gcnosxcojuefkaaxefug`)에 이미 반영된 것
 

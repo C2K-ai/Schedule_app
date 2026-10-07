@@ -345,7 +345,7 @@ export function Logo({ className }: { className?: string }) {
     <span className={cx("inline-flex items-center gap-2", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element -- 정적 내보내기라 next/image 최적화를 못 쓴다 */}
       <img src={withBase("/icons/icon-192.png")} alt="" width={28} height={28} className="size-7 rounded-lg" />
-      <span className="text-[17px] font-black tracking-[0.18em]">MUST</span>
+      <span className="text-[17px] font-black tracking-[0.18em]">DREAM</span>
     </span>
   );
 }

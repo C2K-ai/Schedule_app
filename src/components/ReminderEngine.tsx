@@ -89,7 +89,7 @@ export function ReminderEngine() {
   const fire = useCallback(
     (kind: AlarmKind, seq: number, task: Task | null, key: string, text?: { title: string; body: string }) => {
       const { settings: s, ring, toast, store: st, snap } = latest.current;
-      const desc = text ?? (task ? describeTrigger({ kind, seq, task }) : { title: "MUST", body: "" });
+      const desc = text ?? (task ? describeTrigger({ kind, seq, task }) : { title: "DREAM", body: "" });
       const soundId = soundForKind(kind, task, s);
       const sound = findSound(soundId, s.customSounds);
       const hidden = document.visibilityState !== "visible";
@@ -205,7 +205,7 @@ export function ReminderEngine() {
       setAppBadge(overdue);
       if (overdue > 0 && document.visibilityState !== "visible") {
         titleFlip = !titleFlip;
-        document.title = titleFlip ? `⚠ 미시작 ${overdue}건 — MUST` : "MUST — 지금 처리하세요";
+        document.title = titleFlip ? `⚠ 미시작 ${overdue}건 — DREAM` : "DREAM — 지금 처리하세요";
       } else if (document.title !== baseTitle) {
         document.title = baseTitle;
       }
