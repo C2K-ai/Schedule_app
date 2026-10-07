@@ -3,6 +3,7 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_SETTINGS } from "./settings";
 import { DAY, nowIso } from "./time";
+import { DEFAULT_CATEGORIES, defaultCategoryId, localDefaultSlot } from "./ids";
 import type { DB, Profile, Row, SyncStatus, TableName } from "./types";
 
 /**
@@ -16,7 +17,7 @@ import type { DB, Profile, Row, SyncStatus, TableName } from "./types";
  * 그래서 비행기 안(오프라인)에서도 그대로 쓰고, 착륙 후 연결되면 밀린 변경이 올라간다.
  */
 
-export const TABLES: TableName[] = ["tasks", "habits", "task_logs", "focus_sessions"];
+export const TABLES: TableName[] = ["tasks", "habits", "task_logs", "focus_sessions", "categories", "day_notes"];
 type AnyTable = TableName | "profiles";
 
 interface OutboxItem {
@@ -37,7 +38,24 @@ export interface Snapshot {
 const PREFIX = "must:v1";
 const k = (scope: string, part: string) => `${PREFIX}:${scope}:${part}`;
 
-const emptyDb = (): DB => ({ tasks: {}, habits: {}, task_logs: {}, focus_sessions: {}, profile: null });
+const emptyDb = (): DB => ({
+  tasks: {},
+  habits: {},
+  task_logs: {},
+  focus_sessions: {},
+  categories: {},
+  day_notes: {},
+  profile: null,
+});
+
+/** 예전 버전에서 저장된 일정에는 새 필드가 없다 → 기본값으로 채움 */
+function normalizeTasks(tasks: DB["tasks"]): DB["tasks"] {
+  const out: DB["tasks"] = {};
+  for (const [id, t] of Object.entries(tasks ?? {})) {
+    out[id] = { ...t, schedule: t.schedule ?? "timed", starred: t.starred ?? false, category_id: t.category_id ?? null };
+  }
+  return out;
+}
 
 
 function readJson<T>(key: string, fallback: T): T {
@@ -63,7 +81,8 @@ export function hasLocalData(scope: string): boolean {
 }
 
 export function readLocalDb(scope: string): DB {
-  return { ...emptyDb(), ...readJson<DB>(k(scope, "db"), emptyDb()) };
+  const db = { ...emptyDb(), ...readJson<DB>(k(scope, "db"), emptyDb()) };
+  return { ...db, tasks: normalizeTasks(db.tasks) };
 }
 
 export class PlannerStore {
@@ -120,6 +139,7 @@ export class PlannerStore {
   start() {
     this.load();
     this.ensureProfile();
+    this.ensureDefaultCategories();
 
     const onStorage = (e: StorageEvent) => {
       // 다른 탭에서 바꾼 내용 즉시 반영
@@ -196,6 +216,28 @@ export class PlannerStore {
     this.persist();
   }
 
+  /** 기본 카테고리(작업·개인·위시리스트·생일) — 한 번도 없었을 때만. id 가 결정적이라 기기마다 만들어도 하나로 합쳐짐 */
+  private ensureDefaultCategories() {
+    if (Object.keys(this.snap.db.categories).length > 0) return;
+    const created = nowIso();
+    for (const c of DEFAULT_CATEGORIES) {
+      this.put(
+        "categories",
+        {
+          id: defaultCategoryId(this.userId, c.slot),
+          name: c.name,
+          color: c.color,
+          sort: c.slot,
+          created_at: created,
+          // 서버에 사용자가 고친 값이 있으면 그쪽이 이기게
+          updated_at: new Date(0).toISOString(),
+          deleted_at: null,
+        },
+        { mode: "insertIgnore", keepUpdatedAt: true },
+      );
+    }
+  }
+
   // ───────────── 쓰기 ─────────────
   put<T extends TableName>(
     table: T,
@@ -242,8 +284,16 @@ export class PlannerStore {
 
   /** 다른 저장소(로컬 모드)의 데이터를 이 계정으로 가져오기 */
   importDb(src: DB) {
+    // 로컬 모드의 기본 카테고리 id → 이 계정의 기본 카테고리 id 로 바꿔 끼움(같은 '작업'이 두 개 생기지 않게)
+    const remap = (id: string | null | undefined) => {
+      const slot = localDefaultSlot(id);
+      return slot ? defaultCategoryId(this.userId, slot) : (id ?? null);
+    };
     for (const t of TABLES) {
-      for (const row of Object.values(src[t] ?? {})) {
+      for (const raw of Object.values(src[t] ?? {})) {
+        let row = raw as Row & Record<string, unknown>;
+        if (t === "categories") row = { ...row, id: remap(row.id) as string };
+        if (t === "tasks") row = { ...row, category_id: remap(row.category_id as string | null) };
         const mine = this.snap.db[t][row.id] as Row | undefined;
         if (mine && mine.updated_at >= row.updated_at) continue;
         this.put(t, row as never, { keepUpdatedAt: true });
@@ -303,7 +353,7 @@ export class PlannerStore {
     let networkFailed = false;
     const done = new Set<OutboxItem>();
     // 외래키 순서: 습관 → 일정 → 기록·집중 (일정보다 기록이 먼저 올라가면 거절된다)
-    const order: AnyTable[] = ["profiles", "habits", "tasks", "task_logs", "focus_sessions"];
+    const order: AnyTable[] = ["profiles", "habits", "categories", "tasks", "task_logs", "focus_sessions", "day_notes"];
     const sorted = [...groups].sort(
       ([a], [b]) => order.indexOf(a.split("|")[0] as AnyTable) - order.indexOf(b.split("|")[0] as AnyTable),
     );
@@ -408,6 +458,8 @@ export class PlannerStore {
           else if (table === "task_logs") q = q.gte("created_at", new Date(Date.now() - 60 * DAY).toISOString());
           else if (table === "focus_sessions")
             q = q.gte("started_at", new Date(Date.now() - 30 * DAY).toISOString());
+          else if (table === "day_notes")
+            q = q.gte("day", new Date(Date.now() - 400 * DAY).toISOString().slice(0, 10));
           const { data, error } = await q;
           if (error) throw error;
           for (const row of data ?? []) {

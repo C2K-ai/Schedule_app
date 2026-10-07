@@ -2,13 +2,17 @@
 
 import type { PlannerStore } from "./store";
 import { addDays, atTime, dayKey, DAY, MIN, nowIso, parseDayKey, startOfDay, uuid } from "./time";
+import { dayNoteId } from "./ids";
 import type {
+  Category,
   ColorKey,
+  DayNote,
   DB,
   FocusMode,
   FocusSession,
   Habit,
   LogKind,
+  ScheduleKind,
   Settings,
   Task,
   TaskLog,
@@ -28,9 +32,31 @@ export function liveHabits(db: DB): Habit[] {
     .sort((a, b) => a.start_time.localeCompare(b.start_time));
 }
 
+/** 시각이 정해진 일정 — 알림·강제·타임라인 대상 (예전 데이터는 schedule 이 없으면 timed) */
+export const isTimed = (t: Task) => (t.schedule ?? "timed") === "timed";
+export const isSomeday = (t: Task) => t.schedule === "someday";
+
+/** 그날의 일정(시각 지정 + 날짜만). 날짜 없는 할 일은 빠진다. */
 export function tasksOnDay(tasks: Task[], day: Date): Task[] {
   const key = dayKey(day);
-  return tasks.filter((t) => dayKey(new Date(t.starts_at)) === key);
+  return tasks.filter((t) => !isSomeday(t) && dayKey(new Date(t.starts_at)) === key);
+}
+
+/** 그날 완료한 것(완료 시각 기준 — 날짜 없는 할 일 포함) */
+export function completedOn(tasks: Task[], day: Date): Task[] {
+  const key = dayKey(day);
+  return tasks.filter((t) => t.status === "done" && t.completed_at && dayKey(new Date(t.completed_at)) === key);
+}
+
+export function liveCategories(db: DB): Category[] {
+  return Object.values(db.categories)
+    .filter((c) => !c.deleted_at)
+    .sort((a, b) => a.sort - b.sort || a.created_at.localeCompare(b.created_at));
+}
+
+export function dayNoteFor(db: DB, day: string): DayNote | null {
+  const n = Object.values(db.day_notes).find((x) => x.day === day && !x.deleted_at);
+  return n ?? null;
 }
 
 /** 화면 표시용 파생 상태 */
@@ -49,6 +75,7 @@ export function taskState(t: Task, now: number, graceMin: number): TaskState {
   if (t.status === "skipped") return "skipped";
   if (t.status === "missed") return "missed";
   if (t.status === "in_progress") return "in_progress";
+  if (!isTimed(t)) return "upcoming"; // 날짜만·날짜 없음은 시각 경고 대상이 아니다
   const start = Date.parse(t.starts_at);
   if (now >= start + graceMin * MIN) return "overdue";
   if (now >= start) return "late";
@@ -101,6 +128,7 @@ export function dayStats(tasks: Task[], now: number, graceMin: number, focus: Fo
 }
 
 export function currentTask(tasks: Task[], now: number): Task | null {
+  tasks = tasks.filter(isTimed);
   const running = tasks
     .filter((t) => t.status === "in_progress")
     .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
@@ -113,13 +141,14 @@ export function currentTask(tasks: Task[], now: number): Task | null {
 }
 
 export function nextTask(tasks: Task[], now: number): Task | null {
-  return tasks.find((t) => t.status === "planned" && Date.parse(t.starts_at) > now) ?? null;
+  return tasks.find((t) => isTimed(t) && t.status === "planned" && Date.parse(t.starts_at) > now) ?? null;
 }
 
 /** 강제 대상: 강제 모드 + 아직 planned + 유예 시간 초과 (최근 7일) */
 export function enforcementQueue(tasks: Task[], now: number, graceMin: number): Task[] {
   return tasks.filter(
     (t) =>
+      isTimed(t) &&
       t.strict &&
       t.status === "planned" &&
       now >= Date.parse(t.starts_at) + graceMin * MIN &&
@@ -197,15 +226,36 @@ export interface TaskInput {
   title: string;
   notes?: string | null;
   color?: ColorKey;
-  starts_at: string;
-  ends_at: string;
+  /** 기본 timed. day 면 day(YYYY-MM-DD)만, someday 면 날짜 없이 */
+  schedule?: ScheduleKind;
+  starts_at?: string;
+  ends_at?: string;
+  day?: string;
+  category_id?: string | null;
+  starred?: boolean;
   reminder_offsets?: number[];
   sound_id?: string | null;
   strict?: boolean;
 }
 
+/** 일정 종류에 맞는 시작·끝 — 날짜만은 그날 0시~다음날 0시, 날짜 없음은 만든 시각(정렬용) */
+export function scheduleWindow(kind: ScheduleKind, opts: { day?: string; starts_at?: string; ends_at?: string }) {
+  if (kind === "day") {
+    const d = parseDayKey(opts.day ?? dayKey(new Date()));
+    return { starts_at: d.toISOString(), ends_at: addDays(d, 1).toISOString() };
+  }
+  if (kind === "someday") {
+    const now = new Date();
+    return { starts_at: now.toISOString(), ends_at: new Date(now.getTime() + MIN).toISOString() };
+  }
+  return { starts_at: opts.starts_at!, ends_at: opts.ends_at! };
+}
+
 export function createTask(store: PlannerStore, input: TaskInput, settings: Settings): Task {
   const now = nowIso();
+  const kind = input.schedule ?? "timed";
+  const timed = kind === "timed";
+  const win = scheduleWindow(kind, input);
   const t: Task = {
     id: uuid(),
     habit_id: null,
@@ -213,21 +263,71 @@ export function createTask(store: PlannerStore, input: TaskInput, settings: Sett
     title: input.title.trim(),
     notes: input.notes ?? null,
     color: input.color ?? "lime",
-    starts_at: input.starts_at,
-    ends_at: input.ends_at,
+    starts_at: win.starts_at,
+    ends_at: win.ends_at,
     status: "planned",
     started_at: null,
     completed_at: null,
-    reminder_offsets: input.reminder_offsets ?? settings.defaultOffsets,
+    // 알림·강제는 시각이 정해진 일정에만
+    reminder_offsets: timed ? (input.reminder_offsets ?? settings.defaultOffsets) : [],
     sound_id: input.sound_id ?? null,
-    strict: input.strict ?? true,
+    strict: timed ? (input.strict ?? true) : false,
     postpone_count: 0,
     created_at: now,
     updated_at: now,
     deleted_at: null,
+    schedule: kind,
+    category_id: input.category_id ?? null,
+    starred: input.starred ?? false,
   };
   store.put("tasks", t);
   return t;
+}
+
+export function toggleStar(store: PlannerStore, id: string) {
+  const t = store.db.tasks[id];
+  if (t) store.patch("tasks", id, { starred: !t.starred });
+}
+
+// ───────────────────────── 카테고리 ─────────────────────────
+
+export function createCategory(store: PlannerStore, name: string, color: ColorKey): Category {
+  const now = nowIso();
+  const sort = Math.max(0, ...Object.values(store.db.categories).map((c) => c.sort)) + 1;
+  const c: Category = { id: uuid(), name: name.trim(), color, sort, created_at: now, updated_at: now, deleted_at: null };
+  store.put("categories", c);
+  return c;
+}
+
+export function updateCategory(store: PlannerStore, id: string, patch: Partial<Pick<Category, "name" | "color" | "sort">>) {
+  store.patch("categories", id, patch);
+}
+
+/** 지워도 그 카테고리의 할 일은 남는다(카테고리 없음으로) */
+export function deleteCategory(store: PlannerStore, id: string) {
+  store.patch("categories", id, { deleted_at: nowIso() });
+  for (const t of Object.values(store.db.tasks)) {
+    if (t.category_id === id && !t.deleted_at) store.patch("tasks", t.id, { category_id: null });
+  }
+}
+
+// ───────────────────────── 하루 노트 ─────────────────────────
+
+export function saveDayNote(store: PlannerStore, day: string, patch: { body?: string; mood?: number | null }) {
+  const id = dayNoteId(store.userId, day);
+  const cur = store.db.day_notes[id];
+  const now = nowIso();
+  const next: DayNote = {
+    id,
+    day,
+    body: patch.body ?? cur?.body ?? "",
+    mood: patch.mood !== undefined ? patch.mood : (cur?.mood ?? null),
+    created_at: cur?.created_at ?? now,
+    updated_at: now,
+    deleted_at: null,
+  };
+  store.put("day_notes", next);
+  return next;
 }
 
 export function updateTask(store: PlannerStore, id: string, patch: Partial<Task>) {
@@ -418,6 +518,9 @@ export function materializeHabits(store: PlannerStore, days: Date[]) {
         // 자동 생성 회차는 '아주 오래된' 시각 — 다른 기기에서 실제로 고친 내용이 항상 이긴다
         updated_at: new Date(0).toISOString(),
         deleted_at: null,
+        schedule: "timed",
+        category_id: null,
+        starred: false,
       };
       store.put("tasks", t, { mode: "insertIgnore", keepUpdatedAt: true });
     }

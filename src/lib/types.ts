@@ -51,6 +51,29 @@ export interface Task extends Row {
   strict: boolean;
   postpone_count: number;
   created_at: string;
+  /** timed = 시각 지정(알림·강제 대상) / day = 날짜만 / someday = 날짜 없음 */
+  schedule: ScheduleKind;
+  category_id: string | null;
+  starred: boolean;
+}
+
+export type ScheduleKind = "timed" | "day" | "someday";
+
+export interface Category extends Row {
+  name: string;
+  color: ColorKey;
+  sort: number;
+  created_at: string;
+}
+
+/** 캘린더 하루 노트 — 그날 할 것·생각·느낌 */
+export interface DayNote extends Row {
+  /** YYYY-MM-DD (현지 날짜) */
+  day: string;
+  body: string;
+  /** 1(별로) ~ 5(최고), 없으면 null */
+  mood: number | null;
+  created_at: string;
 }
 
 export interface Habit extends Row {
@@ -147,6 +170,10 @@ export interface Settings {
   dayStartHour: number;
   customSounds: SoundDef[];
   theme: "system" | "dark" | "light";
+  /** dusk = 노을 그네 그림 테마(기본) / lime = 처음 디자인 */
+  palette: "dusk" | "lime";
+  /** 앱이 켜질 때(노트북 부팅 후 자동 실행 포함) 오늘 브리핑 알림 */
+  launchBriefing: boolean;
 }
 
 export interface Profile {
@@ -157,13 +184,15 @@ export interface Profile {
   updated_at: string;
 }
 
-export type TableName = "tasks" | "habits" | "task_logs" | "focus_sessions";
+export type TableName = "tasks" | "habits" | "task_logs" | "focus_sessions" | "categories" | "day_notes";
 
 export interface DB {
   tasks: Record<string, Task>;
   habits: Record<string, Habit>;
   task_logs: Record<string, TaskLog>;
   focus_sessions: Record<string, FocusSession>;
+  categories: Record<string, Category>;
+  day_notes: Record<string, DayNote>;
   profile: Profile | null;
 }
 

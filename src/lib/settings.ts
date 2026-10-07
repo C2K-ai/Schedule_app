@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS: Settings = {
   dayStartHour: 6,
   customSounds: [],
   theme: "system",
+  palette: "dusk",
+  launchBriefing: true,
 };
 
 export function mergeSettings(partial: Partial<Settings> | null | undefined): Settings {
