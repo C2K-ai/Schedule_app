@@ -4,6 +4,7 @@ import type { PlannerStore } from "./store";
 import { addDays, atTime, dayKey, DAY, MIN, nowIso, parseDayKey, startOfDay, uuid } from "./time";
 import { dayNoteId } from "./ids";
 import type {
+  CareerEntry,
   Category,
   ColorKey,
   DayNote,
@@ -14,6 +15,8 @@ import type {
   LogKind,
   ScheduleKind,
   Settings,
+  StudySession,
+  Subject,
   Task,
   TaskLog,
 } from "./types";
@@ -57,6 +60,57 @@ export function liveCategories(db: DB): Category[] {
 export function dayNoteFor(db: DB, day: string): DayNote | null {
   const n = Object.values(db.day_notes).find((x) => x.day === day && !x.deleted_at);
   return n ?? null;
+}
+
+export interface TaskGroups {
+  /** 지난 날짜인데 아직 안 끝낸 것(습관 회차 제외) */
+  overdue: Task[];
+  today: Task[];
+  tomorrow: Task[];
+  /** 모레 이후 */
+  later: Task[];
+  someday: Task[];
+  /** 오늘 완료한 것(완료 시각 기준) */
+  doneToday: Task[];
+}
+
+const isOpen = (t: Task) => t.status === "planned" || t.status === "in_progress";
+
+/** 작업 탭 목록 — 습관 회차는 오늘 것만 보여 준다(앞으로 7일치가 미리 만들어져 있어 목록이 넘친다) */
+export function groupTasks(tasks: Task[], now: Date): TaskGroups {
+  const today = dayKey(now);
+  const tomorrow = dayKey(addDays(startOfDay(now), 1));
+  const g: TaskGroups = { overdue: [], today: [], tomorrow: [], later: [], someday: [], doneToday: [] };
+  for (const t of tasks) {
+    if (t.status === "done") {
+      if (t.completed_at && dayKey(new Date(t.completed_at)) === today) g.doneToday.push(t);
+      continue;
+    }
+    if (!isOpen(t)) continue;
+    if (isSomeday(t)) {
+      g.someday.push(t);
+      continue;
+    }
+    const k = dayKey(new Date(t.starts_at));
+    if (k === today) g.today.push(t);
+    else if (t.habit_id) continue;
+    else if (k < today) g.overdue.push(t);
+    else if (k === tomorrow) g.tomorrow.push(t);
+    else g.later.push(t);
+  }
+  // 날짜만 일정은 그날 0시라 시각 일정보다 앞에 온다 — 같은 날 안에선 시각 일정 먼저
+  const dk = (t: Task) => dayKey(new Date(t.starts_at));
+  const byTime = (a: Task, b: Task) =>
+    dk(a) === dk(b)
+      ? Number(!isTimed(a)) - Number(!isTimed(b)) || a.starts_at.localeCompare(b.starts_at)
+      : a.starts_at.localeCompare(b.starts_at);
+  g.overdue.sort(byTime);
+  g.today.sort((a, b) => Number(!isTimed(a)) - Number(!isTimed(b)) || a.starts_at.localeCompare(b.starts_at));
+  g.tomorrow.sort(byTime);
+  g.later.sort(byTime);
+  g.someday.sort((a, b) => Number(b.starred) - Number(a.starred) || b.created_at.localeCompare(a.created_at));
+  g.doneToday.sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? ""));
+  return g;
 }
 
 /** 화면 표시용 파생 상태 */
@@ -598,6 +652,162 @@ export function abandonFocus(store: PlannerStore, id: string, reason: string) {
     const task = f.task_id ? store.db.tasks[f.task_id] : null;
     log(store, "focus_abandoned", task ?? null, { reason, title: task?.title ?? "집중 세션" });
   }
+}
+
+// ───────────────────────── 공부 타이머(열품타 방식) ─────────────────────────
+
+export function liveSubjects(db: DB): Subject[] {
+  return Object.values(db.subjects)
+    .filter((x) => !x.deleted_at)
+    .sort((a, b) => a.sort - b.sort || a.created_at.localeCompare(b.created_at));
+}
+
+export function liveStudy(db: DB): StudySession[] {
+  return Object.values(db.study_sessions).filter((x) => !x.deleted_at);
+}
+
+/** 지금 재고 있는 구간(가장 최근 것) */
+export function activeStudy(db: DB): StudySession | null {
+  return (
+    liveStudy(db)
+      .filter((x) => !x.ended_at)
+      .sort((a, b) => b.started_at.localeCompare(a.started_at))[0] ?? null
+  );
+}
+
+/** 공부 하루의 경계 — dayStartHour(기본 6시)부터 다음날 같은 시각까지. 새벽 공부는 전날로 친다. */
+export function studyDayStart(at: Date, dayStartHour: number): Date {
+  const d = new Date(at.getFullYear(), at.getMonth(), at.getDate(), dayStartHour);
+  return at < d ? addDays(d, -1) : d;
+}
+
+/** 구간들 중 [from, to) 에 걸친 부분의 초 — 재는 중인 구간은 now 까지 */
+export function studySeconds(sessions: StudySession[], from: number, to: number, now: number): number {
+  let ms = 0;
+  for (const x of sessions) {
+    const s = Math.max(Date.parse(x.started_at), from);
+    const e = Math.min(x.ended_at ? Date.parse(x.ended_at) : now, to);
+    if (e > s) ms += e - s;
+  }
+  return Math.floor(ms / 1000);
+}
+
+/** 과목별 초 (과목 없음 = "") */
+export function studyBySubject(sessions: StudySession[], from: number, to: number, now: number): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const x of sessions) {
+    const sec = studySeconds([x], from, to, now);
+    if (sec > 0) out.set(x.subject_id ?? "", (out.get(x.subject_id ?? "") ?? 0) + sec);
+  }
+  return out;
+}
+
+/**
+ * 10분 플래너 — 하루를 10분 칸으로 나눠 칸마다 가장 오래 공부한 과목을 칠한다(열품타 타임테이블).
+ * 돌려주는 배열 길이 = 144, 값 = 과목 id("" = 과목 없음) 또는 null(공부 안 함)
+ */
+export function tenMinuteGrid(sessions: StudySession[], dayStart: Date, now: number): (string | null)[] {
+  const base = dayStart.getTime();
+  const cell = 10 * MIN;
+  const best: { id: string | null; ms: number }[] = Array.from({ length: 144 }, () => ({ id: null, ms: 0 }));
+  const acc = Array.from({ length: 144 }, () => new Map<string, number>());
+  for (const x of sessions) {
+    const s = Math.max(Date.parse(x.started_at), base);
+    const e = Math.min(x.ended_at ? Date.parse(x.ended_at) : now, base + DAY);
+    for (let t = s; t < e; ) {
+      const i = Math.floor((t - base) / cell);
+      const cellEnd = base + (i + 1) * cell;
+      const part = Math.min(e, cellEnd) - t;
+      const key = x.subject_id ?? "";
+      const m = acc[i];
+      m.set(key, (m.get(key) ?? 0) + part);
+      if (m.get(key)! > best[i].ms) best[i] = { id: key, ms: m.get(key)! };
+      t = cellEnd;
+    }
+  }
+  // 1분도 안 되는 칸은 비워 둔다
+  return best.map((b) => (b.ms >= MIN ? b.id : null));
+}
+
+export function startStudy(store: PlannerStore, subjectId: string | null, taskId: string | null = null): StudySession {
+  const now = nowIso();
+  const cur = activeStudy(store.db);
+  if (cur) store.patch("study_sessions", cur.id, { ended_at: now });
+  const x: StudySession = {
+    id: uuid(),
+    subject_id: subjectId,
+    task_id: taskId,
+    started_at: now,
+    ended_at: null,
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+  };
+  store.put("study_sessions", x);
+  return x;
+}
+
+/** 지금 재는 구간을 멈춘다. at 을 주면 그 시각에 멈춘 것으로(자리 비움 자동 정지) */
+export function stopStudy(store: PlannerStore, at?: Date) {
+  const cur = activeStudy(store.db);
+  if (!cur) return null;
+  const end = at && at.getTime() > Date.parse(cur.started_at) ? at.toISOString() : nowIso();
+  return store.patch("study_sessions", cur.id, { ended_at: end });
+}
+
+export function deleteStudySession(store: PlannerStore, id: string) {
+  store.patch("study_sessions", id, { deleted_at: nowIso() });
+}
+
+export function createSubject(store: PlannerStore, name: string, color: ColorKey): Subject {
+  const now = nowIso();
+  const sort = Math.max(0, ...Object.values(store.db.subjects).map((x) => x.sort)) + 1;
+  const x: Subject = { id: uuid(), name: name.trim(), color, sort, created_at: now, updated_at: now, deleted_at: null };
+  store.put("subjects", x);
+  return x;
+}
+
+export function updateSubject(store: PlannerStore, id: string, patch: Partial<Pick<Subject, "name" | "color" | "sort">>) {
+  store.patch("subjects", id, patch);
+}
+
+/** 과목을 지워도 공부 기록(시간)은 남는다 */
+export function deleteSubject(store: PlannerStore, id: string) {
+  const cur = activeStudy(store.db);
+  if (cur?.subject_id === id) stopStudy(store);
+  store.patch("subjects", id, { deleted_at: nowIso() });
+}
+
+// ───────────────────────── 커리어 기록 ─────────────────────────
+
+export function liveCareer(db: DB): CareerEntry[] {
+  return Object.values(db.career_entries)
+    .filter((x) => !x.deleted_at)
+    .sort((a, b) => b.start_day.localeCompare(a.start_day) || b.created_at.localeCompare(a.created_at));
+}
+
+export function saveCareer(store: PlannerStore, entry: Omit<CareerEntry, "created_at" | "updated_at" | "deleted_at"> & { created_at?: string }) {
+  const now = nowIso();
+  const cur = store.db.career_entries[entry.id];
+  const row: CareerEntry = { ...entry, created_at: cur?.created_at ?? entry.created_at ?? now, updated_at: now, deleted_at: null };
+  store.put("career_entries", row);
+  return row;
+}
+
+export function deleteCareer(store: PlannerStore, id: string) {
+  store.patch("career_entries", id, { deleted_at: nowIso() });
+}
+
+/** 기간 안에 끝낸 일정·하루 노트 — AI 가 커리어 문장을 다듬을 재료 */
+export function careerMaterial(db: DB, startDay: string, endDay: string) {
+  const inRange = (k: string) => k >= startDay && k <= endDay;
+  const tasks = Object.values(db.tasks)
+    .filter((t) => !t.deleted_at && t.status === "done" && t.completed_at && inRange(dayKey(new Date(t.completed_at))))
+    .sort((a, b) => (a.completed_at ?? "").localeCompare(b.completed_at ?? ""));
+  const notes = Object.values(db.day_notes)
+    .filter((n) => !n.deleted_at && n.body.trim() && inRange(n.day))
+    .sort((a, b) => a.day.localeCompare(b.day));
+  return { tasks, notes };
 }
 
 export function weekDays(anchor: Date): Date[] {

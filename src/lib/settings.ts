@@ -22,6 +22,9 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   palette: "dusk",
   launchBriefing: true,
+  studyGoalMin: 360,
+  studyAutoPause: true,
+  ddays: [],
 };
 
 export function mergeSettings(partial: Partial<Settings> | null | undefined): Settings {
@@ -31,6 +34,7 @@ export function mergeSettings(partial: Partial<Settings> | null | undefined): Se
     ...p,
     sounds: { ...DEFAULT_SETTINGS.sounds, ...(p.sounds ?? {}) },
     customSounds: p.customSounds ?? [],
+    ddays: p.ddays ?? [],
   };
 }
 

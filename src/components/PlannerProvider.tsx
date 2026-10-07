@@ -17,7 +17,7 @@ import { unsubscribePush } from "@/lib/push";
 import { PlannerStore, type Snapshot } from "@/lib/store";
 import { getSupabase } from "@/lib/supabase";
 import { addDays, startOfDay, uuid } from "@/lib/time";
-import type { AlarmKind, Habit, Settings, Task } from "@/lib/types";
+import type { AlarmKind, Habit, ScheduleKind, Settings, Task } from "@/lib/types";
 
 export interface Toast {
   id: string;
@@ -38,12 +38,18 @@ export interface Alarm {
   at: number;
 }
 
-export type Sheet = null | "settings" | "habits" | "log" | "voice";
+export type Sheet = null | "settings" | "habits" | "log" | "voice" | "completed";
 
 export interface EditorState {
   taskId?: string;
   start?: Date;
   end?: Date;
+  /** 새로 만들 때 미리 채울 값 */
+  schedule?: ScheduleKind;
+  day?: string;
+  categoryId?: string;
+  starred?: boolean;
+  title?: string;
 }
 
 interface Session {

@@ -39,6 +39,13 @@ await db.exec(`
 await db.exec(readFileSync(new URL("../migrations/20261006000000_config.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261007000000_categories_notes.sql", import.meta.url), "utf8"));
 ok(true, "카테고리·노트 마이그레이션 실행됨");
+await db.exec(readFileSync(new URL("../migrations/20261008000000_ai_key.sql", import.meta.url), "utf8"));
+await db.exec(readFileSync(new URL("../migrations/20261008000100_study.sql", import.meta.url), "utf8"));
+// 다시 돌려도 안전해야 한다(이미 적용된 서버에 또 실행해도)
+await db.exec(readFileSync(new URL("../migrations/20261008000100_study.sql", import.meta.url), "utf8"));
+await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
+await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
+ok(true, "AI 키·공부 타이머·커리어 마이그레이션 실행됨(두 번)");
 await db.exec(`set role service_role;`);
 const cfg = (await q(`select public.must_function_config() c`))[0].c;
 await db.exec(`reset role;`);
@@ -161,6 +168,42 @@ try {
 }
 ok(dup, "하루 노트는 사용자·날짜당 하나");
 
+// ── 공부 타이머 ──
+const SU = "dddddddd-0000-4000-8000-000000000001";
+await q(`insert into public.subjects (id, user_id, name, color) values ($1, $2, '독일어', 'amber')`, [SU, A]);
+await q(`insert into public.study_sessions (user_id, subject_id, started_at, ended_at) values ($1, $2, now() - interval '50 minutes', now())`, [A, SU]);
+await q(`insert into public.study_sessions (user_id, subject_id, started_at) values ($1, $2, now())`, [A, SU]);
+let badRange = false;
+try {
+  await q(`insert into public.study_sessions (user_id, started_at, ended_at) values ($1, now(), now() - interval '1 minute')`, [A]);
+} catch {
+  badRange = true;
+}
+ok(badRange, "공부 기록: 끝이 시작보다 앞설 수 없음");
+await q(`update public.subjects set deleted_at = now(), updated_at = now() + interval '1 second' where id = $1`, [SU]);
+ok((await q(`select count(*)::int n from public.study_sessions where subject_id = $1`, [SU]))[0].n === 2, "과목을 지워도(soft) 기록은 남음");
+
+// ── 커리어 ──
+await q(
+  `insert into public.career_entries (user_id, title, kind, start_day, end_day, raw, skills, task_ids)
+   values ($1, '플래너 앱 개발', 'project', '2026-10-01', '2026-10-31', '혼자 만듦', '{Next.js,Supabase}', $2)`,
+  [A, `{${T1}}`],
+);
+let badKind = false;
+try {
+  await q(`insert into public.career_entries (user_id, title, kind, start_day) values ($1, 'x', 'hobby', '2026-10-01')`, [A]);
+} catch {
+  badKind = true;
+}
+ok(badKind, "커리어: 정해진 종류만");
+let badPeriod = false;
+try {
+  await q(`insert into public.career_entries (user_id, title, start_day, end_day) values ($1, 'x', '2026-10-02', '2026-10-01')`, [A]);
+} catch {
+  badPeriod = true;
+}
+ok(badPeriod, "커리어: 끝 날짜가 시작보다 앞설 수 없음");
+
 // ── RLS ──
 await db.exec(`insert into public.task_logs (id, user_id, kind, reason, title) values
   ('99999999-0000-4000-8000-000000000001', '${A}', 'postponed', '회의가 길어짐', '독일어');`);
@@ -168,6 +211,9 @@ await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub'
 ok((await q(`select count(*)::int n from public.tasks`))[0].n === 0, "RLS: B 는 A 의 일정을 못 봄");
 ok((await q(`select count(*)::int n from public.categories`))[0].n === 0, "RLS: B 는 A 의 카테고리를 못 봄");
 ok((await q(`select count(*)::int n from public.day_notes`))[0].n === 0, "RLS: B 는 A 의 하루 노트를 못 봄");
+ok((await q(`select count(*)::int n from public.study_sessions`))[0].n === 0, "RLS: B 는 A 의 공부 기록을 못 봄");
+ok((await q(`select count(*)::int n from public.subjects`))[0].n === 0, "RLS: B 는 A 의 과목을 못 봄");
+ok((await q(`select count(*)::int n from public.career_entries`))[0].n === 0, "RLS: B 는 A 의 커리어 기록을 못 봄");
 await db.exec(`select set_config('request.jwt.claim.sub', '${A}', false);`);
 ok((await q(`select count(*)::int n from public.tasks`))[0].n === 6, "RLS: A 는 자기 일정 6개를 봄");
 // 트리거 함수 EXECUTE 를 회수해도 로그인 사용자의 쓰기에서 트리거는 그대로 돈다

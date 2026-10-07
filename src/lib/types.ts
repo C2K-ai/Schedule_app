@@ -76,6 +76,46 @@ export interface DayNote extends Row {
   created_at: string;
 }
 
+/** 공부 타이머 과목(열품타 방식) */
+export interface Subject extends Row {
+  name: string;
+  color: ColorKey;
+  sort: number;
+  created_at: string;
+}
+
+/** 스톱워치 한 구간. ended_at 이 null 이면 지금 재는 중 */
+export interface StudySession extends Row {
+  subject_id: string | null;
+  task_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
+}
+
+export type CareerKind = "work" | "project" | "study" | "cert" | "award" | "activity" | "etc";
+
+/** 커리어 기록 — raw 는 내가 적은 것, polished 는 AI 가 다듬은 것(고칠 수 있음) */
+export interface CareerEntry extends Row {
+  title: string;
+  kind: CareerKind;
+  /** YYYY-MM-DD */
+  start_day: string;
+  end_day: string | null;
+  raw: string;
+  polished: string;
+  skills: string[];
+  task_ids: string[];
+  created_at: string;
+}
+
+export interface DDay {
+  id: string;
+  title: string;
+  /** YYYY-MM-DD */
+  date: string;
+}
+
 export interface Habit extends Row {
   title: string;
   color: ColorKey;
@@ -174,6 +214,11 @@ export interface Settings {
   palette: "dusk" | "lime";
   /** 앱이 켜질 때(노트북 부팅 후 자동 실행 포함) 오늘 브리핑 알림 */
   launchBriefing: boolean;
+  /** 하루 공부 목표(분) */
+  studyGoalMin: number;
+  /** 공부 중 다른 앱·탭으로 가면 자동 일시정지(열품타의 집중 잠금 대신) */
+  studyAutoPause: boolean;
+  ddays: DDay[];
 }
 
 export interface Profile {
@@ -184,7 +229,16 @@ export interface Profile {
   updated_at: string;
 }
 
-export type TableName = "tasks" | "habits" | "task_logs" | "focus_sessions" | "categories" | "day_notes";
+export type TableName =
+  | "tasks"
+  | "habits"
+  | "task_logs"
+  | "focus_sessions"
+  | "categories"
+  | "day_notes"
+  | "subjects"
+  | "study_sessions"
+  | "career_entries";
 
 export interface DB {
   tasks: Record<string, Task>;
@@ -193,6 +247,9 @@ export interface DB {
   focus_sessions: Record<string, FocusSession>;
   categories: Record<string, Category>;
   day_notes: Record<string, DayNote>;
+  subjects: Record<string, Subject>;
+  study_sessions: Record<string, StudySession>;
+  career_entries: Record<string, CareerEntry>;
   profile: Profile | null;
 }
 

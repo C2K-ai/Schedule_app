@@ -1,7 +1,7 @@
 "use client";
 
-import { CalendarDays, Cloud, CloudOff, Download, Mic, NotebookPen, Repeat, Settings } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Cloud, CloudOff, Download, Mic } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
 import { currentTask, dayStats, enforcementQueue, nextTask, tasksOnDay } from "@/lib/planner";
@@ -9,21 +9,20 @@ import { fmtCountdown, fmtDate, fmtTime, startOfDay } from "@/lib/time";
 import { COLOR_HEX } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
-import { cx, IconButton, Logo } from "./ui";
+import { cx, IconButton } from "./ui";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-function SyncPill() {
-  const { snap, openSheet, session } = usePlanner();
-  const s = snap.status;
+function syncLook(p: ReturnType<typeof usePlanner>) {
+  const s = p.snap.status;
   let tone = "text-muted";
   let dot = "bg-faint";
   let text = "이 기기에만 저장";
   let Icon = CloudOff;
-  if (cloudEnabled && !session.userId) {
+  if (cloudEnabled && !p.session.userId) {
     tone = "text-warn";
     dot = "bg-warn";
     text = "로그인하면 동기화";
@@ -52,23 +51,32 @@ function SyncPill() {
       text = "연결 중";
     }
   }
+  return { tone, dot, text, Icon, error: s.error };
+}
+
+/** 동기화 상태 — 넓은 화면은 글자까지, 폰은 점 하나 */
+export function SyncPill({ className }: { className?: string }) {
+  const p = usePlanner();
+  const { tone, dot, text, Icon, error } = syncLook(p);
   return (
     <button
-      onClick={() => openSheet("settings", "account")}
-      title={s.error ?? text}
+      onClick={() => p.openSheet("settings", "account")}
+      title={error ?? text}
+      aria-label={text}
       className={cx(
-        "hidden h-9 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-xs font-semibold sm:inline-flex",
+        "inline-flex h-9 items-center gap-2 rounded-xl px-2.5 text-xs font-semibold sm:border sm:border-line sm:bg-surface sm:px-3",
         tone,
+        className,
       )}
     >
       <span className={cx("size-2 rounded-full", dot)} />
-      <Icon size={14} />
-      {text}
+      <Icon size={14} className="hidden sm:block" />
+      <span className="hidden sm:inline">{text}</span>
     </button>
   );
 }
 
-function InstallButton() {
+export function InstallButton() {
   const [evt, setEvt] = useState<BeforeInstallPromptEvent | null>(null);
   useEffect(() => {
     if (isStandalone()) return;
@@ -94,7 +102,7 @@ function InstallButton() {
   );
 }
 
-/** 큰 카드가 화면 밖으로 나가면 헤더 아래에 붙는 한 줄 — 지금 / 다음까지 / 달성률을 항상 보이게 */
+/** 큰 상태 카드가 화면 밖으로 나가면 헤더 아래에 붙는 한 줄 — 지금 / 다음까지 / 달성률을 항상 보이게 */
 function MiniStatus() {
   const { tasks, settings } = usePlanner();
   const now = useNow(1000);
@@ -105,7 +113,7 @@ function MiniStatus() {
   const overdue = enforcementQueue(tasks, now, settings.graceMin).length;
   const late = cur && cur.status === "planned";
   return (
-    <div className="fade-up mx-auto flex h-10 max-w-[1400px] items-center gap-3 border-t border-line px-4 text-[13px] md:px-6">
+    <div className="fade-up mx-auto flex h-10 max-w-[1200px] items-center gap-3 border-t border-line px-4 text-[13px] md:px-8">
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <span
           className={cx("size-2 shrink-0 rounded-full", late ? "animate-pulse bg-danger" : cur ? "bg-accent" : "bg-faint")}
@@ -122,51 +130,41 @@ function MiniStatus() {
         </span>
       )}
       {overdue > 0 && (
-        <span className="shrink-0 rounded-md bg-danger px-1.5 py-0.5 text-[11px] font-bold text-white">미시작 {overdue}</span>
+        <span className="shrink-0 rounded-md bg-danger px-1.5 py-px text-[11px] font-bold text-white">미시작 {overdue}</span>
       )}
       <span className="shrink-0 font-mono font-bold tabular-nums">{s.rate}%</span>
     </div>
   );
 }
 
-export function Header({ onToday, compact = false }: { onToday: () => void; compact?: boolean }) {
+/** 위쪽 막대 — 탭 이름 · 날짜 · 동기화 · 말로 추가. compact 면 지금/다음/달성률 한 줄을 붙인다 */
+export function TopBar({ title, compact = false, children }: { title: string; compact?: boolean; children?: ReactNode }) {
   const { openSheet } = usePlanner();
-  const now = useNow(1000);
+  const now = useNow(30_000);
   return (
-    <header className="safe-top sticky top-0 z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] backdrop-blur-xl">
-      <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-3 px-4 md:h-16 md:px-6">
-        <Logo />
-        <button
-          onClick={onToday}
-          className="ml-1 hidden items-baseline gap-2 rounded-lg px-2 py-1 text-sm hover:bg-surface-2 md:flex"
-        >
-          <span className="font-semibold">{fmtDate(new Date(now))}</span>
-          <span className="font-mono text-muted tabular-nums">{fmtTime(new Date(now))}</span>
-        </button>
+    <header className="safe-top sticky top-0 z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_70%,transparent)] backdrop-blur-xl">
+      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 px-4 md:h-16 md:px-8">
+        <h1 className="text-xl font-black tracking-tight md:text-2xl">{title}</h1>
+        <span className="hidden items-baseline gap-2 text-sm md:flex">
+          <span className="font-semibold text-muted">{fmtDate(new Date(now))}</span>
+          <span className="font-mono text-faint tabular-nums">{fmtTime(new Date(now))}</span>
+        </span>
         <div className="ml-auto flex items-center gap-1.5">
           <InstallButton />
           <SyncPill />
-          <IconButton label="오늘로" onClick={onToday} className="md:hidden">
-            <CalendarDays size={20} />
-          </IconButton>
           <button
             onClick={() => openSheet("voice")}
             className="hidden h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-bold text-accent-fg md:inline-flex"
           >
             <Mic size={14} /> 말로 추가
           </button>
-          <IconButton label="습관" onClick={() => openSheet("habits")}>
-            <Repeat size={20} />
-          </IconButton>
-          <IconButton label="기록·사유" onClick={() => openSheet("log")}>
-            <NotebookPen size={20} />
-          </IconButton>
-          <IconButton label="설정" onClick={() => openSheet("settings")}>
-            <Settings size={20} />
+          <IconButton label="말로 일정 추가" onClick={() => openSheet("voice")} className="md:hidden">
+            <Mic size={20} />
           </IconButton>
         </div>
       </div>
       {compact && <MiniStatus />}
+      {children}
     </header>
   );
 }

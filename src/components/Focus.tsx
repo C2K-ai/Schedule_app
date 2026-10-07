@@ -80,11 +80,12 @@ export function FocusDock() {
   const [abandon, setAbandon] = useState(false);
   const pct = f ? 1 - remaining / total : 0;
   const isBreak = f?.mode === "break";
+  if (!f) return null;
 
   return (
     <>
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30">
-        <div className="safe-bottom mx-auto max-w-[1400px] px-3 pb-3 md:px-6">
+      <div className="pointer-events-none fixed right-[84px] bottom-[calc(72px+env(safe-area-inset-bottom))] left-0 z-30 md:right-0 md:bottom-0 md:left-[264px]">
+        <div className="mx-auto max-w-[1200px] px-3 md:px-8 md:pb-3">
           <div className="pointer-events-auto relative overflow-hidden rounded-2xl border border-line bg-[color-mix(in_oklab,var(--surface)_88%,transparent)] shadow-card backdrop-blur-xl">
             {f && (
               <div className="absolute inset-x-0 top-0 h-[3px] bg-surface-3">

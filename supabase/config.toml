@@ -14,3 +14,6 @@ verify_jwt = true
 
 [functions.parse-schedule]
 verify_jwt = true
+
+[functions.career-polish]
+verify_jwt = true

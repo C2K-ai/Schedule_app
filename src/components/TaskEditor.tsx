@@ -1,13 +1,15 @@
 "use client";
 
-import { Check, Play, Repeat, RotateCcw, Trash, Volume2 } from "lucide-react";
-import { useState } from "react";
+import { Check, Play, Repeat, RotateCcw, Star, Trash, Volume2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import {
   completeTask,
   createHabit,
   createTask,
   deleteTask,
+  liveCategories,
   reopenTask,
+  scheduleWindow,
   restoreTask,
   startTask,
   taskState,
@@ -16,13 +18,16 @@ import {
 import { DURATION_CHOICES, OFFSET_CHOICES } from "@/lib/settings";
 import { findSound, playSound } from "@/lib/sound";
 import { atTime, fmtOffset, fmtTime, MIN, parseDayKey, toDateInput, toHHMM, WEEKDAYS } from "@/lib/time";
-import type { ColorKey, Settings, Task } from "@/lib/types";
+import { COLOR_HEX, type ColorKey, type ScheduleKind, type Settings, type Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { usePlanner, type EditorState } from "./PlannerProvider";
 import { SoundOptions } from "./SoundOptions";
-import { Button, Chip, ColorPicker, cx, inputCls, Label, Modal, Switch } from "./ui";
+import { Button, Chip, ColorPicker, cx, inputCls, Label, Modal, Segmented, Switch } from "./ui";
 
 interface Draft {
+  schedule: ScheduleKind;
+  categoryId: string | null;
+  starred: boolean;
   title: string;
   date: string;
   time: string;
@@ -40,6 +45,9 @@ function initialDraft(task: Task | null, editor: EditorState, settings: Settings
   if (task) {
     const s = new Date(task.starts_at);
     return {
+      schedule: task.schedule ?? "timed",
+      categoryId: task.category_id ?? null,
+      starred: task.starred ?? false,
       title: task.title,
       date: toDateInput(s),
       time: toHHMM(s),
@@ -56,8 +64,11 @@ function initialDraft(task: Task | null, editor: EditorState, settings: Settings
   const s = editor.start ?? new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN);
   const dur = editor.end ? Math.round((editor.end.getTime() - s.getTime()) / MIN) : 30;
   return {
-    title: "",
-    date: toDateInput(s),
+    schedule: editor.schedule ?? "timed",
+    categoryId: editor.categoryId ?? null,
+    starred: editor.starred ?? false,
+    title: editor.title ?? "",
+    date: editor.day ?? toDateInput(s),
     time: toHHMM(s),
     duration: dur,
     color: "lime",
@@ -78,7 +89,8 @@ export function TaskEditor() {
 }
 
 function EditorBody({ editor }: { editor: EditorState }) {
-  const { closeEditor, store, settings, toast } = usePlanner();
+  const { closeEditor, store, settings, toast, snap } = usePlanner();
+  const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const now = useNow(10_000);
   const task = editor.taskId ? (store.db.tasks[editor.taskId] ?? null) : null;
   const [d, setD] = useState<Draft>(() => initialDraft(task, editor, settings));
@@ -89,27 +101,36 @@ function EditorBody({ editor }: { editor: EditorState }) {
   const st = task ? taskState(task, now, settings.graceMin) : null;
   const lockedDelete = task && task.strict && (st === "overdue" || st === "late");
 
+  const timed = d.schedule === "timed";
   const save = () => {
     if (!d.title.trim()) return setErr("제목을 적어 주세요");
-    if (d.duration < 5) return setErr("최소 5분 이상");
+    if (timed && d.duration < 5) return setErr("최소 5분 이상");
+    const win =
+      d.schedule === "timed"
+        ? { starts_at: start.toISOString(), ends_at: end.toISOString() }
+        : d.schedule === "someday" && task?.schedule === "someday"
+          ? { starts_at: task.starts_at, ends_at: task.ends_at }
+          : scheduleWindow(d.schedule, { day: d.date });
     if (task) {
       // 이미 시작 시각이 지난 미시작 일정을 뒤로 미는 건 '미루기' — 사유 화면으로
-      const movingLater = start.getTime() > Date.parse(task.starts_at);
-      if (task.status === "planned" && task.strict && Date.parse(task.starts_at) <= now && movingLater) {
+      const movingLater = Date.parse(win.starts_at) > Date.parse(task.starts_at);
+      if (task.status === "planned" && task.strict && (task.schedule ?? "timed") === "timed" && Date.parse(task.starts_at) <= now && movingLater) {
         return setErr("이미 시작했어야 하는 일정입니다. 뒤로 미루려면 메인 화면의 경고창에서 사유와 함께 미루세요.");
       }
       updateTask(store, task.id, {
         title: d.title.trim(),
-        starts_at: start.toISOString(),
-        ends_at: end.toISOString(),
+        ...win,
+        schedule: d.schedule,
+        category_id: d.categoryId,
+        starred: d.starred,
         color: d.color,
-        reminder_offsets: [...d.offsets].sort((a, b) => b - a),
+        reminder_offsets: timed ? [...d.offsets].sort((a, b) => b - a) : [],
         sound_id: d.soundId,
-        strict: d.strict,
+        strict: timed ? d.strict : false,
         notes: d.notes.trim() || null,
       });
       toast({ text: "저장했습니다" });
-    } else if (d.repeat) {
+    } else if (timed && d.repeat) {
       if (!d.days.length) return setErr("반복할 요일을 하나 이상 고르세요");
       createHabit(store, {
         title: d.title,
@@ -127,9 +148,13 @@ function EditorBody({ editor }: { editor: EditorState }) {
         store,
         {
           title: d.title,
+          schedule: d.schedule,
+          day: d.date,
           starts_at: start.toISOString(),
           ends_at: end.toISOString(),
           color: d.color,
+          category_id: d.categoryId,
+          starred: d.starred,
           reminder_offsets: [...d.offsets].sort((a, b) => b - a),
           sound_id: d.soundId,
           strict: d.strict,
@@ -137,7 +162,7 @@ function EditorBody({ editor }: { editor: EditorState }) {
         },
         settings,
       );
-      toast({ text: `추가: ${fmtTime(start)} ${d.title}`, tone: "ok" });
+      toast({ text: timed ? `추가: ${fmtTime(start)} ${d.title}` : `추가: ${d.title}`, tone: "ok" });
     }
     closeEditor();
   };
@@ -173,7 +198,7 @@ function EditorBody({ editor }: { editor: EditorState }) {
               취소
             </Button>
             <Button variant="primary" onClick={save}>
-              {task ? "저장" : d.repeat ? "습관 만들기" : "추가"}
+              {task ? "저장" : timed && d.repeat ? "습관 만들기" : "추가"}
             </Button>
           </div>
         </div>
@@ -188,6 +213,57 @@ function EditorBody({ editor }: { editor: EditorState }) {
           placeholder="무엇을 할까요? 예: 독일어 단어 30개"
           className={cx(inputCls, "h-12 text-lg font-semibold")}
         />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented
+            value={d.schedule}
+            onChange={(schedule) => set({ schedule })}
+            options={[
+              { value: "timed", label: "시간 지정" },
+              { value: "day", label: "날짜만" },
+              { value: "someday", label: "날짜 없음" },
+            ]}
+          />
+          <button
+            type="button"
+            onClick={() => set({ starred: !d.starred })}
+            aria-pressed={d.starred}
+            className={cx(
+              "inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold transition",
+              d.starred ? "bg-warn/15 text-warn" : "bg-surface-2 text-muted hover:text-fg",
+            )}
+          >
+            <Star size={15} fill={d.starred ? "currentColor" : "none"} /> 별표
+          </button>
+        </div>
+
+        {categories.length > 0 && (
+          <div>
+            <Label>카테고리</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {categories.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() =>
+                    set(
+                      d.categoryId === c.id
+                        ? { categoryId: null }
+                        : { categoryId: c.id, ...(task ? {} : { color: c.color }) },
+                    )
+                  }
+                  className={cx(
+                    "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-semibold transition",
+                    d.categoryId === c.id ? "border-transparent bg-fg text-bg" : "border-line bg-surface-2 text-muted hover:text-fg",
+                  )}
+                >
+                  <span className="size-2 rounded-full" style={{ background: COLOR_HEX[c.color] }} />
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {task && (
           <div className="flex flex-wrap gap-2">
@@ -214,6 +290,13 @@ function EditorBody({ editor }: { editor: EditorState }) {
           </div>
         )}
 
+        {d.schedule === "day" && (
+          <div>
+            <Label>날짜</Label>
+            <input type="date" value={d.date} onChange={(e) => e.target.value && set({ date: e.target.value })} className={inputCls} />
+          </div>
+        )}
+        {timed && (
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>날짜</Label>
@@ -224,7 +307,10 @@ function EditorBody({ editor }: { editor: EditorState }) {
             <input type="time" value={d.time} step={300} onChange={(e) => e.target.value && set({ time: e.target.value })} className={inputCls} />
           </div>
         </div>
+        )}
 
+        {timed && (
+          <>
         <div>
           <Label hint={`${fmtTime(start)} – ${fmtTime(end)}`}>길이</Label>
           <div className="flex flex-wrap gap-1.5">
@@ -281,12 +367,15 @@ function EditorBody({ editor }: { editor: EditorState }) {
             </Button>
           </div>
         </div>
+          </>
+        )}
 
         <div>
           <Label>색</Label>
           <ColorPicker value={d.color} onChange={(color) => set({ color })} />
         </div>
 
+        {timed && (
         <div className="rounded-2xl border border-line bg-surface-2/60 px-4 py-2">
           <Switch
             checked={d.strict}
@@ -327,8 +416,9 @@ function EditorBody({ editor }: { editor: EditorState }) {
             </>
           )}
         </div>
+        )}
 
-        {!d.repeat && (
+        {!(timed && d.repeat) && (
           <div>
             <Label>메모</Label>
             <textarea

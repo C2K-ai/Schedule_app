@@ -1,7 +1,7 @@
 "use client";
 
-import { Dashboard } from "./Dashboard";
 import { PlannerProvider } from "./PlannerProvider";
+import { Shell } from "./Shell";
 import { Logo } from "./ui";
 
 function Splash() {
@@ -20,7 +20,7 @@ function Splash() {
 export function App() {
   return (
     <PlannerProvider splash={<Splash />}>
-      <Dashboard />
+      <Shell />
     </PlannerProvider>
   );
 }

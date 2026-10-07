@@ -17,7 +17,17 @@ import type { DB, Profile, Row, SyncStatus, TableName } from "./types";
  * 그래서 비행기 안(오프라인)에서도 그대로 쓰고, 착륙 후 연결되면 밀린 변경이 올라간다.
  */
 
-export const TABLES: TableName[] = ["tasks", "habits", "task_logs", "focus_sessions", "categories", "day_notes"];
+export const TABLES: TableName[] = [
+  "tasks",
+  "habits",
+  "task_logs",
+  "focus_sessions",
+  "categories",
+  "day_notes",
+  "subjects",
+  "study_sessions",
+  "career_entries",
+];
 type AnyTable = TableName | "profiles";
 
 interface OutboxItem {
@@ -45,6 +55,9 @@ const emptyDb = (): DB => ({
   focus_sessions: {},
   categories: {},
   day_notes: {},
+  subjects: {},
+  study_sessions: {},
+  career_entries: {},
   profile: null,
 });
 
@@ -353,7 +366,18 @@ export class PlannerStore {
     let networkFailed = false;
     const done = new Set<OutboxItem>();
     // 외래키 순서: 습관 → 일정 → 기록·집중 (일정보다 기록이 먼저 올라가면 거절된다)
-    const order: AnyTable[] = ["profiles", "habits", "categories", "tasks", "task_logs", "focus_sessions", "day_notes"];
+    const order: AnyTable[] = [
+      "profiles",
+      "habits",
+      "categories",
+      "subjects",
+      "tasks",
+      "task_logs",
+      "focus_sessions",
+      "day_notes",
+      "study_sessions",
+      "career_entries",
+    ];
     const sorted = [...groups].sort(
       ([a], [b]) => order.indexOf(a.split("|")[0] as AnyTable) - order.indexOf(b.split("|")[0] as AnyTable),
     );
@@ -460,6 +484,8 @@ export class PlannerStore {
             q = q.gte("started_at", new Date(Date.now() - 30 * DAY).toISOString());
           else if (table === "day_notes")
             q = q.gte("day", new Date(Date.now() - 400 * DAY).toISOString().slice(0, 10));
+          else if (table === "study_sessions")
+            q = q.gte("started_at", new Date(Date.now() - 400 * DAY).toISOString());
           const { data, error } = await q;
           if (error) throw error;
           for (const row of data ?? []) {

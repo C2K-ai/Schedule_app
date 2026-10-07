@@ -100,3 +100,36 @@ export async function aiStatus(client: SupabaseClient): Promise<{ ready: boolean
   if (error) throw new Error(error.message);
   return data as { ready: boolean; model?: string };
 }
+
+export interface Polished {
+  title: string;
+  summary: string;
+  bullets: string[];
+  skills: string[];
+}
+
+/** 커리어 기록 다듬기 — 메모 + 그 기간의 일정·노트 → 이력서용 문장 */
+export async function polishCareer(
+  client: SupabaseClient,
+  input: {
+    title: string;
+    kind: string;
+    start_day: string;
+    end_day: string | null;
+    raw: string;
+    events: { date: string; title: string; notes: string | null }[];
+    notes: { day: string; body: string }[];
+  },
+): Promise<Polished> {
+  const { data, error } = await client.functions.invoke("career-polish", { body: input });
+  if (error) {
+    let code = "";
+    const ctx = (error as { context?: Response }).context;
+    if (ctx && typeof ctx.json === "function") {
+      code = ((await ctx.json().catch(() => ({}))) as { error?: string }).error ?? "";
+    }
+    if (code === "empty") throw new Error("메모를 적거나 관련 일정을 하나 이상 골라 주세요.");
+    throw new Error(MESSAGES[code] ?? (navigator.onLine ? "AI 다듬기에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
+  }
+  return data as Polished;
+}

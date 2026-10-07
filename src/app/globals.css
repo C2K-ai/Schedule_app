@@ -73,6 +73,12 @@ html[data-palette="dusk"] {
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 36px rgba(3, 2, 15, 0.5);
 }
 
+/* 그림 배경(Backdrop)이 보이도록 — body 배경은 음수 z-index 요소를 덮는다 */
+html[data-palette="dusk"] body {
+  background: transparent;
+  background-image: none;
+}
+
 @media (min-width: 768px) {
   :root {
     --hour: 72px;
@@ -258,6 +264,28 @@ select {
     opacity: 1;
     transform: none;
   }
+}
+
+.drawer-in {
+  animation: drawer-in 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* 가로로 미는 칩 줄 — 스크롤바 숨김 */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .sheet-in {
