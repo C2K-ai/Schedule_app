@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Cloud, CloudOff, Download, NotebookPen, Repeat, Settings } from "lucide-react";
+import { CalendarDays, Cloud, CloudOff, Download, Mic, NotebookPen, Repeat, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
@@ -149,6 +149,12 @@ export function Header({ onToday, compact = false }: { onToday: () => void; comp
           <IconButton label="오늘로" onClick={onToday} className="md:hidden">
             <CalendarDays size={20} />
           </IconButton>
+          <button
+            onClick={() => openSheet("voice")}
+            className="hidden h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-bold text-accent-fg md:inline-flex"
+          >
+            <Mic size={14} /> 말로 추가
+          </button>
           <IconButton label="습관" onClick={() => openSheet("habits")}>
             <Repeat size={20} />
           </IconButton>

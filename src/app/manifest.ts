@@ -23,6 +23,7 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: withBase("/icons/maskable-512.png"), sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
+      { name: "말로 일정 추가", short_name: "말로 추가", url: withBase("/?action=voice"), icons: [{ src: withBase("/icons/icon-192.png"), sizes: "192x192" }] },
       { name: "새 일정", short_name: "추가", url: withBase("/?action=new"), icons: [{ src: withBase("/icons/icon-192.png"), sizes: "192x192" }] },
       { name: "집중 시작", short_name: "집중", url: withBase("/?action=focus"), icons: [{ src: withBase("/icons/icon-192.png"), sizes: "192x192" }] },
     ],

@@ -9,6 +9,8 @@ const MODEL = "claude-opus-5-5";
 const MAX_TEXT = 2000;
 
 interface Body {
+  /** true 면 Claude 를 부르지 않고 키가 있는지만 알려 준다(설정 화면용) */
+  ping?: unknown;
   text?: unknown;
   /** 사용자 기기 기준 오늘 YYYY-MM-DD */
   today?: unknown;
@@ -30,6 +32,10 @@ Deno.serve(async (req) => {
     body = await req.json();
   } catch {
     return json({ error: "bad_json" }, 400);
+  }
+  if (body.ping === true) {
+    const ready = await setting("ANTHROPIC_API_KEY").then(Boolean, () => false);
+    return json({ ready, model: MODEL });
   }
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text) return json({ error: "empty" }, 400);

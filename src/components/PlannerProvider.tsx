@@ -38,7 +38,7 @@ export interface Alarm {
   at: number;
 }
 
-export type Sheet = null | "settings" | "habits" | "log";
+export type Sheet = null | "settings" | "habits" | "log" | "voice";
 
 export interface EditorState {
   taskId?: string;

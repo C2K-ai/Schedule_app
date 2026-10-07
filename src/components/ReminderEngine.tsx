@@ -223,13 +223,14 @@ export function ReminderEngine() {
   // 서비스 워커 메시지(서버 푸시 도착 / 알림 버튼 클릭)
   const handleAction = useCallback(
     (action: string, taskId: string | null | undefined, handled: boolean) => {
-      const { store: st, toast, setFocusScreen, openEditor, dismissAlarm } = latest.current;
+      const { store: st, toast, setFocusScreen, openEditor, openSheet, dismissAlarm } = latest.current;
       if (handled) {
         void st.pull();
         return;
       }
       if (action === "new") return openEditor({});
       if (action === "focus") return setFocusScreen(true);
+      if (action === "voice") return openSheet("voice");
       if (!taskId || !st.db.tasks[taskId]) return;
       if (action === "start") {
         startTask(st, taskId);

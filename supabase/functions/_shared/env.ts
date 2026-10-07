@@ -36,15 +36,21 @@ let vaultCache: Promise<Record<string, string>> | null = null;
 export async function setting(name: keyof typeof VAULT_NAMES | string, fallback?: string): Promise<string> {
   const env = Deno.env.get(name);
   if (env) return env;
-  vaultCache ??= (async () => {
-    const { data, error } = await admin().rpc("must_function_config");
-    if (error) throw new Error(`Vault 설정을 읽지 못했습니다: ${error.message}`);
-    return (data ?? {}) as Record<string, string>;
-  })().catch((e) => {
-    vaultCache = null; // 다음 호출에서 다시 시도
-    throw e;
-  });
-  const v = (await vaultCache)[VAULT_NAMES[name] ?? ""];
+  const load = () =>
+    (vaultCache ??= (async () => {
+      const { data, error } = await admin().rpc("must_function_config");
+      if (error) throw new Error(`Vault 설정을 읽지 못했습니다: ${error.message}`);
+      return (data ?? {}) as Record<string, string>;
+    })().catch((e) => {
+      vaultCache = null; // 다음 호출에서 다시 시도
+      throw e;
+    }));
+  let v = (await load())[VAULT_NAMES[name] ?? ""];
+  if (!v) {
+    // 함수가 떠 있는 동안 Vault 에 새로 넣은 값도 보이게 — 없을 때만 한 번 새로 읽는다
+    vaultCache = null;
+    v = (await load())[VAULT_NAMES[name] ?? ""];
+  }
   if (v) return v;
   if (fallback !== undefined) return fallback;
   throw new Error(`${name} 설정이 없습니다 — Vault 에 ${VAULT_NAMES[name]} 를 넣거나 supabase secrets set ${name}=...`);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Cloud, Plus, Share, X } from "lucide-react";
+import { Cloud, Mic, Plus, Share, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { isIOS, isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
@@ -20,6 +20,7 @@ import { SettingsSheet } from "./SettingsSheet";
 import { Agenda, HabitMini, ReasonFeed } from "./SidePanels";
 import { TaskEditor } from "./TaskEditor";
 import { Toasts } from "./Toasts";
+import { VoiceAdd } from "./VoiceAdd";
 import { Logo } from "./ui";
 
 function InstallHint() {
@@ -146,7 +147,14 @@ export function Dashboard() {
         </footer>
       </main>
 
-      {/* 모바일 추가 버튼 */}
+      {/* 모바일 추가 버튼 — 위: 말로 추가, 아래: 직접 추가 */}
+      <button
+        aria-label="말로 일정 추가"
+        onClick={() => p.openSheet("voice")}
+        className="fixed right-5 bottom-[164px] z-30 grid size-12 place-items-center rounded-full border border-line-strong bg-surface text-fg shadow-card active:scale-95 md:hidden"
+      >
+        <Mic size={22} />
+      </button>
       <button
         aria-label="일정 추가"
         onClick={() => p.openEditor({ start: new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN) })}
@@ -162,6 +170,7 @@ export function Dashboard() {
       <HabitsSheet />
       <LogSheet />
       <SettingsSheet />
+      <VoiceAdd />
       <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.postpone)} />
       <AlarmOverlay />
       <OverdueSiren />

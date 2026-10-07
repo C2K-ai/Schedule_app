@@ -10,6 +10,7 @@ import {
   showSystemNotification,
   type PermissionState,
 } from "@/lib/notify";
+import { aiStatus } from "@/lib/ai";
 import { OFFSET_CHOICES } from "@/lib/settings";
 import { currentPushSubscription, pushSupported, sendTestPush, subscribePush, unsubscribePush } from "@/lib/push";
 import { downloadSound, findSound, playSound, unlockAudio, vibrate, VIBRATIONS } from "@/lib/sound";
@@ -23,13 +24,14 @@ import { SoundOptions } from "./SoundOptions";
 import { SoundStudio } from "./SoundStudio";
 import { Button, Chip, cx, Label, Modal, Segmented, Switch } from "./ui";
 
-type Tab = "notify" | "sound" | "rules" | "focus" | "account" | "data";
+type Tab = "notify" | "sound" | "rules" | "focus" | "ai" | "account" | "data";
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "notify", label: "알림" },
   { value: "sound", label: "소리" },
   { value: "rules", label: "강제 규칙" },
   { value: "focus", label: "집중" },
+  { value: "ai", label: "AI" },
   { value: "account", label: "동기화" },
   { value: "data", label: "화면·데이터" },
 ];
@@ -400,6 +402,77 @@ function FocusTab() {
   );
 }
 
+const KEY_SQL = "select vault.create_secret('여기에-sk-ant-로-시작하는-키', 'must_anthropic_key');";
+
+function AiTab() {
+  const { session, openSheet } = usePlanner();
+  const [state, setState] = useState<"checking" | "ready" | "missing" | "error" | "offline">(
+    cloudEnabled && session.userId ? "checking" : "offline",
+  );
+  useEffect(() => {
+    const sb = getSupabase();
+    if (!sb || !session.userId) return;
+    let alive = true;
+    aiStatus(sb)
+      .then((r) => alive && setState(r.ready ? "ready" : "missing"))
+      .catch(() => alive && setState("error"));
+    return () => {
+      alive = false;
+    };
+  }, [session.userId]);
+
+  const badge = {
+    checking: { text: "확인 중…", cls: "bg-surface-2 text-muted" },
+    ready: { text: "연결됨 — 바로 쓸 수 있어요", cls: "bg-ok/15 text-ok" },
+    missing: { text: "키가 아직 없어요", cls: "bg-warn/15 text-warn" },
+    error: { text: "서버에 연결하지 못했어요", cls: "bg-danger-soft text-danger" },
+    offline: { text: "로그인해야 쓸 수 있어요", cls: "bg-warn/15 text-warn" },
+  }[state];
+
+  return (
+    <>
+      <Section
+        title="말로 일정 추가"
+        desc="마이크 버튼을 누르고 생각나는 대로 말하면 AI(Claude)가 날짜·시간·반복·카테고리를 알아서 정리해 미리보기로 보여 줍니다. 확인을 눌러야 저장돼요."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={cx("rounded-lg px-2.5 py-1 text-sm font-bold", badge.cls)}>{badge.text}</span>
+          <Button size="sm" variant="primary" onClick={() => openSheet("voice")}>
+            지금 해 보기
+          </Button>
+        </div>
+      </Section>
+      <Section
+        title="AI 키 넣기 (한 번만)"
+        desc="키는 서버(Supabase Vault)에만 저장되고 앱·깃허브에는 남지 않습니다."
+      >
+        <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed">
+          <li>
+            <b>console.anthropic.com</b> 가입 → Billing 에서 크레딧 충전(최소 $5) → API Keys 에서 <b>Create Key</b> → <code>sk-ant-…</code> 복사
+          </li>
+          <li>
+            <b>supabase.com</b> → 이 앱 프로젝트 → 왼쪽 <b>SQL Editor</b> → 아래 한 줄에서 키 부분만 바꿔 붙여넣고 <b>Run</b>
+          </li>
+        </ol>
+        <div className="mt-3 flex items-start gap-2">
+          <code className="min-w-0 flex-1 rounded-xl bg-surface-2 px-3 py-2 text-xs leading-relaxed break-all">{KEY_SQL}</code>
+          <Button
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard?.writeText(KEY_SQL);
+            }}
+          >
+            복사
+          </Button>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-muted">
+          비용: 한 번 정리할 때 약 20~40원(입력 짧은 기준). 이 탭을 다시 열면 연결 상태가 바뀌어 있을 거예요.
+        </p>
+      </Section>
+    </>
+  );
+}
+
 function AccountTab() {
   const { session, snap, store, signOut, toast } = usePlanner();
   const importedKey = session.userId ? `must:local-imported:${session.userId}` : "";
@@ -585,6 +658,7 @@ function SettingsBody({ initial }: { initial: Tab }) {
       {tab === "sound" && <SoundTab />}
       {tab === "rules" && <RulesTab />}
       {tab === "focus" && <FocusTab />}
+      {tab === "ai" && <AiTab />}
       {tab === "account" && <AccountTab />}
       {tab === "data" && <DataTab />}
     </Modal>
