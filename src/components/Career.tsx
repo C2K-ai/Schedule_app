@@ -54,6 +54,7 @@ function Editor({ initial, onDone }: { initial: Draft; onDone: () => void }) {
     if (!sb || !session.userId) return setErr("AI 다듬기는 로그인한 상태에서만 쓸 수 있어요 (설정 → 계정).");
     setErr(null);
     setBusy(true);
+    const skillsAtStart = skillText;
     try {
       const events = material.tasks
         .filter((t) => picked.has(t.id))
@@ -68,8 +69,9 @@ function Editor({ initial, onDone }: { initial: Draft; onDone: () => void }) {
         notes: useNotes ? material.notes.map((n) => ({ day: n.day, body: n.body })) : [],
       });
       const text = [r.summary, ...r.bullets.map((b) => `- ${b}`)].filter(Boolean).join("\n");
-      setD({ ...d, title: d.title.trim() || r.title, polished: text, skills: r.skills });
-      setSkillText(r.skills.join(", "));
+      // 기다리는 동안 고친 내용은 살린다 — 최신 초안에 결과만 얹는다
+      setD((cur) => ({ ...cur, title: cur.title.trim() || r.title, polished: text, skills: r.skills }));
+      setSkillText((cur) => (cur === skillsAtStart ? r.skills.join(", ") : cur));
     } catch (e) {
       setErr((e as Error).message);
     } finally {

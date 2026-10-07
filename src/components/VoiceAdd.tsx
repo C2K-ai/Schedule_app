@@ -42,7 +42,7 @@ function VoiceBody() {
   const { openSheet, store, settings, snap, session, toast } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const [text, setText] = useState("");
-  const { listening, error: micError, start, stop } = useSpeech(setText);
+  const { listening, error: micError, start, stop, interrupt } = useSpeech(setText);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
@@ -56,7 +56,8 @@ function VoiceBody() {
   }, [canSpeak, start]);
 
   const analyze = async () => {
-    stop();
+    if (busy) return;
+    interrupt();
     const t = text.trim();
     if (!t) return setErr("할 일을 말하거나 적어 주세요");
     const sb = getSupabase();
@@ -151,7 +152,11 @@ function VoiceBody() {
         )}
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            // 손으로 고치면 듣기를 멈춘다 — 안 그러면 다음 인식 결과가 고친 글을 덮어쓴다(🎤 를 다시 누르면 이어서 듣기)
+            if (listening) interrupt();
+            setText(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void analyze();
           }}

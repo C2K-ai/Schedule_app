@@ -53,7 +53,8 @@ export function ListManager({
     const b = items[i + dir];
     if (!a || !b) return;
     onUpdate(a.id, { sort: b.sort });
-    onUpdate(b.id, { sort: a.sort === b.sort ? a.sort + dir : a.sort });
+    // 정렬값이 같으면(두 기기에서 따로 만든 경우) b 를 반대쪽으로 밀어야 실제로 자리가 바뀐다
+    onUpdate(b.id, { sort: a.sort === b.sort ? a.sort - dir : a.sort });
   };
 
   return (

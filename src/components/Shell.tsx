@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createCategory, deleteCategory, liveCategories, updateCategory } from "@/lib/planner";
 import { MIN } from "@/lib/time";
+import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
 import { AlarmOverlay } from "./AlarmOverlay";
 import { Backdrop } from "./Backdrop";
@@ -227,6 +228,14 @@ export function Shell() {
     io.observe(el);
     return () => io.disconnect();
   }, [tab]);
+
+  // 화면이 넓어지면(폰 가로 회전·창 넓히기) 서랍은 사라지므로 닫아 둔다 — 안 그러면 스크롤 잠금만 남는다
+  const wide = useMedia("(min-width: 768px)");
+  useEffect(() => {
+    // 외부(화면 크기) 변화에 맞춰 닫기
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (wide) setDrawer(false);
+  }, [wide]);
 
   // 서랍 열린 동안 뒤 화면 스크롤 막기 + Esc 로 닫기
   useEffect(() => {

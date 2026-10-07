@@ -55,6 +55,20 @@ export function useSpeech(onText: (text: string) => void) {
     recRef.current?.stop();
   }, []);
 
+  /** 지금 화면의 글을 그대로 두고 듣기를 끝낸다 — 손으로 고치기 시작했거나 바로 AI 로 보낼 때(끝난 뒤 글을 되돌리지 않게) */
+  const interrupt = useCallback(() => {
+    wantRef.current = false;
+    const rec = recRef.current;
+    recRef.current = null;
+    if (rec) {
+      rec.onresult = null;
+      rec.onend = null;
+      rec.onerror = null;
+      rec.abort();
+    }
+    setListening(false);
+  }, []);
+
   const start = useCallback((base: string) => {
     const C = ctor();
     if (!C) {
@@ -124,5 +138,5 @@ export function useSpeech(onText: (text: string) => void) {
     [],
   );
 
-  return { listening, error, start, stop };
+  return { listening, error, start, stop, interrupt };
 }
