@@ -32,23 +32,27 @@ function DayNote({ day }: { day: Date }) {
   const { store, snap } = usePlanner();
   const key = dayKey(day);
   const note = dayNoteFor(snap.db, key);
-  const [body, setBody] = useState(note?.body ?? "");
+  // 고치는 중일 때만 내 글(draft)을 보여 주고, 아니면 늘 저장된 글을 보여 준다 —
+  // 다른 기기에서 고친 노트가 실시간으로 들어오면 그대로 보이고, 손대지 않은 노트를 덮어쓰지 않는다
+  const [draft, setDraft] = useState<string | null>(null);
+  const draftRef = useRef<string | null>(null);
   const [saved, setSaved] = useState<"idle" | "typing" | "saved">("idle");
   const timer = useRef<number | null>(null);
-  const latest = useRef(body);
-  useEffect(() => {
-    latest.current = body;
-  });
 
   const flush = () => {
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = null;
+    const d = draftRef.current;
+    if (d === null) return;
+    draftRef.current = null;
     const cur = dayNoteFor(store.db, key);
-    if ((cur?.body ?? "") === latest.current) return;
-    saveDayNote(store, key, { body: latest.current });
-    setSaved("saved");
+    if ((cur?.body ?? "") !== d) {
+      saveDayNote(store, key, { body: d });
+      setSaved("saved");
+    }
+    setDraft(null);
   };
-  // 다른 날짜로 넘어가거나 화면을 닫을 때 남은 내용 저장
+  // 다른 날짜로 넘어가거나 화면을 닫을 때 쓰던 내용 저장
   useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -60,7 +64,7 @@ function DayNote({ day }: { day: Date }) {
             title={m.label}
             aria-label={`기분: ${m.label}`}
             aria-pressed={note?.mood === m.v}
-            onClick={() => saveDayNote(store, key, { mood: note?.mood === m.v ? null : m.v, body: latest.current })}
+            onClick={() => saveDayNote(store, key, { mood: note?.mood === m.v ? null : m.v })}
             className={cx(
               "grid size-11 place-items-center rounded-xl text-2xl transition",
               note?.mood === m.v ? "scale-110 bg-accent/20" : "opacity-55 grayscale-[40%] hover:opacity-100",
@@ -72,9 +76,10 @@ function DayNote({ day }: { day: Date }) {
         <span className="ml-auto text-xs text-faint">{saved === "typing" ? "입력 중…" : saved === "saved" ? "저장됨" : ""}</span>
       </div>
       <textarea
-        value={body}
+        value={draft ?? note?.body ?? ""}
         onChange={(e) => {
-          setBody(e.target.value);
+          draftRef.current = e.target.value;
+          setDraft(e.target.value);
           setSaved("typing");
           if (timer.current) window.clearTimeout(timer.current);
           timer.current = window.setTimeout(flush, 700);

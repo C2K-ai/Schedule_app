@@ -143,7 +143,7 @@ export function MeTab({ onCareer }: { onCareer: () => void }) {
       });
     const donut = catRows.length > 6 ? [...catRows.slice(0, 5), { key: "other", label: "기타", value: catRows.slice(5).reduce((n, r) => n + r.value, 0), color: "#64748b" }] : catRows;
     return { byDay, doneAll, doneMonth, perfect, rate, avg, best, week, donut };
-  }, [tasks, today, categories]);
+  }, [tasks, today, categories, now]);
 
   // 공부는 '공부 하루'(dayStartHour 경계) 기준 — 새벽 1시는 아직 어제
   const studyToday = useMemo(() => startOfDay(studyDayStart(new Date(now), settings.dayStartHour)), [now, settings.dayStartHour]);

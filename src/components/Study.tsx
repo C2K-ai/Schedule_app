@@ -2,7 +2,7 @@
 
 import { Square } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
-import { activeStudy, liveStudy, stopStudy, studyDayStart, studySeconds } from "@/lib/planner";
+import { activeStudy, liveStudy, stopStudy, studyDayStart, studySeconds, studyStartedHere } from "@/lib/planner";
 import { DAY, fmtTime } from "@/lib/time";
 import { COLOR_HEX } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
@@ -59,7 +59,9 @@ export function StudyEngine() {
       } catch {
         rec = null;
       }
-      const cur = activeStudy(store.db);
+      const raw = activeStudy(store.db);
+      // 다른 기기에서 재는 공부는 이 기기 화면이 꺼져도 건드리지 않는다
+      const cur = raw && studyStartedHere(raw.id) ? raw : null;
       if (document.visibilityState === "hidden") {
         if (cur) {
           try {

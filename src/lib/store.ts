@@ -3,7 +3,7 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_SETTINGS } from "./settings";
 import { DAY, nowIso } from "./time";
-import { DEFAULT_CATEGORIES, defaultCategoryId, localDefaultSlot } from "./ids";
+import { DEFAULT_CATEGORIES, dayNoteId, defaultCategoryId, localDefaultSlot } from "./ids";
 import type { DB, Profile, Row, SyncStatus, TableName } from "./types";
 
 /**
@@ -88,9 +88,10 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
+/** 계정으로 옮길 만한 로컬 데이터가 있나 — 자동으로 생기는 기본 카테고리는 빼고 센다 */
 export function hasLocalData(scope: string): boolean {
   const db = readJson<DB>(k(scope, "db"), emptyDb());
-  return Object.keys(db.tasks ?? {}).length + Object.keys(db.habits ?? {}).length > 0;
+  return TABLES.some((t) => t !== "categories" && Object.keys(db[t] ?? {}).length > 0);
 }
 
 export function readLocalDb(scope: string): DB {
@@ -302,11 +303,15 @@ export class PlannerStore {
       const slot = localDefaultSlot(id);
       return slot ? defaultCategoryId(this.userId, slot) : (id ?? null);
     };
+    // 예전 버전 백업의 일정엔 schedule/starred 가 없다 → 기본값으로 채워서 올린다
+    const source: DB = { ...src, tasks: normalizeTasks(src.tasks ?? {}) };
     for (const t of TABLES) {
-      for (const raw of Object.values(src[t] ?? {})) {
+      for (const raw of Object.values(source[t] ?? {})) {
         let row = raw as Row & Record<string, unknown>;
         if (t === "categories") row = { ...row, id: remap(row.id) as string };
         if (t === "tasks") row = { ...row, category_id: remap(row.category_id as string | null) };
+        // 하루 노트 id 는 사용자+날짜로 정해진다 — 로컬 모드 id 그대로면 서버의 (사용자, 날짜) 고유 조건에 걸린다
+        if (t === "day_notes") row = { ...row, id: dayNoteId(this.userId, String(row.day)) };
         const mine = this.snap.db[t][row.id] as Row | undefined;
         if (mine && mine.updated_at >= row.updated_at) continue;
         this.put(t, row as never, { keepUpdatedAt: true });
@@ -386,7 +391,8 @@ export class PlannerStore {
       const rows = items.map((i) => i.row);
       const { error } = await this.remote
         .from(table)
-        .upsert(rows, { onConflict: "id", ignoreDuplicates: mode === "insertIgnore" });
+        // 행마다 열이 다를 때 빠진 열을 NULL 로 채우지 않게 — 없는 열은 DB 기본값/기존 값 유지
+        .upsert(rows, { onConflict: "id", ignoreDuplicates: mode === "insertIgnore", defaultToNull: false });
       if (!error) {
         items.forEach((i) => done.add(i));
         continue;
@@ -478,7 +484,9 @@ export class PlannerStore {
         for (let page = 0; page < 20; page++) {
           let q = this.remote.from(table).select("*").order("synced_at", { ascending: true }).limit(500);
           if (after) q = q.gt("synced_at", after);
-          else if (table === "tasks") q = q.gte("starts_at", new Date(Date.now() - 60 * DAY).toISOString());
+          // 날짜 없는 할 일은 starts_at 이 만든 시각이라 오래돼도 받아야 한다
+          else if (table === "tasks")
+            q = q.or(`starts_at.gte."${new Date(Date.now() - 60 * DAY).toISOString()}",schedule.eq.someday`);
           else if (table === "task_logs") q = q.gte("created_at", new Date(Date.now() - 60 * DAY).toISOString());
           else if (table === "focus_sessions")
             q = q.gte("started_at", new Date(Date.now() - 30 * DAY).toISOString());

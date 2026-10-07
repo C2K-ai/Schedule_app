@@ -69,7 +69,8 @@ export async function setBriefingTime(client: SupabaseClient | null, time: strin
   if (client && sub) {
     const { error } = await client
       .from("push_subscriptions")
-      .update({ briefing_time: time, last_briefing_on: null })
+      // last_briefing_on 은 건드리지 않는다 — 오늘 이미 받았으면 바뀐 시각은 내일부터
+      .update({ briefing_time: time })
       .eq("endpoint", sub.endpoint);
     if (error) throw new Error(error.message);
   }

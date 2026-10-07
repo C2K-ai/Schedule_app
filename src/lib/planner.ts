@@ -729,30 +729,70 @@ export function tenMinuteGrid(sessions: StudySession[], dayStart: Date, now: num
   return best.map((b) => (b.ms >= MIN ? b.id : null));
 }
 
+const MINE_KEY = "must:study-mine";
+
+/** 이 기기에서 시작한 구간 id — '자리 비우면 멈춤'은 이 기기 것만 멈춘다(다른 기기에서 재는 공부를 끊지 않게) */
+export function studyStartedHere(id: string): boolean {
+  try {
+    return (JSON.parse(localStorage.getItem(MINE_KEY) ?? "[]") as string[]).includes(id);
+  } catch {
+    return false;
+  }
+}
+
+function rememberMine(id: string) {
+  try {
+    const list = JSON.parse(localStorage.getItem(MINE_KEY) ?? "[]") as string[];
+    localStorage.setItem(MINE_KEY, JSON.stringify([...list.filter((x) => x !== id), id].slice(-20)));
+  } catch {
+    /* 기록 못 하면 자동 멈춤만 안 된다 */
+  }
+}
+
+/**
+ * 열려 있는 구간을 전부 닫는다 — 두 기기에서 따로 시작한 구간이 동시에 '재는 중'으로 남아 시간이 두 번 쌓이지 않게.
+ * 기기 시계가 조금 달라도 끝이 시작보다 앞서지 않게 맞춘다(서버 CHECK 에 걸려 동기화가 통째로 막히지 않게).
+ */
+function closeOpenStudy(store: PlannerStore, at: Date) {
+  for (const x of liveStudy(store.db)) {
+    if (x.ended_at) continue;
+    const end = Math.max(at.getTime(), Date.parse(x.started_at));
+    store.patch("study_sessions", x.id, { ended_at: new Date(end).toISOString() });
+  }
+}
+
 export function startStudy(store: PlannerStore, subjectId: string | null, taskId: string | null = null): StudySession {
-  const now = nowIso();
-  const cur = activeStudy(store.db);
-  if (cur) store.patch("study_sessions", cur.id, { ended_at: now });
+  const now = new Date();
+  closeOpenStudy(store, now);
+  const iso = now.toISOString();
   const x: StudySession = {
     id: uuid(),
     subject_id: subjectId,
     task_id: taskId,
-    started_at: now,
+    started_at: iso,
     ended_at: null,
-    created_at: now,
-    updated_at: now,
+    created_at: iso,
+    updated_at: iso,
     deleted_at: null,
   };
   store.put("study_sessions", x);
+  rememberMine(x.id);
   return x;
 }
 
-/** 지금 재는 구간을 멈춘다. at 을 주면 그 시각에 멈춘 것으로(자리 비움 자동 정지) */
+/**
+ * 지금 재는 구간을 멈춘다(열린 구간 전부). at 을 주면 그 시각에 그 구간 하나만 멈춘 것으로 — 자리 비움 자동 정지용
+ */
 export function stopStudy(store: PlannerStore, at?: Date) {
   const cur = activeStudy(store.db);
   if (!cur) return null;
-  const end = at && at.getTime() > Date.parse(cur.started_at) ? at.toISOString() : nowIso();
-  return store.patch("study_sessions", cur.id, { ended_at: end });
+  if (!at) {
+    closeOpenStudy(store, new Date());
+  } else {
+    const end = Math.max(at.getTime(), Date.parse(cur.started_at));
+    store.patch("study_sessions", cur.id, { ended_at: new Date(end).toISOString() });
+  }
+  return store.db.study_sessions[cur.id] ?? null;
 }
 
 export function deleteStudySession(store: PlannerStore, id: string) {
