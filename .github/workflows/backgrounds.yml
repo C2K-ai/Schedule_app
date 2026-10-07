@@ -32,6 +32,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B bg-results
           rm -rf bg-out/cand
-          git add -f bg-out public/themes/bg 2>/dev/null || true
+          [ -d bg-out ] && git add -f bg-out
+          [ -d public/themes/bg ] && git add -f public/themes/bg
           git commit -m "background fetch results (${{ inputs.mode || 'candidates' }})" || exit 0
           git push -f origin bg-results
