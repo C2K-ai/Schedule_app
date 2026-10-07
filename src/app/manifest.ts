@@ -6,7 +6,7 @@ export const dynamic = "force-static";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: withBase("/"),
-    name: "DREAM — 미루지 못하는 플래너",
+    name: "DREAM",
     short_name: "DREAM",
     description: "미시작 일정 경고·정각 알림·카운트다운·뽀모도로가 한 화면에 있는 습관/일정 플래너",
     lang: "ko",

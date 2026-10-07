@@ -4,7 +4,7 @@ import "./globals.css";
 import { withBase } from "@/lib/base";
 
 export const metadata: Metadata = {
-  title: "DREAM — 미루지 못하는 플래너",
+  title: "DREAM",
   description: "미시작 일정은 빨갛게, 미루려면 사유를. 알림·카운트다운·뽀모도로가 한 화면에 있는 습관/일정 플래너.",
   applicationName: "DREAM",
   appleWebApp: { capable: true, title: "DREAM", statusBarStyle: "black-translucent" },
