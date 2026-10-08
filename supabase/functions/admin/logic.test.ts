@@ -70,3 +70,10 @@ Deno.test("AI 사용 기록: 토큰 계산·청구 안 된 오류 구분", () =>
   assertEquals(tokens(undefined), { input_tokens: 0, output_tokens: 0 });
   assertEquals(tokens({ input_tokens: -3, output_tokens: Number.NaN }), { input_tokens: 0, output_tokens: 0 });
 });
+
+Deno.test("가입 승인 요청", () => {
+  const id = "AAAAAAAA-0000-4000-8000-000000000001";
+  assertEquals(parseAction({ action: "approve", user_id: id }), { action: "approve", user_id: id.toLowerCase() });
+  assertEquals(parseAction({ action: "approve" }), { error: "bad_user_id" });
+  assertEquals(guard("approve", { self: true, targetIsAdmin: true }), null);
+});

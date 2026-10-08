@@ -57,7 +57,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -352,6 +352,30 @@ await db.exec(`reset role;`);
   ok(await fails(B, `select public.must_ai_claim('${B}', 'parse-schedule', 'm')`), "AI 한도 예약 함수 직접 호출 불가");
   ok(await fails(B, `insert into public.ai_usage (user_id, fn, model) values ('${B}', 'x', 'm') returning id`), "AI 사용 기록은 앱이 못 씀");
 
+  // 가입 승인 — 첫 사용자는 바로, 그 뒤 가입자는 관리자가 승인해야
+  ok((await as(A, `select public.must_my_access() v`))[0].v.approved === true, "승인: 첫 사용자(주인)는 바로 승인");
+  const accB = (await as(B, `select public.must_my_access() v`))[0].v;
+  ok(accB.approved === false && accB.admin === false && Boolean(accB.requested_at), "승인: 나중 가입자는 승인 대기");
+  ok(await fails(B, `select * from public.must_members`), "승인 표는 앱에서 직접 못 읽음");
+  ok(await fails(B, `update public.must_members set approved = true where user_id = '${B}' returning user_id`), "스스로 승인 불가");
+  await db.exec(`set role anon;`);
+  let anonThrew = false;
+  try {
+    await q(`select public.must_my_access()`);
+  } catch {
+    anonThrew = true;
+  }
+  await db.exec(`reset role;`);
+  ok(anonThrew, "승인 상태 함수는 로그인한 사람만");
+  await db.exec(`set role service_role;`);
+  const pc = (await q(`select public.must_ai_claim('${B}', 'parse-schedule', 'm') v`))[0].v;
+  const pend = (await q(`select count(*)::int n from public.must_members where not approved`))[0].n;
+  await q(`update public.must_members set approved = true, approved_at = now(), approved_by = '${A}' where user_id = '${B}'`);
+  await db.exec(`reset role;`);
+  ok(pc.ok === false && pc.pending === true && pc.limit === 0, "승인 대기: AI 못 씀(기록도 안 남음)");
+  ok(pend === 1, "관리자(서버)는 승인 대기 수를 셀 수 있음");
+  ok((await as(B, `select public.must_my_access() v`))[0].v.approved === true, "승인 뒤 앱 사용 가능");
+
   // AI 사용 기록·한도
   await db.exec(`insert into public.ai_usage (user_id, fn, model, input_tokens, output_tokens, created_at) values
     ('${B}', 'parse-schedule', 'claude-haiku-4-5', 1000, 200, now()),
@@ -441,6 +465,7 @@ await db.exec(`reset role;`);
   await db.exec(`update public.must_app_settings set signups_open = true`);
   await q(`insert into auth.users (id, email) values ('${C}', 'c@x')`);
   ok((await q(`select count(*)::int n from public.must_admins where user_id = '${C}'`))[0].n === 0, "가입 받기 켜짐: 가입됨, 관리자는 아님");
+  ok((await q(`select approved from public.must_members where user_id = '${C}'`))[0].approved === false, "가입 받기 켜짐: 새 가입자는 승인 대기");
   // 관리자가 아무도 없게 된 서버에서도, 다른 사용자가 있으면 새 가입자는 관리자가 되지 않는다
   await db.exec(`alter table public.must_admins disable trigger must_keep_one_admin; delete from public.must_admins;
                  alter table public.must_admins enable trigger must_keep_one_admin;`);

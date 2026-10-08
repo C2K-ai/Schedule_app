@@ -17,6 +17,8 @@ import {
   Trash2,
   TriangleAlert,
   Undo2,
+  UserCheck,
+  UserX,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -124,6 +126,7 @@ function AdminBody() {
       return;
     }
     const text: Record<Exclude<UserAction, "recovery_link">, string> = {
+      approve: `${who} 을(를) 승인했어요 — 이제 앱을 쓸 수 있어요`,
       ban: `${who} 정지 — 모든 기기에서 로그아웃돼요`,
       unban: `${who} 정지를 풀었어요`,
       signout: `${who} 로그인 세션 ${r.sessions ?? 0}개를 끊었어요`,
@@ -131,7 +134,7 @@ function AdminBody() {
       confirm: `${who} 을(를) 메일 확인됨으로 바꿨어요 — 이제 로그인할 수 있어요`,
       make_admin: `${who} 을(를) 관리자로 지정했어요`,
       remove_admin: `${who} 의 관리자 권한을 뺐어요`,
-      delete: `${who} 계정과 데이터를 지웠어요`,
+      delete: u.approved ? `${who} 계정과 데이터를 지웠어요` : `${who} 의 가입 신청을 거절했어요(계정 삭제)`,
     };
     toast({ text: text[action], tone: "ok", ttl: 6000 });
     refresh();
@@ -242,6 +245,20 @@ function OverviewTab({ ov, now, onUsers }: { ov: Overview; now: number; onUsers:
   );
   return (
     <div className="space-y-5">
+      {ov.pending > 0 && (
+        <button
+          type="button"
+          onClick={onUsers}
+          className="flex w-full items-center gap-3 rounded-2xl border border-warn/40 bg-warn/10 px-4 py-3 text-left"
+        >
+          <UserCheck size={20} className="shrink-0 text-warn" />
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold">가입 승인 대기 {ov.pending}명</span>
+            <span className="block text-xs text-muted">눌러서 누가 신청했는지 보고 승인하거나 거절하세요.</span>
+          </span>
+          <span className="text-sm font-bold text-warn">보기 →</span>
+        </button>
+      )}
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
         <button type="button" onClick={onUsers} className="text-left">
           <Stat
@@ -270,7 +287,7 @@ function OverviewTab({ ov, now, onUsers }: { ov: Overview; now: number; onUsers:
         <h3 className="mb-1 text-sm font-bold">서버 상태</h3>
         <ul className="divide-y divide-line rounded-2xl bg-surface-2 px-3.5">
           <StatusRow ok={ov.ai_key} label="AI 키 (Claude)" value={ov.ai_key ? "연결됨" : "없음 — 설정 → AI 에서 넣는 방법"} />
-          <StatusRow ok={null} label="새 가입" value={ov.settings.signups_open ? "받는 중 (누구나 가입)" : "닫힘 (1인 전용)"} />
+          <StatusRow ok={null} label="새 가입" value={ov.settings.signups_open ? "신청 받는 중 (내가 승인해야 사용)" : "닫힘 — 있는 계정만"} />
           {ov.cron.length === 0 && <StatusRow ok={null} label="예약 작업" value="정보 없음" />}
           {ov.cron.map((j) => {
             const s = cronState(j, now);
@@ -313,7 +330,9 @@ function UsersTab({
   const [q, setQ] = useState("");
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return s ? users.filter((u) => (u.email ?? "").toLowerCase().includes(s)) : users;
+    const found = s ? users.filter((u) => (u.email ?? "").toLowerCase().includes(s)) : users;
+    // 승인 대기를 맨 위로(신청한 순서대로)
+    return [...found].sort((a, b) => Number(a.approved) - Number(b.approved));
   }, [users, q]);
   return (
     <div className="space-y-3">
@@ -366,173 +385,220 @@ function UserCard({
             <span className="min-w-0 truncate font-semibold">{who}</span>
             {self && <Badge tone="accent">나</Badge>}
             {u.is_admin && <Badge tone="accent">관리자</Badge>}
+            {!u.approved && <Badge tone="warn">승인 대기</Badge>}
             {banned && <Badge tone="danger">정지됨</Badge>}
             {!u.confirmed && <Badge tone="warn">메일 미확인</Badge>}
           </p>
           <p className="mt-0.5 text-xs text-muted">
-            가입 {fmtDay(u.created_at)} · 최근 활동 {fmtAgo(u.last_active_at, now)} · 로그인 기기 {u.sessions}
+            {u.approved ? "가입" : "신청"} {fmtDay(u.created_at)} · 최근 활동 {fmtAgo(u.last_active_at, now)} · 로그인 기기 {u.sessions}
           </p>
         </div>
       </div>
 
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-5">
-        {[
-          ["일정", `${u.tasks}`, `완료 ${u.tasks_done}`],
-          ["습관", `${u.habits}`, null],
-          ["공부", fmtStudy(u.study_sec), null],
-          ["AI 이번 달", `${u.ai_month_calls}회`, `≈${fmtKrw(cost)} · 오늘 ${u.ai_today}`],
-          ["알림 기기", `${u.devices}대`, null],
-        ].map(([k, v, s]) => (
-          <div key={k} className="min-w-0 rounded-xl bg-surface px-2 py-2">
-            <dt className="truncate text-[11px] text-muted">{k}</dt>
-            <dd className="truncate text-sm font-bold tabular-nums">{v}</dd>
-            {s && <dd className="truncate text-[11px] text-faint">{s}</dd>}
-          </div>
-        ))}
-      </dl>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <Button
-          size="sm"
-          onClick={() =>
-            confirmThen(
-              {
-                title: "비밀번호 재설정 메일",
-                body: (
-                  <>
-                    <b>{who}</b> 로 새 비밀번호를 정하는 링크를 보내요. 링크를 누르면 앱이 열리고 새 비밀번호를 정하는 칸이 나와요.
-                  </>
-                ),
-                cta: "메일 보내기",
-              },
-              "reset_password",
-            )
-          }
-        >
-          <KeyRound size={14} /> 재설정 메일
-        </Button>
-        <Button
-          size="sm"
-          onClick={() =>
-            confirmThen(
-              {
-                title: "재설정 링크 만들기",
-                body: (
-                  <>
-                    메일이 안 갈 때 쓰는 방법이에요. <b>{who}</b> 의 새 비밀번호를 정하는 링크를 만들어 보여 줄게요 — 메신저 등으로 본인에게 전해 주세요.
-                    링크는 한 번만, 1시간 안에 쓸 수 있고, 받은 사람은 그 계정으로 로그인돼요.
-                  </>
-                ),
-                cta: "링크 만들기",
-              },
-              "recovery_link",
-            )
-          }
-        >
-          <Link2 size={14} /> 재설정 링크
-        </Button>
-        {!u.confirmed && (
+      {!u.approved ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
           <Button
             size="sm"
+            variant="primary"
             onClick={() =>
               confirmThen(
-                { title: "메일 확인 처리", body: <><b>{who}</b> 가 확인 메일을 못 받았다면, 운영자가 대신 ‘확인됨’으로 바꿔 바로 로그인할 수 있게 해요.</>, cta: "확인됨으로" },
-                "confirm",
+                {
+                  title: "가입 승인",
+                  body: (
+                    <>
+                      <b>{who}</b> 가 앱을 쓸 수 있게 돼요. 아는 사람이 맞는지 확인하세요 — 메일 확인을 거치지 않은 신청이에요.
+                    </>
+                  ),
+                  cta: "승인",
+                },
+                "approve",
               )
             }
           >
-            <MailCheck size={14} /> 메일 확인 처리
+            <UserCheck size={14} /> 승인
           </Button>
-        )}
-        <Button
-          size="sm"
-          onClick={() =>
-            confirmThen(
-              {
-                title: "모든 기기에서 로그아웃",
+          <Button
+            size="sm"
+            variant="dangerSoft"
+            onClick={() =>
+              ask({
+                title: "가입 거절",
                 body: (
                   <>
-                    <b>{who}</b> 의 로그인을 모든 기기에서 끊어요{self ? " — 지금 이 기기도 포함" : ""}. 이미 열린 화면은 길어야 1시간 안에 로그아웃돼요.
-                    데이터는 그대로예요.
+                    <b>{who}</b> 의 가입 신청을 거절하고 계정을 지워요. 다시 신청할 수는 있어요(신청을 받는 동안).
                   </>
                 ),
-                cta: "로그아웃시키기",
-              },
-              "signout",
-            )
-          }
-        >
-          <LogOut size={14} /> 모든 기기 로그아웃
-        </Button>
-        {!self &&
-          (u.is_admin ? (
+                cta: "거절",
+                danger: true,
+                run: () => act("delete", u, { confirm_email: u.email ?? "" }),
+              })
+            }
+          >
+            <UserX size={14} /> 거절
+          </Button>
+        </div>
+      ) : (
+        <>
+          <dl className="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-5">
+            {[
+              ["일정", `${u.tasks}`, `완료 ${u.tasks_done}`],
+              ["습관", `${u.habits}`, null],
+              ["공부", fmtStudy(u.study_sec), null],
+              ["AI 이번 달", `${u.ai_month_calls}회`, `≈${fmtKrw(cost)} · 오늘 ${u.ai_today}`],
+              ["알림 기기", `${u.devices}대`, null],
+            ].map(([k, v, s]) => (
+              <div key={k} className="min-w-0 rounded-xl bg-surface px-2 py-2">
+                <dt className="truncate text-[11px] text-muted">{k}</dt>
+                <dd className="truncate text-sm font-bold tabular-nums">{v}</dd>
+                {s && <dd className="truncate text-[11px] text-faint">{s}</dd>}
+              </div>
+            ))}
+          </dl>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
             <Button
               size="sm"
               onClick={() =>
-                confirmThen({ title: "관리자 해제", body: <><b>{who}</b> 의 관리자 권한을 빼요. 이 화면이 더는 안 보이게 돼요.</>, cta: "해제" }, "remove_admin")
+                confirmThen(
+                  {
+                    title: "비밀번호 재설정 메일",
+                    body: (
+                      <>
+                        <b>{who}</b> 로 새 비밀번호를 정하는 링크를 보내요. 링크를 누르면 앱이 열리고 새 비밀번호를 정하는 칸이 나와요.
+                      </>
+                    ),
+                    cta: "메일 보내기",
+                  },
+                  "reset_password",
+                )
               }
             >
-              <ShieldOff size={14} /> 관리자 해제
+              <KeyRound size={14} /> 재설정 메일
             </Button>
-          ) : (
-            <>
+            <Button
+              size="sm"
+              onClick={() =>
+                confirmThen(
+                  {
+                    title: "재설정 링크 만들기",
+                    body: (
+                      <>
+                        메일이 안 갈 때 쓰는 방법이에요. <b>{who}</b> 의 새 비밀번호를 정하는 링크를 만들어 보여 줄게요 — 메신저 등으로 본인에게 전해 주세요.
+                        링크는 한 번만, 1시간 안에 쓸 수 있고, 받은 사람은 그 계정으로 로그인돼요.
+                      </>
+                    ),
+                    cta: "링크 만들기",
+                  },
+                  "recovery_link",
+                )
+              }
+            >
+              <Link2 size={14} /> 재설정 링크
+            </Button>
+            {!u.confirmed && (
               <Button
                 size="sm"
                 onClick={() =>
                   confirmThen(
-                    { title: "관리자로 지정", body: <><b>{who}</b> 도 이 관리자 화면을 쓰고, 다른 사용자를 정지·삭제할 수 있게 돼요.</>, cta: "지정" },
-                    "make_admin",
+                    { title: "메일 확인 처리", body: <><b>{who}</b> 가 확인 메일을 못 받았다면, 운영자가 대신 ‘확인됨’으로 바꿔 바로 로그인할 수 있게 해요.</>, cta: "확인됨으로" },
+                    "confirm",
                   )
                 }
               >
-                <ShieldCheck size={14} /> 관리자 지정
+                <MailCheck size={14} /> 메일 확인 처리
               </Button>
-              {banned ? (
-                <Button size="sm" onClick={() => confirmThen({ title: "정지 풀기", body: <><b>{who}</b> 가 다시 로그인할 수 있어요.</>, cta: "풀기" }, "unban")}>
-                  <Undo2 size={14} /> 정지 풀기
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="dangerSoft"
-                  onClick={() =>
-                    confirmThen(
-                      {
-                        title: "계정 정지",
-                        body: <><b>{who}</b> 를 모든 기기에서 로그아웃시키고 다시 로그인하지 못하게 해요. 데이터는 지우지 않고, 언제든 풀 수 있어요.</>,
-                        cta: "정지",
-                        danger: true,
-                      },
-                      "ban",
-                    )
-                  }
-                >
-                  <Ban size={14} /> 정지
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="dangerSoft"
-                onClick={() =>
-                  ask({
-                    title: "계정 삭제",
+            )}
+            <Button
+              size="sm"
+              onClick={() =>
+                confirmThen(
+                  {
+                    title: "모든 기기에서 로그아웃",
                     body: (
                       <>
-                        <b>{who}</b> 의 계정과 일정·습관·공부·커리어 기록이 <b>모두 지워지고 되돌릴 수 없어요.</b> 확인하려면 아래에 이메일을 그대로 적어 주세요.
+                        <b>{who}</b> 의 로그인을 모든 기기에서 끊어요{self ? " — 지금 이 기기도 포함" : ""}. 이미 열린 화면은 길어야 1시간 안에 로그아웃돼요.
+                        데이터는 그대로예요.
                       </>
                     ),
-                    cta: "영구 삭제",
-                    danger: true,
-                    typeToConfirm: u.email ?? "",
-                    run: () => act("delete", u, { confirm_email: u.email ?? "" }),
-                  })
-                }
-              >
-                <Trash2 size={14} /> 삭제
-              </Button>
-            </>
-          ))}
-      </div>
+                    cta: "로그아웃시키기",
+                  },
+                  "signout",
+                )
+              }
+            >
+              <LogOut size={14} /> 모든 기기 로그아웃
+            </Button>
+            {!self &&
+              (u.is_admin ? (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    confirmThen({ title: "관리자 해제", body: <><b>{who}</b> 의 관리자 권한을 빼요. 이 화면이 더는 안 보이게 돼요.</>, cta: "해제" }, "remove_admin")
+                  }
+                >
+                  <ShieldOff size={14} /> 관리자 해제
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      confirmThen(
+                        { title: "관리자로 지정", body: <><b>{who}</b> 도 이 관리자 화면을 쓰고, 다른 사용자를 정지·삭제할 수 있게 돼요.</>, cta: "지정" },
+                        "make_admin",
+                      )
+                    }
+                  >
+                    <ShieldCheck size={14} /> 관리자 지정
+                  </Button>
+                  {banned ? (
+                    <Button size="sm" onClick={() => confirmThen({ title: "정지 풀기", body: <><b>{who}</b> 가 다시 로그인할 수 있어요.</>, cta: "풀기" }, "unban")}>
+                      <Undo2 size={14} /> 정지 풀기
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="dangerSoft"
+                      onClick={() =>
+                        confirmThen(
+                          {
+                            title: "계정 정지",
+                            body: <><b>{who}</b> 를 모든 기기에서 로그아웃시키고 다시 로그인하지 못하게 해요. 데이터는 지우지 않고, 언제든 풀 수 있어요.</>,
+                            cta: "정지",
+                            danger: true,
+                          },
+                          "ban",
+                        )
+                      }
+                    >
+                      <Ban size={14} /> 정지
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="dangerSoft"
+                    onClick={() =>
+                      ask({
+                        title: "계정 삭제",
+                        body: (
+                          <>
+                            <b>{who}</b> 의 계정과 일정·습관·공부·커리어 기록이 <b>모두 지워지고 되돌릴 수 없어요.</b> 확인하려면 아래에 이메일을 그대로 적어 주세요.
+                          </>
+                        ),
+                        cta: "영구 삭제",
+                        danger: true,
+                        typeToConfirm: u.email ?? "",
+                        run: () => act("delete", u, { confirm_email: u.email ?? "" }),
+                      })
+                    }
+                  >
+                    <Trash2 size={14} /> 삭제
+                  </Button>
+                </>
+              ))}
+          </div>
+        </>
+      )}
     </li>
   );
 }
@@ -560,20 +626,24 @@ function SettingsTab({
           onChange={(open) =>
             open
               ? ask({
-                  title: "새 가입 받기",
+                  title: "가입 신청 받기",
                   body: (
                     <>
-                      앱 주소를 아는 <b>누구나</b> 가입할 수 있게 돼요. 그 사람들이 AI 를 쓰면 비용은 <b>내 API 키</b>로 나가요 — 아래 하루 한도로 막아 두세요.
-                      각자의 일정은 서로 볼 수 없어요.
+                      로그인 화면에 ‘처음이에요’가 생겨 가입 신청을 할 수 있어요. 신청이 오면 내 휴대폰으로 알림이 가고, 여기 <b>사용자</b>에서 <b>승인</b>해야
+                      앱을 쓸 수 있어요. 승인한 사람이 AI 를 쓰면 비용은 <b>내 API 키</b>로 나가요(아래 하루 한도). 각자의 일정은 서로 볼 수 없어요.
                     </>
                   ),
-                  cta: "가입 열기",
+                  cta: "신청 받기",
                   run: () => save({ signups_open: true }),
                 })
               : void save({ signups_open: false })
           }
-          label="새 가입 받기"
-          desc={settings.signups_open ? "지금 누구나 가입할 수 있어요." : "닫혀 있어요(1인 전용) — 지금 있는 계정만 로그인할 수 있어요."}
+          label="가입 신청 받기"
+          desc={
+            settings.signups_open
+              ? "신청을 받고 있어요 — 신청한 사람은 내가 ‘사용자’에서 승인해야 앱을 쓸 수 있어요. 다 받았으면 꺼 두세요."
+              : "닫혀 있어요 — 지금 있는 계정만 로그인할 수 있어요."
+          }
         />
       </section>
 

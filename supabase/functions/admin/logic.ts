@@ -1,6 +1,7 @@
 // admin 함수의 순수 로직(요청 검사·금지 규칙) — index.ts 와 테스트가 같이 쓴다
 
 export type TargetAction =
+  | "approve"
   | "ban"
   | "unban"
   | "signout"
@@ -21,7 +22,7 @@ export type Action =
   | { action: LinkAction; user_id: string; redirect_to: string | null }
   | { action: "delete"; user_id: string; confirm_email: string };
 
-const TARGET: TargetAction[] = ["ban", "unban", "signout", "reset_password", "recovery_link", "confirm", "make_admin", "remove_admin", "delete"];
+const TARGET: TargetAction[] = ["approve", "ban", "unban", "signout", "reset_password", "recovery_link", "confirm", "make_admin", "remove_admin", "delete"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 스스로 잠그는 사고를 막는다 — 나를 정지·삭제하거나 내 관리자 권한을 뺄 수 없다 */

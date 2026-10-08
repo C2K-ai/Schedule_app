@@ -34,13 +34,20 @@
 16. PC 설치 앱: 매니페스트 `display_override: ["window-controls-overlay"]` — 크롬 제목 줄(확장·다운로드 아이콘) 대신
     앱이 그린 제목 줄(`.app-titlebar`, globals.css)이 보이고 크롬은 창 버튼·⋮ 만 남긴다. 고정 요소는 `--titlebar-h` 만큼 내려 둔다.
     서비스 워커는 페이지를 no-cache 로 받아 배포 직후 다시 열면 새 화면이 뜬다(must-v6).
+17. **폰 잠금화면 일정 카드**(안드로이드, 설정 → 알림, 기본 켬): 소리 없는 알림 한 장(tag `lock-card`)에 지금/다음 일정 +
+    오늘 남은 할 일. 앱이 사흘치 '바뀌는 시점'을 계산해(`src/lib/lockCard.ts`) 서비스 워커에 넘기고, 서비스 워커는 푸시가 올 때·
+    주기 동기화 때 지금 시각에 맞게 바꿔 단다(내용은 `must-state` 캐시). 아이폰은 알림을 조용히 고칠 수 없어 뺐다.
+18. **가입 승인**: 관리자 화면 → 설정 → '가입 신청 받기'를 켜면 로그인 화면에 '처음이에요'가 생긴다. 신청은 Edge Function
+    `signup`(JWT 검증 끔)이 메일 확인 없이 계정을 만들고(`must_members.approved = false`) 관리자 기기로 푸시. 승인 전에는
+    앱 대신 '승인을 기다리고 있어요' 화면(`AccessGate`), AI 한도 0. 관리자 화면 → 사용자 맨 위에 승인/거절(거절 = 계정 삭제).
 
 ## 서버(Supabase `gcnosxcojuefkaaxefug`)에 이미 반영된 것
 
-- 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`, `20261008000400_admin`
+- 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`, `20261008000400_admin`,
+  `20261009000000_approval`
   (`20261008000500_admin_guards` — 마지막 관리자 보호 트리거·크론 기록 정리 — 는 아직 미적용: DELETE 문이 있어 MCP 승인 창이 뜬다. SQL Editor 에서 실행)
   (모두 다시 돌려도 안전, DROP 없음 — DROP 이 있으면 MCP 가 확인 창을 띄워 멈춘다).
-- Edge Functions: `parse-schedule`(v5, Haiku 5.5 — thinking 끔, 한 번 1원 미만), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v1),
+- Edge Functions: `parse-schedule`(v5, Haiku 5.5 — thinking 끔, 한 번 1원 미만), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v2, 가입 승인), `signup`(v2, JWT 검증 끔),
   `send-due-notifications`(v3, 브리핑 포함). AI 함수는 부르기 전에 `must_ai_claim` 으로 한 칸 예약(하루 한도, 한국 자정 기준,
   관리자 무제한)하고 끝나면 토큰을 채운다. 모델은 각 `index.ts` 의 `MODEL` 만 바꾸면 된다.
 - Claude API 키: Vault `must_anthropic_key` 에 넣고 Anthropic 에 확인 완료(2026-10-07).

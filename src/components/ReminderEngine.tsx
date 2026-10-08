@@ -231,6 +231,7 @@ export function ReminderEngine() {
       if (action === "new") return openEditor({});
       if (action === "focus") return setFocusScreen(true);
       if (action === "voice") return openSheet("voice");
+      if (action === "admin") return openSheet("admin", "users");
       if (!taskId || !st.db.tasks[taskId]) return;
       if (action === "start") {
         startTask(st, taskId);
@@ -252,8 +253,8 @@ export function ReminderEngine() {
       const data = e.data as { type?: string; payload?: PushPayload; action?: string; taskId?: string; handled?: boolean };
       if (data?.type === "must:push" && data.payload) {
         const pl = data.payload;
-        // 아침 브리핑은 알람이 아니다 — 소리 없이 한 줄만
-        if ((pl.kind as string) === "briefing") {
+        // 아침 브리핑·가입 신청 알림은 알람이 아니다 — 소리 없이 한 줄만
+        if ((pl.kind as string) === "briefing" || (pl.kind as string) === "signup") {
           latest.current.toast({ text: `${pl.title} — ${pl.body ?? ""}`, ttl: 8000 });
           return;
         }

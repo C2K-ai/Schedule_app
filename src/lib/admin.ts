@@ -42,6 +42,8 @@ export interface Overview {
   push_errors_24h: number;
   cron: CronJob[];
   ai_key: boolean;
+  /** 가입 승인 대기 수 */
+  pending: number;
 }
 
 export interface AdminUser {
@@ -66,9 +68,13 @@ export interface AdminUser {
   ai_month_input: number;
   ai_month_output: number;
   ai_month_models: { model: string; input: number; output: number }[];
+  /** 관리자가 승인했는지(관리자는 늘 true) */
+  approved: boolean;
+  requested_at: string | null;
 }
 
 export type UserAction =
+  | "approve"
   | "ban"
   | "unban"
   | "signout"

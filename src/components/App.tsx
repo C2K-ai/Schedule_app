@@ -1,5 +1,6 @@
 "use client";
 
+import { AccessGate } from "./AccessGate";
 import { PlannerProvider } from "./PlannerProvider";
 import { Shell } from "./Shell";
 import { Logo } from "./ui";
@@ -20,7 +21,9 @@ function Splash() {
 export function App() {
   return (
     <PlannerProvider splash={<Splash />}>
-      <Shell />
+      <AccessGate>
+        <Shell />
+      </AccessGate>
     </PlannerProvider>
   );
 }

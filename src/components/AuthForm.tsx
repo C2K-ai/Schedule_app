@@ -3,11 +3,30 @@
 import { KeyRound, LogIn, Mail, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BASE_PATH } from "@/lib/base";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import { usePlanner } from "./PlannerProvider";
 import { Button, cx, inputCls, Segmented } from "./ui";
 
 type Mode = "login" | "signup" | "code";
+
+const SIGNUP_ERRORS: Record<string, string> = {
+  exists: "이미 가입된 이메일이에요. ‘로그인’으로 들어가세요(비밀번호를 잊었으면 ‘비밀번호를 잊었어요’).",
+  closed: "지금은 가입 신청을 받지 않아요. 운영자에게 열어 달라고 하세요.",
+  too_many: "승인을 기다리는 신청이 많아요. 운영자가 정리한 뒤 다시 해 주세요.",
+  weak_password: "비밀번호는 6자 이상이어야 해요.",
+  long_password: "비밀번호가 너무 길어요(72자까지).",
+  bad_email: "이메일 주소를 확인해 주세요.",
+};
+
+/** 가입 신청(Edge Function `signup`) — 메일 확인 없이 계정을 만들고 운영자 승인을 기다린다 */
+async function requestSignup(sb: SupabaseClient, email: string, password: string) {
+  const { error } = await sb.functions.invoke("signup", { body: { email, password } });
+  if (!error) return;
+  const ctx = (error as { context?: Response }).context;
+  const code = ctx && typeof ctx.json === "function" ? ((await ctx.json().catch(() => ({}))) as { error?: string }).error : undefined;
+  throw new Error(SIGNUP_ERRORS[code ?? ""] ?? (navigator.onLine ? "가입 신청을 보내지 못했어요. 잠시 뒤 다시 해 주세요." : "인터넷 연결을 확인해 주세요."));
+}
 
 /** Supabase 오류 → 알아듣기 쉬운 말 */
 export function friendly(message: string): string {
@@ -96,26 +115,15 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
                 if (error) throw error;
                 toast({ text: "로그인했습니다 — 이 기기와 동기화를 시작해요", tone: "ok" });
               } else {
-                const { data, error } = await sb.auth.signUp({
-                  email: email.trim(),
-                  password,
-                  options: { emailRedirectTo: redirect },
-                });
-                if (error) throw error;
-                // 이미 있는 이메일이면 Supabase 는 (보안상) 메일 없이 가짜 사용자를 돌려준다 — identities 가 비어 있음
-                if (data.user && !data.session && data.user.identities?.length === 0) {
+                await requestSignup(sb, email.trim(), password);
+                // 바로 로그인 — 운영자가 승인할 때까지는 '승인 대기' 화면이 뜬다
+                const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+                if (error) {
                   setMode("login");
-                  setErr("이미 가입된 이메일이에요. ‘로그인’에서 비밀번호로 들어가세요(비밀번호를 잊었으면 아래 ‘비밀번호를 잊었어요’).");
+                  setInfo("가입 신청을 보냈어요. 운영자가 승인하면 ‘로그인’으로 들어오세요.");
                   return;
                 }
-                if (data.session) {
-                  toast({ text: "가입 완료 — 로그인됐어요", tone: "ok" });
-                } else {
-                  setInfo(
-                    `${email.trim()} 로 확인 메일을 보냈어요. 메일의 링크를 한 번 누른 뒤(열리는 페이지가 오류여도 괜찮아요) 여기서 ‘로그인’ 하세요.`,
-                  );
-                  setMode("login");
-                }
+                toast({ text: "가입 신청 완료 — 운영자가 승인하면 바로 쓸 수 있어요", tone: "ok" });
               }
             });
           }}
@@ -142,7 +150,7 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
           />
           <Button variant="primary" disabled={busy} className="h-11 w-full">
             {mode === "login" ? <LogIn size={16} /> : <UserPlus size={16} />}
-            {busy ? "잠시만요…" : mode === "login" ? "로그인" : "계정 만들기"}
+            {busy ? "잠시만요…" : mode === "login" ? "로그인" : "가입 신청"}
           </Button>
           {mode === "login" && (
             <button
@@ -169,7 +177,7 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
           )}
           {mode === "signup" && (
             <p className="text-xs leading-relaxed text-muted">
-              이미 계정이 있으면 ‘로그인’ 탭을 쓰세요. 가입은 운영자가 열어 둔 동안만 돼요.
+              가입 신청을 하면 운영자가 승인한 뒤에 쓸 수 있어요. 이미 계정이 있으면 ‘로그인’ 탭을 쓰세요.
             </p>
           )}
         </form>

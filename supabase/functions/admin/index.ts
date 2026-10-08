@@ -1,4 +1,4 @@
-// 운영자(관리자) 화면 — 통계 보기 · 가입/AI 한도 설정 · 사용자 정지·로그아웃·삭제·비밀번호 재설정 메일
+// 운영자(관리자) 화면 — 통계 보기 · 가입/AI 한도 설정 · 가입 승인 · 사용자 정지·로그아웃·삭제·비밀번호 재설정 메일
 //   배포: npx supabase functions deploy admin   (JWT 검증 켠 채로)
 //   부른 사람이 must_admins 에 있을 때만 동작한다. 나머지는 403.
 //   비밀번호는 누구도 볼 수 없다(되돌릴 수 없는 해시로만 저장) — 대신 재설정 메일을 보낸다.
@@ -30,18 +30,31 @@ Deno.serve(async (req) => {
 
   try {
     if (a.action === "overview") {
-      const [{ data, error }, aiKey] = await Promise.all([
+      const [{ data, error }, aiKey, pend] = await Promise.all([
         db.rpc("must_admin_overview"),
         setting("ANTHROPIC_API_KEY").then(Boolean, () => false),
+        db.from("must_members").select("user_id", { count: "exact", head: true }).eq("approved", false),
       ]);
       if (error) throw error;
-      return json({ ...(data as Record<string, unknown>), ai_key: aiKey });
+      if (pend.error) throw pend.error;
+      return json({ ...(data as Record<string, unknown>), ai_key: aiKey, pending: pend.count ?? 0 });
     }
 
     if (a.action === "users") {
-      const { data, error } = await db.rpc("must_admin_users");
+      const [{ data, error }, members] = await Promise.all([
+        db.rpc("must_admin_users"),
+        db.from("must_members").select("user_id, approved, requested_at"),
+      ]);
       if (error) throw error;
-      return json({ users: data ?? [], me });
+      if (members.error) throw members.error;
+      const m = new Map((members.data ?? []).map((r) => [r.user_id as string, r]));
+      // 승인 기록이 없는 사용자(표가 생기기 전)는 승인 대기로 보인다 — must_my_access 와 같은 규칙
+      const users = ((data ?? []) as { id: string; is_admin: boolean }[]).map((u) => ({
+        ...u,
+        approved: u.is_admin || Boolean(m.get(u.id)?.approved),
+        requested_at: m.get(u.id)?.requested_at ?? null,
+      }));
+      return json({ users, me });
     }
 
     if (a.action === "settings") {
@@ -62,6 +75,13 @@ Deno.serve(async (req) => {
     if (blocked) return json({ error: blocked }, 400);
 
     switch (a.action) {
+      case "approve": {
+        const { error } = await db
+          .from("must_members")
+          .upsert({ user_id: a.user_id, approved: true, approved_at: new Date().toISOString(), approved_by: me }, { onConflict: "user_id" });
+        if (error) throw error;
+        return json({ ok: true });
+      }
       case "ban": {
         const { error } = await db.auth.admin.updateUserById(a.user_id, { ban_duration: BAN_FOREVER });
         if (error) throw error;

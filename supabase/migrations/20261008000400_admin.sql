@@ -114,6 +114,10 @@ declare
 begin
   perform pg_advisory_xact_lock(hashtextextended('must_ai:' || p_user::text, 0));
   v_admin := exists (select 1 from public.must_admins a where a.user_id = p_user);
+  -- 승인 대기 중이면 한도 0 (must_members 는 20261009000000_approval.sql — 다시 돌려도 그 동작이 유지되게 같은 내용)
+  if not v_admin and not coalesce((select m.approved from public.must_members m where m.user_id = p_user), false) then
+    return jsonb_build_object('ok', false, 'used', 0, 'limit', 0, 'admin', false, 'pending', true);
+  end if;
   v_limit := coalesce((select s.ai_daily_limit from public.must_app_settings s where s.id), 30);
   select count(*) into v_used from public.ai_usage u
    where u.user_id = p_user

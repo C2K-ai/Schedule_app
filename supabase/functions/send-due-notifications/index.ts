@@ -8,7 +8,7 @@ interface Job {
   id: number;
   user_id: string;
   task_id: string;
-  kind: Exclude<PushPayload["kind"], "briefing">;
+  kind: Exclude<PushPayload["kind"], "briefing" | "signup">;
   seq: number;
   fire_at: string;
 }

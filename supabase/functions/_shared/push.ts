@@ -20,7 +20,7 @@ export interface PushPayload {
   title: string;
   body: string;
   tag: string;
-  kind: "before" | "start" | "overdue" | "snooze" | "briefing";
+  kind: "before" | "start" | "overdue" | "snooze" | "briefing" | "signup";
   seq?: number;
   taskId?: string;
   startsAt?: string;
@@ -31,6 +31,8 @@ export interface PushPayload {
   actionUrl?: string;
   actionToken?: string;
   badgeCount?: number;
+  /** 알림 본문을 눌렀을 때 앱이 할 일(예: "admin" = 관리자 화면 열기) */
+  openAction?: string;
 }
 
 export interface SendResult {
@@ -112,7 +114,7 @@ const span = (ms: number) => {
 };
 
 export function describe(
-  kind: Exclude<PushPayload["kind"], "briefing">,
+  kind: Exclude<PushPayload["kind"], "briefing" | "signup">,
   seq: number,
   t: { title: string; starts_at: string; ends_at: string },
   now: number,

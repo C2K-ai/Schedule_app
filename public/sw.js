@@ -4,7 +4,7 @@
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
  *  - 잠금화면 카드    : 앱이 넘겨준 시점별 내용(lib/lockCard.ts)으로 '지금/다음 일정' 알림을 조용히 바꿔 단다
  */
-const VERSION = "must-v7";
+const VERSION = "must-v8";
 // 버전이 바뀌어도 지우지 않는 작은 저장소(잠금화면 카드 내용)
 const STATE = "must-state";
 const DEV = new URL(self.location.href).searchParams.get("mode") === "development";
@@ -212,7 +212,8 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   const p = event.notification.data || {};
-  const action = event.action || "open";
+  // 본문을 누르면 openAction(예: 가입 신청 알림 → 관리자 화면), 없으면 그냥 열기
+  const action = event.action || p.openAction || "open";
   event.notification.close();
   event.waitUntil(
     (async () => {
