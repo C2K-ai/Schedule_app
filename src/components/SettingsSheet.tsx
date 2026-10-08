@@ -23,6 +23,7 @@ import type { AlarmTheme, Settings, VibrationKey } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
 import { AuthForm, friendly } from "./AuthForm";
 import { BackgroundPicker } from "./BackgroundPicker";
+import { DIARY_INTRO_SOUND } from "./DiaryIntro";
 import { PalettePicker } from "./PalettePicker";
 import { SoundOptions } from "./SoundOptions";
 import { SoundStudio } from "./SoundStudio";
@@ -459,14 +460,16 @@ function SoundTab() {
           ))}
         </div>
       </Section>
-      <Section title="일기">
-        <Switch
-          checked={settings.diarySound}
-          onChange={(diarySound) => updateSettings({ diarySound })}
-          label="일기 열고 닫을 때 효과음"
-          desc="책이 열리고 덮일 때 소리를 내요. 기본은 꺼져 있어요."
-        />
-      </Section>
+      {DIARY_INTRO_SOUND && (
+        <Section title="일기">
+          <Switch
+            checked={settings.diarySound}
+            onChange={(diarySound) => updateSettings({ diarySound })}
+            label="일기 열고 닫을 때 효과음"
+            desc="책이 열리고 덮일 때 소리를 내요. 기본은 꺼져 있어요."
+          />
+        </Section>
+      )}
       <Section title="사운드 스튜디오" desc="녹음 음원은 Kenney.nl 의 CC0(퍼블릭 도메인) 징글입니다. 칸을 눌러 음을 찍으면 나만의 합성 알람도 만들 수 있어요.">
         <SoundStudio />
       </Section>

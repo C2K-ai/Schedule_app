@@ -14,6 +14,9 @@ export interface DiaryIntroProps {
 
 const MS = 350;
 
+/** 여닫기 연출에 소리가 있는지 — 지금 임시 화면은 소리가 없어서 효과음 버튼·설정을 숨긴다(진짜 책 애니메이션을 넣을 때 true) */
+export const DIARY_INTRO_SOUND = false;
+
 /**
  * 일기 여닫기 연출 — 지금은 잠깐 어두워졌다 밝아지는 임시 화면.
  * 나중에 진짜 책 애니메이션(펼치기 / 반대로 덮이며 뒷표지 DIARY)이 이 자리를 그대로 바꾼다 — props 는 그대로 둘 것.

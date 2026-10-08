@@ -14,7 +14,7 @@ import { useMedia } from "@/lib/useMedia";
 import { useNow } from "@/lib/useNow";
 import { friendly } from "./AuthForm";
 import { MOODS } from "./CalendarTab";
-import { DiaryIntro } from "./DiaryIntro";
+import { DIARY_INTRO_SOUND, DiaryIntro } from "./DiaryIntro";
 import { usePlanner } from "./PlannerProvider";
 import { cx, useLayer } from "./ui";
 
@@ -885,16 +885,18 @@ function DiaryPage() {
                 <List size={16} /> 목록
               </button>
             )}
-            <button
-              type="button"
-              className="diary-icon"
-              aria-pressed={settings.diarySound}
-              aria-label="일기 효과음"
-              title={settings.diarySound ? "효과음 끄기" : "효과음 켜기"}
-              onClick={() => p.updateSettings({ diarySound: !settings.diarySound })}
-            >
-              {settings.diarySound ? <Volume2 size={17} /> : <VolumeX size={17} />}
-            </button>
+            {DIARY_INTRO_SOUND && (
+              <button
+                type="button"
+                className="diary-icon"
+                aria-pressed={settings.diarySound}
+                aria-label="일기 효과음"
+                title={settings.diarySound ? "효과음 끄기" : "효과음 켜기"}
+                onClick={() => p.updateSettings({ diarySound: !settings.diarySound })}
+              >
+                {settings.diarySound ? <Volume2 size={17} /> : <VolumeX size={17} />}
+              </button>
+            )}
             <button type="button" className="diary-icon" aria-label="닫기" title="닫기" onClick={close}>
               <X size={19} />
             </button>

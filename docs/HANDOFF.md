@@ -5,9 +5,8 @@
 
 ## 0. ⚠️ 지금 진행 중 — 2026-10-08 저녁 갱신 (여기부터 읽기)
 
-**브랜치**: `main` = `64f2afa`(Write 기능까지, 배포됨). `ui-revamp` = main 위에 **'작업 중' 커밋들**(일기 기능, 아직 미완성).
-→ **일기가 끝나서 시험을 다 통과하기 전엔 `ui-revamp:main` 으로 push 하지 말 것**(그러면 미완성 일기가 배포된다).
-`git log main..ui-revamp` 로 작업 중 커밋 확인.
+**브랜치**: 2026-10-08 저녁 **일기를 main 에 배포함**(여닫기는 0.35초 페이드 임시 화면). `ui-revamp` 와 `main` 이 같다.
+애니메이션 작업은 사용자가 "토큰 덜 드는 것부터, 영상 작업은 나중에"라고 해서 **멈춤**(0-2 참고).
 
 ### 0-1. 일기 (☰ 기록 → 무지개색 "DREAM") — 진행 중
 사용자 요구(확정):
@@ -34,7 +33,7 @@
   PostgREST 요청을 연결) 확인: 기기 A 로그인→쓰기→서버엔 암호문만 / 기기 B 같은 비밀번호 로그인→저절로 열림 / 이미 로그인된 기기 C→
   로그인 비밀번호 한 번(틀리면 '비밀번호가 틀렸어요')→열림.
 - signup Edge 함수 **v4 배포 완료**(8자).
-- **남은 것: 0-2 애니메이션을 `DiaryIntro.tsx` 에 넣은 뒤 → 앱 안에서 열기/닫기 한 번 더 확인 → `ui-revamp:main` push(배포).**
+- **배포됨**(애니메이션 없이). 효과음 버튼·설정은 `DiaryIntro.tsx` 의 `DIARY_INTRO_SOUND = false` 로 숨김 — 애니메이션을 넣을 때 true 로.
 
 ### 0-2. 일기 열고 닫는 애니메이션 — 진행 중
 - 확정: 덮여 눕혀진 하드커버(표지 **DREAM 2026**, 은은한 **무지개빛 홀로그램 박**) → 표지가 왼쪽 책등 축으로 열림 → 페이지가 촤라락 넘어가며
@@ -48,9 +47,11 @@
   모두 라이브러리 없는 단일 HTML, `window.__seek(ms)` 로 아무 시각이나 똑같이 그려 확인 가능.
 - 남은 일: polish 마무리(JUDGES graft) → 닫기 장면 추가(뒷표지 DIARY) → `createDiaryIntro(root, {...})` 형태로 정리해 `DiaryIntro.tsx` 에 이식
   (마지막 종이 장면이 DiarySheet 종이와 같아 보이게 — 색·줄 간격 32/36px·제목 위치).
-  **2026-10-08 저녁: 하위 에이전트가 진행 중** — 엔진은 `src/lib/diaryIntro/`(프레임워크 없는 TS, `createDiaryIntro(root, {mode, reducedMotion,
-  sound, date, onDone}) → {play, seek, skip, duration, destroy}`), `DiaryIntro.tsx` 는 dynamic import 로 붙이고 실패하면 지금의 페이드로.
-  미리보기 `docs/design/diary-intro/final.html`, 메모 `NOTES.md`. 이 파일들이 없거나 반쯤이면 이어서 만들 것.
+  **2026-10-08 저녁: 사용자 요청으로 멈춤(나중에 다시).** 하위 에이전트가 만들다 멈춘 엔진 조각이 `src/lib/diaryIntro/`
+  (`math.ts`·`timeline.ts`·`art.ts`·`css.ts`·`sound.ts`, 앱엔 아직 안 붙음 — 아무 데서도 import 안 함, tsc·eslint 통과).
+  계획: 프레임워크 없는 TS `createDiaryIntro(root, {mode, reducedMotion, sound, date, onDone}) → {play, seek, skip, duration, destroy}`,
+  `DiaryIntro.tsx` 는 dynamic import 로 붙이고 실패하면 지금의 페이드로. 미리보기 `docs/design/diary-intro/final.html`(아직 없음).
+  토큰을 많이 쓰는 작업이니 사용자에게 먼저 묻고 시작.
 
 ### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
 - 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf
