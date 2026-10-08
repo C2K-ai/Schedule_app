@@ -40,7 +40,7 @@
 - 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`, `20261008000400_admin`
   (`20261008000500_admin_guards` — 마지막 관리자 보호 트리거·크론 기록 정리 — 는 아직 미적용: DELETE 문이 있어 MCP 승인 창이 뜬다. SQL Editor 에서 실행)
   (모두 다시 돌려도 안전, DROP 없음 — DROP 이 있으면 MCP 가 확인 창을 띄워 멈춘다).
-- Edge Functions: `parse-schedule`(v4, Haiku 4.5), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v1),
+- Edge Functions: `parse-schedule`(v5, Haiku 5.5 — thinking 끔, 한 번 1원 미만), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v1),
   `send-due-notifications`(v3, 브리핑 포함). AI 함수는 부르기 전에 `must_ai_claim` 으로 한 칸 예약(하루 한도, 한국 자정 기준,
   관리자 무제한)하고 끝나면 토큰을 채운다. 모델은 각 `index.ts` 의 `MODEL` 만 바꾸면 된다.
 - Claude API 키: Vault `must_anthropic_key` 에 넣고 Anthropic 에 확인 완료(2026-10-07).

@@ -18,10 +18,13 @@ const cats = [{ id: "c1", name: "개인" }, { id: "c2", name: "생일" }];
 
 Deno.test("달력 표: 오늘·내일 표시와 요일", () => {
   const rows = calendarTable("2026-10-07").split("\n");
-  assertEquals(rows[0], "2026-10-07 수 (오늘)");
-  assertEquals(rows[1], "2026-10-08 목 (내일)");
+  assertEquals(rows[0], "2026-10-07 수 (오늘 · 이번 주)");
+  assertEquals(rows[1], "2026-10-08 목 (내일 · 이번 주)");
+  assertEquals(rows[4], "2026-10-11 일 (이번 주)");
+  assertEquals(rows[5], "2026-10-12 월 (다음 주)");
   assertEquals(rows.length, 21);
-  assertEquals(calendarTable("2026-12-31").split("\n")[1], "2027-01-01 금 (내일)");
+  assertEquals(calendarTable("2026-12-31").split("\n")[1], "2027-01-01 금 (내일 · 이번 주)");
+  assertEquals(calendarTable("2026-10-11").split("\n")[1], "2026-10-12 월 (내일 · 다음 주)");
 });
 
 Deno.test("시각 일정은 그대로, 카테고리 이름 → id", () => {

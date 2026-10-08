@@ -580,7 +580,7 @@ function SettingsTab({
       <section>
         <h3 className="font-bold">AI 하루 한도 (한 사람당)</h3>
         <p className="mt-1 text-sm leading-relaxed text-muted">
-          말로 일정 추가와 커리어 다듬기를 합쳐 하루에 몇 번까지 쓸 수 있는지예요(한국 시간 자정에 초기화). 관리자는 한도가 없어요. 0 이면 관리자 말고는 못 써요. 1번에 약 5원(커리어 다듬기는 20~40원).
+          말로 일정 추가와 커리어 다듬기를 합쳐 하루에 몇 번까지 쓸 수 있는지예요(한국 시간 자정에 초기화). 관리자는 한도가 없어요. 0 이면 관리자 말고는 못 써요. 말로 일정 추가는 1번에 1원도 안 들고, 커리어 다듬기는 1번에 약 20~40원.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {LIMIT_CHOICES.map((n) => (

@@ -138,7 +138,9 @@ export function useIsAdmin(userId: string | null): boolean {
 }
 
 // ── 비용 어림 ── 모델별 100만 토큰당 달러(입력, 출력). 모르는 모델은 비용을 안 보여 준다.
+//   Haiku 5.5 는 한 번에 10만 토큰이 넘으면 5배(0.5, 2.5)지만 이 앱의 요청은 3천 토큰 안팎이라 기본값만 쓴다.
 const PRICE_PER_MTOK: Record<string, [number, number]> = {
+  "claude-haiku-5-5": [0.1, 0.5],
   "claude-haiku-4-5": [1, 5],
   "claude-sonnet-5-5": [2, 10],
 };
