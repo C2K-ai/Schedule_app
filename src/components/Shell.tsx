@@ -317,7 +317,7 @@ export function Shell() {
             onClick={() => p.openSheet("voice")}
             className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-accent/50 text-sm font-bold text-accent-text hover:bg-accent/10"
           >
-            <Mic size={17} /> 말로 일정 추가
+            <Mic size={17} /> Voice
           </button>
           <button
             onClick={() => p.openActivity({})}

@@ -21,35 +21,36 @@ function syncLook(p: ReturnType<typeof usePlanner>) {
   const s = p.snap.status;
   let tone = "text-muted";
   let dot = "bg-faint";
-  let text = "이 기기에만 저장";
+  // 위쪽 막대 글자는 짧은 영어로(사용자 요청) — 자세한 건 눌러서 설정 → 계정에서
+  let text = "Local only";
   let Icon = CloudOff;
   if (cloudEnabled && !p.session.userId) {
     tone = "text-warn";
     dot = "bg-warn";
-    text = "로그인하면 동기화";
+    text = "Sign in to sync";
   }
   if (s.mode === "cloud") {
     Icon = Cloud;
     if (!s.online) {
       dot = "bg-warn";
       tone = "text-warn";
-      text = s.pending ? `오프라인 · ${s.pending}건 대기` : "오프라인";
+      text = s.pending ? `Offline · ${s.pending} pending` : "Offline";
       Icon = CloudOff;
     } else if (s.error) {
       dot = "bg-danger";
       tone = "text-danger";
-      text = "동기화 오류";
+      text = "Sync error";
     } else if (s.pending) {
       dot = "bg-warn animate-pulse";
       tone = "text-warn";
-      text = `올리는 중 ${s.pending}`;
+      text = `Syncing ${s.pending}`;
     } else if (s.realtime === "live") {
       dot = "bg-ok";
       tone = "text-ok";
-      text = "실시간 동기화";
+      text = "Live sync";
     } else {
       dot = "bg-warn animate-pulse";
-      text = "연결 중";
+      text = "Connecting";
     }
   }
   return { tone, dot, text, Icon, error: s.error };
@@ -226,7 +227,7 @@ export function TopBar({
             onClick={() => openSheet("voice")}
             className="hidden h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-bold text-accent-fg md:inline-flex"
           >
-            <Mic size={14} /> 말로 추가
+            <Mic size={14} /> Voice
           </button>
           <IconButton label="말로 일정 추가" onClick={() => openSheet("voice")} className="md:hidden">
             <Mic size={20} />
