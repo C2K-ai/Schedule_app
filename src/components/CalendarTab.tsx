@@ -1,10 +1,11 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { dayNoteFor, isSomeday, liveCategories, saveDayNote } from "@/lib/planner";
-import { addDays, dayKey, fmtDate, sameDay, startOfDay, WEEKDAYS } from "@/lib/time";
+import { activitiesOnDay, activityMinutes, dayNoteFor, isSomeday, liveCategories, saveDayNote } from "@/lib/planner";
+import { addDays, dayKey, fmtDate, fmtSpan, MIN, sameDay, startOfDay, WEEKDAYS } from "@/lib/time";
 import { useMedia } from "@/lib/useMedia";
+import { ActivityRow, DidButton } from "./ActivityEditor";
 import { Board, type View } from "./Board";
 import { usePlanner } from "./PlannerProvider";
 import { TaskRow } from "./TasksTab";
@@ -94,19 +95,24 @@ function DayNote({ day }: { day: Date }) {
 }
 
 function DayPanel({ day }: { day: Date }) {
-  const { tasks, snap, openEditor } = usePlanner();
+  const { tasks, activities, snap, openEditor, openActivity } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const key = dayKey(day);
   const list = tasks
     .filter((t) => !isSomeday(t) && dayKey(new Date(t.starts_at)) === key && t.status !== "skipped")
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const did = activitiesOnDay(activities, key);
+  const didMin = did.reduce((n, a) => n + activityMinutes(a), 0);
   return (
     <Card className="p-4 md:p-5">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-lg font-bold">{fmtDate(day)}</h3>
-        <Button size="sm" variant="soft" onClick={() => openEditor({ schedule: "day", day: key, start: new Date(startOfDay(day).getTime() + 9 * 3600_000) })}>
-          <Plus size={14} /> 할 일
-        </Button>
+        <div className="flex gap-1.5">
+          <Button size="sm" variant="soft" onClick={() => openEditor({ schedule: "day", day: key, start: new Date(startOfDay(day).getTime() + 9 * 3600_000) })}>
+            <Plus size={14} /> 할 일
+          </Button>
+          <DidButton onClick={() => openActivity({ day: key })} />
+        </div>
       </div>
       {list.length === 0 ? (
         <p className="py-4 text-sm text-muted">이날 일정이 없어요.</p>
@@ -118,6 +124,30 @@ function DayPanel({ day }: { day: Date }) {
         </ul>
       )}
       <div className="mt-4 border-t border-line pt-4">
+        <p className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-did">
+          <Check size={14} strokeWidth={3} /> 한 일
+          {did.length > 0 && (
+            <span className="font-normal text-muted">
+              {did.length}개{didMin > 0 && ` · ${fmtSpan(didMin * MIN)}`}
+            </span>
+          )}
+        </p>
+        {did.length === 0 ? (
+          <button
+            onClick={() => openActivity({ day: key })}
+            className="w-full rounded-2xl border border-dashed border-line-strong px-4 py-3 text-left text-sm text-muted transition hover:border-did hover:text-fg"
+          >
+            이날 한 일을 남겨 보세요 — 계획 없이 한 것도 괜찮아요.
+          </button>
+        ) : (
+          <ul className="space-y-1.5">
+            {did.map((a) => (
+              <ActivityRow key={a.id} a={a} categories={categories} />
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="mt-4 border-t border-line pt-4">
         <p className="mb-2 text-[13px] font-bold text-muted">하루 노트</p>
         <DayNote key={key} day={day} />
       </div>
@@ -126,7 +156,7 @@ function DayPanel({ day }: { day: Date }) {
 }
 
 function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date; onSelect: (d: Date) => void }) {
-  const { tasks, snap } = usePlanner();
+  const { tasks, activities, snap } = usePlanner();
   const cells = useMemo(() => monthCells(month), [month]);
   const marks = useMemo(() => {
     const m = new Map<string, { open: number; done: number }>();
@@ -140,6 +170,11 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
     }
     return m;
   }, [tasks]);
+  const did = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of activities) m.set(a.day, (m.get(a.day) ?? 0) + 1);
+    return m;
+  }, [activities]);
   const notes = useMemo(() => {
     const m = new Map<string, { mood: number | null; hasBody: boolean }>();
     for (const n of Object.values(snap.db.day_notes)) {
@@ -166,6 +201,7 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
           const isToday = sameDay(d, today);
           const mk = marks.get(k);
           const nt = notes.get(k);
+          const dn = did.get(k) ?? 0;
           return (
             <button
               key={k}
@@ -186,10 +222,20 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
                 {d.getDate()}
               </span>
               {nt?.mood && <span className="text-[12px] leading-none md:text-base">{MOODS[nt.mood - 1].e}</span>}
-              <span className="absolute bottom-1 flex gap-1 md:bottom-1.5">
+
+              <span className="absolute bottom-1 flex items-center gap-1 md:bottom-1.5">
                 {mk && mk.open > 0 && <span className={cx("size-1.5 rounded-full", sel ? "bg-accent-fg" : "bg-accent")} />}
                 {mk && mk.open === 0 && mk.done > 0 && <span className={cx("size-1.5 rounded-full", sel ? "bg-accent-fg/70" : "bg-ok")} />}
                 {nt?.hasBody && <span className={cx("size-1.5 rounded-full", sel ? "bg-accent-fg/60" : "bg-[#a78bfa]")} />}
+                {dn > 0 && (
+                  <span
+                    className={cx("inline-flex items-center font-mono text-[10px] leading-none font-bold tabular-nums", sel ? "text-accent-fg" : "text-did")}
+                    aria-label={`한 일 ${dn}개`}
+                  >
+                    <Check size={9} strokeWidth={4} />
+                    {dn}
+                  </span>
+                )}
               </span>
             </button>
           );
@@ -199,6 +245,7 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
         <span className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-accent" /> 남은 일정</span>
         <span className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-ok" /> 다 끝낸 날</span>
         <span className="inline-flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-[#a78bfa]" /> 노트</span>
+        <span className="inline-flex items-center gap-1 text-did"><Check size={11} strokeWidth={3.5} /> 한 일</span>
       </p>
     </div>
   );

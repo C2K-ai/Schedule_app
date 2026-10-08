@@ -76,6 +76,22 @@ export interface DayNote extends Row {
   created_at: string;
 }
 
+/**
+ * 한 일 기록 — 계획(일정)과 따로, 이미 한 일만 남긴다. 알림·강제 모드·사유서·'놓침' 이 없다.
+ * 시각은 넣어도 되고 안 넣어도 된다(둘 다 있거나 둘 다 없음).
+ */
+export interface Activity extends Row {
+  title: string;
+  notes: string | null;
+  /** YYYY-MM-DD (현지 날짜) */
+  day: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  color: ColorKey;
+  category_id: string | null;
+  created_at: string;
+}
+
 /** 공부 타이머 과목(열품타 방식) */
 export interface Subject extends Row {
   name: string;
@@ -244,7 +260,8 @@ export type TableName =
   | "day_notes"
   | "subjects"
   | "study_sessions"
-  | "career_entries";
+  | "career_entries"
+  | "activities";
 
 export interface DB {
   tasks: Record<string, Task>;
@@ -256,6 +273,7 @@ export interface DB {
   subjects: Record<string, Subject>;
   study_sessions: Record<string, StudySession>;
   career_entries: Record<string, CareerEntry>;
+  activities: Record<string, Activity>;
   profile: Profile | null;
 }
 

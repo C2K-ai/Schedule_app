@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -562,6 +562,44 @@ await db.exec(`reset role;`);
   ok((await as(B, `delete from public.drive_files where id = '${f1.id}' returning id`)).length === 1, "드라이브: 내 파일 지우기");
   await db.exec(readFileSync(new URL("../migrations/20261009000100_drive.sql", import.meta.url), "utf8"));
   ok((await q(`select count(*)::int n from pg_policies where policyname in ('own drive files', 'drive own folder')`))[0].n === 2, "드라이브 마이그레이션 다시 돌려도 정책 그대로");
+}
+
+// ── 한 일 기록 ──
+{
+  const as = async (uid, sql) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const throws = async (uid, sql) => {
+    try {
+      await as(uid, sql);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const a1 = (await as(A, `insert into public.activities (title, day) values ('헬스장 다녀옴', '2026-10-08') returning user_id, starts_at`))[0];
+  ok(a1 && a1.user_id === A && a1.starts_at === null, "한 일: 시각 없이 날짜만으로 기록");
+  const a2 = await as(
+    A,
+    `insert into public.activities (title, day, starts_at, ends_at) values ('독서', '2026-10-08', '2026-10-08 05:00+00', '2026-10-08 06:30+00') returning id`,
+  );
+  ok(a2.length === 1, "한 일: 시작·끝 시각을 넣어 기록");
+  ok(await throws(A, `insert into public.activities (title, day, starts_at) values ('x', '2026-10-08', now())`), "한 일: 시작만 있고 끝이 없으면 안 됨");
+  ok(
+    await throws(A, `insert into public.activities (title, day, starts_at, ends_at) values ('x', '2026-10-08', now(), now() - interval '1 hour')`),
+    "한 일: 끝이 시작보다 앞설 수 없음",
+  );
+  ok(await throws(A, `insert into public.activities (title, day) values ('', '2026-10-08')`), "한 일: 제목은 비울 수 없음");
+  ok((await as(B, `select count(*)::int n from public.activities`))[0].n === 0, "RLS: B 는 A 의 한 일을 못 봄");
+  ok(await throws(B, `insert into public.activities (user_id, title, day) values ('${A}', '남의 기록', '2026-10-08')`), "RLS: 남의 이름으로 한 일을 못 씀");
+  ok((await q(`select count(*)::int n from public.notification_jobs j join public.activities a on a.id = j.task_id`))[0].n === 0, "한 일: 알림이 생기지 않음");
+  await db.exec(readFileSync(new URL("../migrations/20261010000000_activities.sql", import.meta.url), "utf8"));
+  ok((await as(A, `select count(*)::int n from public.activities`))[0].n === 2, "한 일 마이그레이션 다시 돌려도 기록 그대로");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

@@ -11,7 +11,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { liveHabits, liveTasks, materializeHabits } from "@/lib/planner";
+import { liveActivities, liveHabits, liveTasks, materializeHabits } from "@/lib/planner";
 import { syncLockCard } from "@/lib/lockCard";
 import { mergeSettings } from "@/lib/settings";
 import { unsubscribePush } from "@/lib/push";
@@ -19,7 +19,7 @@ import { PlannerStore, type Snapshot } from "@/lib/store";
 import { clearRecovery, inRecovery, linkErrorMessage, markRecovery, RECOVERY_EVENT } from "@/lib/authLinks";
 import { getSupabase } from "@/lib/supabase";
 import { addDays, startOfDay, uuid } from "@/lib/time";
-import type { AlarmKind, Habit, ScheduleKind, Settings, Task } from "@/lib/types";
+import type { Activity, AlarmKind, Habit, ScheduleKind, Settings, Task } from "@/lib/types";
 
 export interface Toast {
   id: string;
@@ -54,6 +54,15 @@ export interface EditorState {
   title?: string;
 }
 
+/** 한 일 기록 창 — id 가 있으면 고치기, 없으면 새로 */
+export interface ActivityEditorState {
+  activityId?: string;
+  /** YYYY-MM-DD */
+  day?: string;
+  start?: Date;
+  end?: Date;
+}
+
 interface Session {
   userId: string | null;
   email: string | null;
@@ -66,10 +75,14 @@ interface Ctx {
   settings: Settings;
   tasks: Task[];
   habits: Habit[];
+  activities: Activity[];
   session: Session;
   editor: EditorState | null;
   openEditor: (e: EditorState) => void;
   closeEditor: () => void;
+  activityEditor: ActivityEditorState | null;
+  openActivity: (e: ActivityEditorState) => void;
+  closeActivity: () => void;
   sheet: Sheet;
   sheetTab: string | null;
   openSheet: (s: Sheet, tab?: string) => void;
@@ -175,8 +188,10 @@ function Inner({
   const settings = useMemo(() => mergeSettings(snap.db.profile?.settings), [snap.db.profile]);
   const tasks = useMemo(() => liveTasks(snap.db), [snap.db]);
   const habits = useMemo(() => liveHabits(snap.db), [snap.db]);
+  const activities = useMemo(() => liveActivities(snap.db), [snap.db]);
 
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [activityEditor, setActivityEditor] = useState<ActivityEditorState | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [sheetTab, setSheetTab] = useState<string | null>(null);
   const [focusScreen, setFocusScreen] = useState(false);
@@ -276,10 +291,14 @@ function Inner({
     settings,
     tasks,
     habits,
+    activities,
     session,
     editor,
     openEditor: setEditor,
     closeEditor: () => setEditor(null),
+    activityEditor,
+    openActivity: setActivityEditor,
+    closeActivity: () => setActivityEditor(null),
     sheet,
     sheetTab,
     openSheet: (s, tab) => {

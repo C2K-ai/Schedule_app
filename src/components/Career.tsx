@@ -56,9 +56,9 @@ function Editor({ initial, onDone }: { initial: Draft; onDone: () => void }) {
     setBusy(true);
     const skillsAtStart = skillText;
     try {
-      const events = material.tasks
+      const events = material.items
         .filter((t) => picked.has(t.id))
-        .map((t) => ({ date: dayKey(new Date(t.completed_at!)), title: t.title, notes: t.notes }));
+        .map((t) => ({ date: t.day, title: t.title, notes: t.notes }));
       const r = await polishCareer(sb, {
         title: d.title,
         kind: d.kind,
@@ -140,12 +140,12 @@ function Editor({ initial, onDone }: { initial: Draft; onDone: () => void }) {
       </div>
 
       <div>
-        <Label hint={`${picked.size}개 선택`}>이 기간에 끝낸 일정 — AI 가 참고할 것만 고르세요</Label>
-        {material.tasks.length === 0 ? (
-          <p className="text-sm text-faint">이 기간에 완료한 일정이 없어요.</p>
+        <Label hint={`${picked.size}개 선택`}>이 기간에 끝낸 일정·한 일 — AI 가 참고할 것만 고르세요</Label>
+        {material.items.length === 0 ? (
+          <p className="text-sm text-faint">이 기간에 완료한 일정이나 한 일이 없어요.</p>
         ) : (
           <ul className="max-h-56 space-y-0.5 overflow-y-auto rounded-xl border border-line p-1">
-            {material.tasks.map((t) => {
+            {material.items.map((t) => {
               const on = picked.has(t.id);
               return (
                 <li key={t.id}>
@@ -162,9 +162,10 @@ function Editor({ initial, onDone }: { initial: Draft; onDone: () => void }) {
                     <span className={cx("grid size-5 shrink-0 place-items-center rounded-md border-2", on ? "border-accent bg-accent text-accent-fg" : "border-line-strong")}>
                       {on && <Check size={12} strokeWidth={3} />}
                     </span>
-                    <span className="font-mono text-xs text-muted tabular-nums">{dayKey(new Date(t.completed_at!)).slice(5).replace("-", "/")}</span>
+                    <span className="font-mono text-xs text-muted tabular-nums">{t.day.slice(5).replace("-", "/")}</span>
                     <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                    {t.schedule === "timed" && <span className="font-mono text-[11px] text-faint">{fmtTime(t.starts_at)}</span>}
+                    {t.activity && <span className="shrink-0 rounded bg-did-soft px-1 text-[10px] font-bold text-did">한 일</span>}
+                    {t.at && <span className="font-mono text-[11px] text-faint">{fmtTime(t.at)}</span>}
                   </button>
                 </li>
               );

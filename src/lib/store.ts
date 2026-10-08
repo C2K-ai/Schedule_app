@@ -27,6 +27,7 @@ export const TABLES: TableName[] = [
   "subjects",
   "study_sessions",
   "career_entries",
+  "activities",
 ];
 type AnyTable = TableName | "profiles";
 
@@ -58,6 +59,7 @@ const emptyDb = (): DB => ({
   subjects: {},
   study_sessions: {},
   career_entries: {},
+  activities: {},
   profile: null,
 });
 
@@ -309,7 +311,7 @@ export class PlannerStore {
       for (const raw of Object.values(source[t] ?? {})) {
         let row = raw as Row & Record<string, unknown>;
         if (t === "categories") row = { ...row, id: remap(row.id) as string };
-        if (t === "tasks") row = { ...row, category_id: remap(row.category_id as string | null) };
+        if (t === "tasks" || t === "activities") row = { ...row, category_id: remap(row.category_id as string | null) };
         // 하루 노트 id 는 사용자+날짜로 정해진다 — 로컬 모드 id 그대로면 서버의 (사용자, 날짜) 고유 조건에 걸린다
         if (t === "day_notes") row = { ...row, id: dayNoteId(this.userId, String(row.day)) };
         const mine = this.snap.db[t][row.id] as Row | undefined;
@@ -382,6 +384,7 @@ export class PlannerStore {
       "day_notes",
       "study_sessions",
       "career_entries",
+      "activities",
     ];
     const sorted = [...groups].sort(
       ([a], [b]) => order.indexOf(a.split("|")[0] as AnyTable) - order.indexOf(b.split("|")[0] as AnyTable),
@@ -494,6 +497,8 @@ export class PlannerStore {
             q = q.gte("day", new Date(Date.now() - 400 * DAY).toISOString().slice(0, 10));
           else if (table === "study_sessions")
             q = q.gte("started_at", new Date(Date.now() - 400 * DAY).toISOString());
+          else if (table === "activities")
+            q = q.gte("day", new Date(Date.now() - 400 * DAY).toISOString().slice(0, 10));
           const { data, error } = await q;
           if (error) throw error;
           for (const row of data ?? []) {

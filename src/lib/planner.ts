@@ -4,6 +4,7 @@ import type { PlannerStore } from "./store";
 import { addDays, atTime, dayKey, DAY, MIN, nowIso, parseDayKey, startOfDay, uuid } from "./time";
 import { dayNoteId } from "./ids";
 import type {
+  Activity,
   CareerEntry,
   Category,
   ColorKey,
@@ -838,16 +839,71 @@ export function deleteCareer(store: PlannerStore, id: string) {
   store.patch("career_entries", id, { deleted_at: nowIso() });
 }
 
-/** 기간 안에 끝낸 일정·하루 노트 — AI 가 커리어 문장을 다듬을 재료 */
+export interface CareerItem {
+  id: string;
+  day: string;
+  title: string;
+  notes: string | null;
+  /** 시각이 있으면 시작 시각(ISO) */
+  at: string | null;
+  activity: boolean;
+}
+
+/** 기간 안에 끝낸 일정·한 일·하루 노트 — AI 가 커리어 문장을 다듬을 재료 */
 export function careerMaterial(db: DB, startDay: string, endDay: string) {
   const inRange = (k: string) => k >= startDay && k <= endDay;
-  const tasks = Object.values(db.tasks)
+  const done: CareerItem[] = Object.values(db.tasks)
     .filter((t) => !t.deleted_at && t.status === "done" && t.completed_at && inRange(dayKey(new Date(t.completed_at))))
-    .sort((a, b) => (a.completed_at ?? "").localeCompare(b.completed_at ?? ""));
+    .map((t) => ({
+      id: t.id,
+      day: dayKey(new Date(t.completed_at!)),
+      title: t.title,
+      notes: t.notes,
+      at: (t.schedule ?? "timed") === "timed" ? t.starts_at : null,
+      activity: false,
+    }));
+  const did: CareerItem[] = liveActivities(db)
+    .filter((a) => inRange(a.day))
+    .map((a) => ({ id: a.id, day: a.day, title: a.title, notes: a.notes, at: a.starts_at, activity: true }));
+  const items = [...done, ...did].sort((a, b) => a.day.localeCompare(b.day) || (a.at ?? "").localeCompare(b.at ?? ""));
   const notes = Object.values(db.day_notes)
     .filter((n) => !n.deleted_at && n.body.trim() && inRange(n.day))
     .sort((a, b) => a.day.localeCompare(b.day));
-  return { tasks, notes };
+  return { items, notes };
+}
+
+// ───────────────────────── 한 일 기록 ─────────────────────────
+
+export function liveActivities(db: DB): Activity[] {
+  return Object.values(db.activities ?? {}).filter((a) => !a.deleted_at);
+}
+
+/** 그날 한 일 — 시각 있는 것은 시각 순, 시각 없는 것은 넣은 순으로 뒤에 */
+export function activitiesOnDay(list: Activity[], day: string): Activity[] {
+  return list
+    .filter((a) => a.day === day)
+    .sort((a, b) => {
+      if (a.starts_at && b.starts_at) return a.starts_at.localeCompare(b.starts_at);
+      if (a.starts_at) return -1;
+      if (b.starts_at) return 1;
+      return a.created_at.localeCompare(b.created_at);
+    });
+}
+
+/** 한 일의 길이(분). 시각이 없으면 0 */
+export const activityMinutes = (a: Activity) =>
+  a.starts_at && a.ends_at ? Math.round((Date.parse(a.ends_at) - Date.parse(a.starts_at)) / MIN) : 0;
+
+export function saveActivity(store: PlannerStore, input: Omit<Activity, "created_at" | "updated_at" | "deleted_at" | "id"> & { id?: string }) {
+  const id = input.id ?? uuid();
+  const cur = store.db.activities[id];
+  const row: Activity = { ...input, id, created_at: cur?.created_at ?? nowIso(), updated_at: nowIso(), deleted_at: null };
+  store.put("activities", row);
+  return row;
+}
+
+export function deleteActivity(store: PlannerStore, id: string) {
+  store.patch("activities", id, { deleted_at: nowIso() });
 }
 
 export function weekDays(anchor: Date): Date[] {

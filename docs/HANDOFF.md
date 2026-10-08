@@ -34,6 +34,7 @@
 | 기능 | 파일 |
 |---|---|
 | 껍데기(탭·☰ 메뉴·PC 왼쪽 메뉴 숨기기) | `Shell.tsx`, `Header.tsx`(TopBar·전체 화면 버튼·PC 제목 줄) |
+| 한 일 기록(계획 없이 이미 한 일) | `ActivityEditor.tsx`(입력 창·한 줄·버튼), `lib/planner.ts`(`liveActivities`·`saveActivity`), 표 `activities` |
 | 작업·캘린더·타이머·프로필 탭 | `TasksTab.tsx`, `CalendarTab.tsx`, `TimerTab.tsx`/`Study.tsx`, `MeTab.tsx` |
 | 말로 일정 넣기(AI) | `VoiceAdd.tsx`, `lib/ai.ts`, `lib/speech.ts`, Edge `parse-schedule` |
 | 커리어 기록 + AI 다듬기 | `Career.tsx`, Edge `career-polish` |
@@ -48,7 +49,7 @@
 
 ## 4. 서버(Supabase) 현재 상태
 
-- **적용된 마이그레이션**: `20261005000000_init` ~ `20261009000300_member_name` 전부.
+- **적용된 마이그레이션**: `20261005000000_init` ~ `20261010000000_activities` 전부.
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
@@ -105,8 +106,12 @@
 5. 드라이브(☰ 메뉴 → 드라이브, 1인 150MB·파일 50MB) + 파일 비밀번호 잠금(브라우저에서 AES-GCM 암호화, 운영자도 못 봄)
 6. 가입 신청 때 이름 필수 → 관리자 화면·알림에 이름 표시
 7. 테마 추가(라임 외 **바다·벚꽃·라벤더**, 각각 밝게/어둡게) + 사진 배경에 **내 사진** 넣기
+8. **한 일 기록** — 일정(계획)과 따로 이미 한 일만 남김. 알림·강제 모드·사유서·'놓침' 없음(표 `activities` 가 일정과 아예 따로라
+   서버 알림 트리거도 안 걸림). 시각은 넣어도 되고 안 넣어도 됨. 모양: 청록(`--did` 토큰)·체크·점선 테두리.
+   어디서: 폰 ＋ 버튼 위 '한 일', PC 왼쪽 메뉴 '한 일 기록', 캘린더 날짜 칸(목록), 주/일 타임라인(점선 줄무늬 블록, 끌기 안 됨),
+   달력 칸 '✓n', 프로필 → 요약 '이번 주 한 일', 커리어 AI 재료에도 포함.
 
-## 9. 테마·배경 구조(마지막 작업)
+## 9. 테마·배경 구조
 
 - 테마 목록 `src/lib/palettes.ts`, 고르는 칸 `PalettePicker.tsx`(☰ 메뉴·설정 → 화면·데이터), 색 `globals.css`:
   단색 테마는 `html[data-palette=X]:not([data-theme="dark"])`(밝게) / `html[data-palette=X][data-theme="dark"]`(어둡게) 로

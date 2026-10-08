@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   HardDrive,
   CalendarDays,
+  Check,
   ListChecks,
   Menu as MenuIcon,
   Mic,
@@ -27,6 +28,7 @@ import { createCategory, deleteCategory, liveCategories, updateCategory } from "
 import { MIN } from "@/lib/time";
 import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
+import { ActivityEditor } from "./ActivityEditor";
 import { AdminSheet } from "./AdminSheet";
 import { DriveSheet } from "./DriveSheet";
 import { PalettePicker } from "./PalettePicker";
@@ -317,6 +319,12 @@ export function Shell() {
           >
             <Mic size={17} /> 말로 일정 추가
           </button>
+          <button
+            onClick={() => p.openActivity({})}
+            className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-did/60 text-sm font-bold text-did hover:bg-did-soft"
+          >
+            <Check size={17} strokeWidth={2.75} /> 한 일 기록
+          </button>
           <div className="mt-2 border-t border-line pt-2">{menu}</div>
         </div>
       </aside>
@@ -342,7 +350,14 @@ export function Shell() {
 
       {/* 폰: 아래 탭바 + 둥근 + 버튼 */}
       <div className="md:hidden">
-        <div className="fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom))] z-30">
+        <div className="fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom))] z-30 flex flex-col items-end gap-2.5">
+          <button
+            aria-label="한 일 기록"
+            onClick={() => p.openActivity({})}
+            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-dashed border-did/70 bg-[color-mix(in_oklab,var(--surface)_85%,transparent)] px-3.5 text-[13px] font-bold text-did shadow-lg backdrop-blur-md active:scale-95"
+          >
+            <Check size={16} strokeWidth={3} /> 한 일
+          </button>
           <button
             aria-label="추가"
             onClick={addNew}
@@ -412,6 +427,7 @@ export function Shell() {
       {/* 완료 목록에서 일정을 누르면 편집 창이 그 위에 떠야 한다 — 편집기를 뒤에 둔다 */}
       <CompletedSheet />
       <TaskEditor />
+      <ActivityEditor />
       <PostponeDialog />
       <HabitsSheet />
       <LogSheet />
@@ -419,7 +435,7 @@ export function Shell() {
       <AdminSheet />
       <DriveSheet />
       <VoiceAdd />
-      <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.postpone)} />
+      <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.activityEditor || p.postpone)} />
       <AlarmOverlay />
       <OverdueSiren />
       <Toasts />

@@ -2,9 +2,9 @@
 
 import { BriefcaseBusiness, ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import { liveCareer, liveCategories, liveStudy, liveSubjects, studyBySubject, studyDayStart } from "@/lib/planner";
+import { activityMinutes, liveCareer, liveCategories, liveStudy, liveSubjects, studyBySubject, studyDayStart } from "@/lib/planner";
 import { completionRate, completionsByDay, perfectDays, studyLevel, studyWeek, weekdayAverages, yearGrid } from "@/lib/stats";
-import { addDays, DAY, dayKey, fmtDate, startOfDay, startOfWeek, WEEKDAYS } from "@/lib/time";
+import { addDays, DAY, dayKey, fmtDate, fmtSpan, MIN, startOfDay, startOfWeek, WEEKDAYS } from "@/lib/time";
 import { COLOR_HEX } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { Columns, Donut, HEAT, HeatLegend, YearHeatmap } from "./Charts";
@@ -104,7 +104,7 @@ function studyBySubjectTotal(sessions: ReturnType<typeof liveStudy>, from: numbe
 }
 
 export function MeTab({ onCareer }: { onCareer: () => void }) {
-  const { tasks, snap, settings } = usePlanner();
+  const { tasks, activities, snap, settings } = usePlanner();
   const [view, setView] = useState<"summary" | "study" | "records">("summary");
   const now = useNow(60_000);
   const today = useMemo(() => startOfDay(new Date(now)), [now]);
@@ -158,6 +158,18 @@ export function MeTab({ onCareer }: { onCareer: () => void }) {
     ? "이번 주는 아직 끝낸 일이 없어요. 하나만 끝내도 시작이에요."
     : `이번 주는 ${WEEKDAYS[s.week[bestWeek].d.getDay()]}요일에 가장 많이 끝냈어요 (${s.week[bestWeek].n}개).`;
 
+  // 이번 주 한 일 — 요일별 개수(기록한 시간은 설명에)
+  const didWeek = useMemo(() => {
+    const monday = startOfWeek(today);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = addDays(monday, i);
+      const list = activities.filter((a) => a.day === dayKey(d));
+      return { d, n: list.length, min: list.reduce((m, a) => m + activityMinutes(a), 0) };
+    });
+  }, [activities, today]);
+  const didCount = didWeek.reduce((n, x) => n + x.n, 0);
+  const didMin = didWeek.reduce((n, x) => n + x.min, 0);
+
   const grid = useMemo(() => yearGrid(s.byDay, today), [s.byDay, today]);
   const heatWeeks = grid.map((w) => w.map((c) => ({ key: c.key, level: c.level, future: c.future, label: `${fmtDate(c.date)} · 완료 ${c.count}개` })));
 
@@ -188,6 +200,22 @@ export function MeTab({ onCareer }: { onCareer: () => void }) {
               highlight={todayIdx}
             />
             <p className="mt-2 text-sm">{weekComment}</p>
+          </Panel>
+          <Panel title="이번 주 한 일" sub={didCount ? `${didCount}개${didMin ? ` · ${fmtSpan(didMin * MIN)}` : ""}` : undefined}>
+            {didCount === 0 ? (
+              <p className="text-sm text-muted">계획 없이 한 일도 남겨 두면 여기 모여요. 캘린더나 &lsquo;한 일&rsquo; 버튼으로 기록해요.</p>
+            ) : (
+              <Columns
+                data={didWeek.map((x) => ({
+                  label: WEEKDAYS[x.d.getDay()],
+                  value: x.n,
+                  detail: `${fmtDate(x.d)} · ${x.n}개${x.min ? ` · ${fmtSpan(x.min * MIN)}` : ""}`,
+                }))}
+                format={(v) => `${v}개`}
+                highlight={todayIdx}
+                color="var(--did)"
+              />
+            )}
           </Panel>
           <Panel title="카테고리별 완료" sub="최근 30일">
             {s.donut.length === 0 ? (

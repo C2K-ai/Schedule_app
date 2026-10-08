@@ -4,7 +4,7 @@ import { Check, Play, Repeat, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskState, type TaskState } from "@/lib/planner";
 import { addMinutes, dayKey, fmtTime, MIN, minutesOfDay, sameDay, snapMinutes, startOfDay, WEEKDAYS } from "@/lib/time";
-import { COLOR_HEX, type Task } from "@/lib/types";
+import { COLOR_HEX, type Activity, type Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { cx } from "./ui";
 
@@ -19,10 +19,15 @@ interface Props {
   onMove: (task: Task, start: Date, end: Date) => boolean;
   onSelectDay?: (d: Date) => void;
   dayRates?: Record<string, number>;
+  /** 시각이 있는 한 일 기록 — 일정과 다른 모양(점선)으로, 끌어서 옮기지 않는다 */
+  activities?: Activity[];
+  onOpenActivity?: (a: Activity) => void;
 }
 
+type Item = { kind: "task"; task: Task } | { kind: "activity"; act: Activity };
+
 interface Placed {
-  task: Task;
+  item: Item;
   col: number;
   cols: number;
   top: number;
@@ -45,27 +50,33 @@ interface Drag {
 
 const SNAP = 5;
 
-function layoutDay(tasks: Task[], day: Date, hourPx: number): Placed[] {
+function layoutDay(tasks: Task[], acts: Activity[], day: Date, hourPx: number): Placed[] {
   const dayStart = startOfDay(day).getTime();
   const dayEnd = dayStart + 24 * 60 * MIN;
-  const items = tasks
-    .filter((t) => Date.parse(t.starts_at) < dayEnd && Date.parse(t.ends_at) > dayStart && sameDay(new Date(t.starts_at), day))
-    .map((t) => {
-      const s = Math.max(Date.parse(t.starts_at), dayStart);
-      const e = Math.min(Date.parse(t.ends_at), dayEnd);
-      return { task: t, s, e };
+  const spans: { item: Item; start: string; end: string }[] = [
+    ...tasks.map((t) => ({ item: { kind: "task", task: t } as Item, start: t.starts_at, end: t.ends_at })),
+    ...acts
+      .filter((a) => a.starts_at && a.ends_at)
+      .map((a) => ({ item: { kind: "activity", act: a } as Item, start: a.starts_at!, end: a.ends_at! })),
+  ];
+  const items = spans
+    .filter((x) => Date.parse(x.start) < dayEnd && Date.parse(x.end) > dayStart && sameDay(new Date(x.start), day))
+    .map((x) => {
+      const s = Math.max(Date.parse(x.start), dayStart);
+      const e = Math.min(Date.parse(x.end), dayEnd);
+      return { item: x.item, s, e };
     })
     .sort((a, b) => a.s - b.s || b.e - a.e);
 
   const out: Placed[] = [];
-  let cluster: { task: Task; s: number; e: number; col: number }[] = [];
+  let cluster: { item: Item; s: number; e: number; col: number }[] = [];
   let clusterEnd = -Infinity;
   const flush = () => {
     const cols = Math.max(1, ...cluster.map((c) => c.col + 1));
     for (const c of cluster) {
       const top = ((c.s - dayStart) / (60 * MIN)) * hourPx;
       const height = Math.max(24, ((c.e - c.s) / (60 * MIN)) * hourPx - 2);
-      out.push({ task: c.task, col: c.col, cols, top, height });
+      out.push({ item: c.item, col: c.col, cols, top, height });
     }
     cluster = [];
   };
@@ -92,7 +103,19 @@ const STATE_STYLE: Record<TaskState, string> = {
   missed: "opacity-60",
 };
 
-export function Timeline({ days, tasks, graceMin, dayStartHour, onCreate, onOpen, onMove, onSelectDay, dayRates }: Props) {
+export function Timeline({
+  days,
+  tasks,
+  graceMin,
+  dayStartHour,
+  onCreate,
+  onOpen,
+  onMove,
+  onSelectDay,
+  dayRates,
+  activities = [],
+  onOpenActivity,
+}: Props) {
   const now = useNow(30_000);
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -120,7 +143,7 @@ export function Timeline({ days, tasks, graceMin, dayStartHour, onCreate, onOpen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstKey, days.length, hourPx]);
 
-  const placed = useMemo(() => days.map((d) => layoutDay(tasks, d, hourPx)), [days, tasks, hourPx]);
+  const placed = useMemo(() => days.map((d) => layoutDay(tasks, activities, d, hourPx)), [days, tasks, activities, hourPx]);
 
   const setD = (d: Drag | null) => {
     dragRef.current = d;
@@ -325,7 +348,51 @@ export function Timeline({ days, tasks, graceMin, dayStartHour, onCreate, onOpen
                 onPointerUp={(e) => onColumnPointerUp(e, day)}
               >
                 {placed[di].map((p) => {
-                  const t = p.task;
+                  if (p.item.kind === "activity") {
+                    const a = p.item.act;
+                    const color = COLOR_HEX[a.color];
+                    const compact = p.height < 44;
+                    return (
+                      <div
+                        key={a.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`한 일: ${a.title}`}
+                        onKeyDown={(e) => e.key === "Enter" && onOpenActivity?.(a)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerUp={(e) => {
+                          e.stopPropagation();
+                          onOpenActivity?.(a);
+                        }}
+                        className="absolute cursor-pointer overflow-hidden rounded-xl border-2 border-dashed px-2 py-1 text-left select-none hover:brightness-110"
+                        style={{
+                          top: p.top,
+                          height: Math.max(22, p.height),
+                          left: `calc(${(p.col / p.cols) * 100}% + 3px)`,
+                          width: `calc(${100 / p.cols}% - 6px)`,
+                          borderColor: `color-mix(in oklab, ${color} 70%, transparent)`,
+                          background: `repeating-linear-gradient(135deg, color-mix(in oklab, ${color} 16%, var(--surface)) 0 8px, color-mix(in oklab, ${color} 9%, var(--surface)) 8px 16px)`,
+                        }}
+                      >
+                        <div className={cx("flex min-w-0 items-center gap-1", compact ? "text-[12px]" : "text-[13px]")}>
+                          <span className="grid size-3.5 shrink-0 place-items-center rounded-full" style={{ background: color }}>
+                            <Check size={10} strokeWidth={3.5} className="text-[#0b0c10]" />
+                          </span>
+                          <span className="truncate font-semibold">{a.title}</span>
+                          {compact && (
+                            <span className="ml-auto shrink-0 font-mono text-[10px] text-muted tabular-nums">{fmtTime(a.starts_at!)}</span>
+                          )}
+                        </div>
+                        {!compact && (
+                          <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[11px] text-muted tabular-nums">
+                            {fmtTime(a.starts_at!)} – {fmtTime(a.ends_at!)}
+                            <span className="rounded bg-did-soft px-1 font-sans text-[10px] font-bold text-did">한 일</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  const t = p.item.task;
                   const st = taskState(t, now, graceMin);
                   const isDragging = drag?.id === t.id && drag.active;
                   const dTop = isDragging && drag.mode === "move" ? (drag.dMin / 60) * hourPx : 0;

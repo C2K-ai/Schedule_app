@@ -7,6 +7,7 @@ import { addDays, dayKey, fmtDate, fmtTime, MIN, sameDay, startOfDay, WEEKDAYS }
 import type { Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
+import { DidButton } from "./ActivityEditor";
 import { Timeline } from "./Timeline";
 import { Button, Card, cx, IconButton, Segmented } from "./ui";
 
@@ -66,7 +67,7 @@ export function Board({
   view: View;
   setView: (v: View) => void;
 }) {
-  const { tasks, settings, store, openEditor, askPostpone, toast } = usePlanner();
+  const { tasks, activities, settings, store, openEditor, openActivity, askPostpone, toast } = usePlanner();
   const now = useNow(60_000);
 
   const days = useMemo(() => (view === "day" ? [startOfDay(selected)] : weekDays(selected)), [selected, view]);
@@ -124,6 +125,7 @@ export function Board({
               { value: "week", label: "주" },
             ]}
           />
+          <DidButton onClick={() => openActivity({ day: dayKey(selected) })} />
           <Button
             variant="primary"
             size="sm"
@@ -151,6 +153,8 @@ export function Board({
           setView("day");
         }}
         dayRates={rates}
+        activities={activities}
+        onOpenActivity={(a) => openActivity({ activityId: a.id })}
       />
       <p className="border-t border-line px-4 py-2 text-[11px] text-faint">
         빈 곳을 눌러 추가 · 블록을 끌어 이동(모바일은 길게 눌러서) · 아래 끝을 끌어 길이 조절

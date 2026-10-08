@@ -14,12 +14,15 @@ export function Columns({
   format,
   height = 140,
   highlight,
+  color = "var(--accent)",
 }: {
   data: { label: string; value: number; detail?: string }[];
   format: (v: number) => string;
   height?: number;
   /** 강조할 칸(예: 오늘) */
   highlight?: number;
+  /** 막대 색(기본 포인트색) */
+  color?: string;
 }) {
   const [sel, setSel] = useState<number | null>(null);
   const max = Math.max(1, ...data.map((d) => d.value));
@@ -44,7 +47,7 @@ export function Columns({
               {label && <span className="mb-1 font-mono text-[11px] font-bold whitespace-nowrap text-fg tabular-nums">{format(d.value)}</span>}
               <span
                 className={cx("w-full max-w-6 rounded-t-[4px] transition-opacity", sel !== null && sel !== i && "opacity-50")}
-                style={{ height: h, background: i === highlight || i === sel ? "var(--accent)" : "color-mix(in oklab, var(--accent) 62%, var(--surface))" }}
+                style={{ height: h, background: i === highlight || i === sel ? color : `color-mix(in oklab, ${color} 62%, var(--surface))` }}
               />
             </button>
           );
