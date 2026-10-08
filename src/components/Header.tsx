@@ -99,7 +99,8 @@ export function AutoFullscreen({ enabled }: { enabled: boolean }) {
   return null;
 }
 
-/** PC: 전체 화면 켜기/끄기 — 창 위쪽 줄과 구석의 창 버튼까지 다 사라진다(F11 과 같음, Esc 로 나옴) */
+/** PC: 전체 화면 켜기/끄기 — 창 위쪽 줄과 구석의 창 버튼까지 다 사라진다(F11 과 같음, Esc 로 나옴).
+ *  위쪽 막대의 오른쪽 위 구석(창 버튼 바로 왼쪽)에 붙는다 */
 function FullscreenButton() {
   const [full, setFull] = useState(false);
   useEffect(() => {
@@ -110,7 +111,7 @@ function FullscreenButton() {
   return (
     <IconButton
       label={full ? "전체 화면 끄기" : "전체 화면"}
-      className="hidden md:inline-flex"
+      className="absolute top-3 right-[calc(0.5rem+var(--wco-right))] hidden md:inline-flex"
       onClick={() => {
         if (document.fullscreenElement) void document.exitFullscreen();
         else void document.documentElement.requestFullscreen?.().catch(() => {});
@@ -200,7 +201,7 @@ export function TopBar({
   return (
     // PC 설치 앱(창 제목 줄 숨김 모드)에선 이 막대가 창 맨 위 — 잡고 끌면 창이 움직이고, 오른쪽 위 창 버튼 자리는 비운다
     <header className="safe-top wco-drag sticky top-0 z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_70%,transparent)] backdrop-blur-xl">
-      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 pr-[calc(1rem+var(--wco-right))] pl-4 md:h-16 md:pr-[calc(2rem+var(--wco-right))] md:pl-8">
+      <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 pr-[calc(1rem+var(--wco-right))] pl-4 md:h-16 md:pr-[calc(3.5rem+var(--wco-right))] md:pl-8">
         {onShowRail && (
           <IconButton label="메뉴 보이기" onClick={onShowRail} className="-ml-2 hidden size-9 md:inline-flex md:ml-[calc(var(--wco-left)-0.5rem)]">
             <PanelLeftOpen size={19} />
@@ -212,7 +213,6 @@ export function TopBar({
           <span className="font-mono text-faint tabular-nums">{fmtTime(new Date(now))}</span>
         </span>
         <div className="ml-auto flex items-center gap-1.5">
-          <FullscreenButton />
           <InstallButton />
           <SyncPill />
           <button
@@ -226,6 +226,7 @@ export function TopBar({
           </IconButton>
         </div>
       </div>
+      <FullscreenButton />
       {compact && <MiniStatus />}
       {children}
     </header>
