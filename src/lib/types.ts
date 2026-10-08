@@ -210,8 +210,8 @@ export interface Settings {
   dayStartHour: number;
   customSounds: SoundDef[];
   theme: "system" | "dark" | "light";
-  /** dusk = 노을 그네 그림 테마(기본) / lime = 처음 디자인 */
-  palette: "dusk" | "lime";
+  /** dusk = 사진 배경 테마(기본, 늘 어두움) / lime·ocean·cherry·lavender = 단색 테마(밝게·어둡게) — lib/palettes.ts */
+  palette: "dusk" | "lime" | "ocean" | "cherry" | "lavender";
   /** 노을 그네 테마의 배경 그림·사진(lib/backgrounds.ts 의 key) */
   background: string;
   /** PC 에 설치한 앱은 켠 뒤 처음 클릭할 때 전체 화면으로(브라우저 규칙상 클릭 한 번이 필요) */

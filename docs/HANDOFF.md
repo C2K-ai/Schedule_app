@@ -103,9 +103,13 @@
 4. PC 전체 화면 버튼 오른쪽 위 구석
 5. 드라이브(☰ 메뉴 → 드라이브, 1인 150MB·파일 50MB) + 파일 비밀번호 잠금(브라우저에서 AES-GCM 암호화, 운영자도 못 봄)
 6. 가입 신청 때 이름 필수 → 관리자 화면·알림에 이름 표시
-7. (진행 중이면 아래 '9.' 참고) 테마 추가·사용자 지정 배경
+7. 테마 추가(라임 외 **바다·벚꽃·라벤더**, 각각 밝게/어둡게) + 사진 배경에 **내 사진** 넣기
 
-## 9. 진행 중인 작업
+## 9. 테마·배경 구조(마지막 작업)
 
-- 사용자 요청: "테마 중에 라임 말고 다른 거 3개 정도 + 배경화면에 사용자 지정 사진 넣기". 이 문서를 쓴 뒤 바로 시작했고,
-  끝나면 이 절을 갱신한다. 커밋 기록(`git log`)에 테마 커밋이 없으면 아직 안 끝난 것.
+- 테마 목록 `src/lib/palettes.ts`, 고르는 칸 `PalettePicker.tsx`(☰ 메뉴·설정 → 화면·데이터), 색 `globals.css`:
+  단색 테마는 `html[data-palette=X]:not([data-theme="dark"])`(밝게) / `html[data-palette=X][data-theme="dark"]`(어둡게) 로
+  포인트색·바탕 색조만 덮는다(라임 = 기본 :root 값). 새 테마는 이 두 블록 + `palettes.ts` 한 줄 + `types.ts` 의 palette 타입에 추가.
+- 사진 배경(`dusk`)의 '내 사진': `src/lib/customBg.ts` — 긴 쪽 2560px webp 로 줄여 **이 기기 IndexedDB 에만** 저장
+  (`settings.background = "custom"`). 다른 기기에서는 기본 그림으로 보이고 거기서 따로 넣으면 된다. `Backdrop.tsx`·`BackgroundPicker.tsx`.
+- 알람 화면(`AlarmOverlay.tsx`)은 테마와 상관없이 일부러 라임/빨강 고정.

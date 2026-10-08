@@ -73,6 +73,78 @@ html[data-palette="dusk"] {
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 36px rgba(3, 2, 15, 0.5);
 }
 
+/* ───────── 단색 테마 — 라임과 같은 구조(밝게/어둡게), 포인트색과 바탕 색조만 다르다 ─────────
+   밝게 = html[data-palette=…]:not([data-theme="dark"]), 어둡게 = html[data-palette=…][data-theme="dark"] */
+
+/* 바다 — 하늘색 포인트, 푸른 바탕 */
+html[data-palette="ocean"]:not([data-theme="dark"]) {
+  --bg: #edf4fa;
+  --bg-glow: rgba(56, 189, 248, 0.16);
+  --surface-2: #eef4f9;
+  --surface-3: #dfe9f2;
+  --accent: #38bdf8;
+  --accent-fg: #04121c;
+  --accent-text: #0369a1;
+}
+html[data-palette="ocean"][data-theme="dark"] {
+  --bg: #07111b;
+  --bg-glow: rgba(56, 189, 248, 0.09);
+  --surface: #0d1a26;
+  --surface-2: #122130;
+  --surface-3: #1a2d3f;
+  --muted: #8fa3b8;
+  --faint: #566a7f;
+  --accent: #38bdf8;
+  --accent-fg: #04121c;
+  --accent-text: #7dd3fc;
+}
+
+/* 벚꽃 — 분홍 포인트, 따뜻한 바탕. 위험(빨강)과 헷갈리지 않게 분홍은 밝고 부드럽게 */
+html[data-palette="cherry"]:not([data-theme="dark"]) {
+  --bg: #fbf1f5;
+  --bg-glow: rgba(255, 143, 184, 0.18);
+  --surface-2: #faf0f4;
+  --surface-3: #f2e1e9;
+  --accent: #ff8fb8;
+  --accent-fg: #2a0716;
+  --accent-text: #be185d;
+}
+html[data-palette="cherry"][data-theme="dark"] {
+  --bg: #130a10;
+  --bg-glow: rgba(255, 143, 184, 0.08);
+  --surface: #1c1118;
+  --surface-2: #251620;
+  --surface-3: #311d2a;
+  --muted: #b39aa8;
+  --faint: #6f5866;
+  --accent: #ff8fb8;
+  --accent-fg: #2a0716;
+  --accent-text: #ffb3cf;
+}
+
+/* 라벤더 — 연보라 포인트, 보랏빛 바탕 */
+html[data-palette="lavender"]:not([data-theme="dark"]) {
+  --bg: #f4f2fb;
+  --bg-glow: rgba(182, 156, 255, 0.2);
+  --surface-2: #f3f1fa;
+  --surface-3: #e5e0f3;
+  --accent: #b69cff;
+  --accent-fg: #160c2e;
+  --accent-text: #6d28d9;
+}
+html[data-palette="lavender"][data-theme="dark"] {
+  --bg: #0e0b19;
+  --bg-glow: rgba(182, 156, 255, 0.09);
+  --surface: #161226;
+  --surface-2: #1d1831;
+  --surface-3: #27203f;
+  --muted: #a49cc0;
+  --faint: #635b80;
+  --accent: #b69cff;
+  --accent-fg: #160c2e;
+  --accent-text: #cbb8ff;
+}
+
 /* 그림 배경(Backdrop)이 보이도록 — body 배경은 음수 z-index 요소를 덮는다 */
 html[data-palette="dusk"] body {
   background: transparent;

@@ -29,6 +29,7 @@ import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
 import { AdminSheet } from "./AdminSheet";
 import { DriveSheet } from "./DriveSheet";
+import { PalettePicker } from "./PalettePicker";
 import { AlarmOverlay } from "./AlarmOverlay";
 import { BackgroundPicker } from "./BackgroundPicker";
 import { Backdrop } from "./Backdrop";
@@ -180,20 +181,13 @@ function MenuPanel({
 
       <MenuHeading>테마</MenuHeading>
       <div className="px-3 pb-1">
-        <Segmented
-          value={p.settings.palette}
-          onChange={(palette) => p.updateSettings({ palette })}
-          options={[
-            { value: "dusk", label: "사진 배경" },
-            { value: "lime", label: "라임" },
-          ]}
-        />
+        <PalettePicker compact />
         {p.settings.palette === "dusk" && (
           <div className="mt-2.5">
             <BackgroundPicker compact />
           </div>
         )}
-        {p.settings.palette === "lime" && (
+        {p.settings.palette !== "dusk" && (
           <Segmented
             className="mt-2"
             value={p.settings.theme}

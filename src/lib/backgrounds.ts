@@ -46,6 +46,9 @@ export const BACKGROUNDS: Background[] = [
   photo("misty-hills", "안개 숲", 0.45),
 ];
 
+/** 이 기기에 넣은 내 사진(lib/customBg.ts) — settings.background 에 이 값이면 그 사진 */
+export const CUSTOM_BG = "custom";
+
 export const findBackground = (key: string | undefined) => BACKGROUNDS.find((b) => b.key === key) ?? BACKGROUNDS[0];
 
 export const bgUrl = (path: string) => withBase(path);
