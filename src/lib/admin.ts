@@ -10,6 +10,8 @@ import { getSupabase } from "./supabase";
 export interface AdminSettings {
   signups_open: boolean;
   ai_daily_limit: number;
+  /** 드라이브 한 사람당 용량(MB) */
+  drive_quota_mb: number;
   updated_at?: string;
 }
 
@@ -44,6 +46,8 @@ export interface Overview {
   ai_key: boolean;
   /** 가입 승인 대기 수 */
   pending: number;
+  /** 드라이브 전체 사용량(바이트) */
+  drive_bytes: number;
 }
 
 export interface AdminUser {
@@ -71,6 +75,8 @@ export interface AdminUser {
   /** 관리자가 승인했는지(관리자는 늘 true) */
   approved: boolean;
   requested_at: string | null;
+  drive_files: number;
+  drive_bytes: number;
 }
 
 export type UserAction =
@@ -95,6 +101,7 @@ const MESSAGES: Record<string, string> = {
   no_email: "이메일이 없는 계정이라 메일을 보낼 수 없어요.",
   mail: "메일을 보내지 못했어요. 기본 메일 서버는 시간당 몇 통만, Supabase 팀원 주소로만 보내요 — 대시보드에서 SMTP 를 연결하면 풀려요.",
   bad_ai_daily_limit: "AI 하루 한도는 0~1000 사이 정수예요.",
+  bad_drive_quota_mb: "드라이브 용량은 0~10000MB 사이 정수예요.",
   last_admin: "관리자가 최소 한 명은 있어야 해요.",
 };
 
@@ -116,7 +123,8 @@ async function call<T>(client: SupabaseClient, body: Record<string, unknown>): P
 
 export const adminOverview = (c: SupabaseClient) => call<Overview>(c, { action: "overview" });
 export const adminUsers = (c: SupabaseClient) => call<{ users: AdminUser[]; me: string }>(c, { action: "users" });
-export const adminSettings = (c: SupabaseClient, patch: Partial<Pick<AdminSettings, "signups_open" | "ai_daily_limit">>) =>
+export type SettingsPatch = Partial<Pick<AdminSettings, "signups_open" | "ai_daily_limit" | "drive_quota_mb">>;
+export const adminSettings = (c: SupabaseClient, patch: SettingsPatch) =>
   call<{ settings: AdminSettings }>(c, { action: "settings", ...patch });
 export const adminUserAction = (c: SupabaseClient, action: UserAction, userId: string, extra: Record<string, unknown> = {}) =>
   call<{ ok: true; sessions?: number | null; link?: string | null }>(c, {

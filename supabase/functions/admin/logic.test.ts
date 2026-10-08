@@ -77,3 +77,10 @@ Deno.test("가입 승인 요청", () => {
   assertEquals(parseAction({ action: "approve" }), { error: "bad_user_id" });
   assertEquals(guard("approve", { self: true, targetIsAdmin: true }), null);
 });
+
+Deno.test("드라이브 용량 설정", () => {
+  assertEquals(parseAction({ action: "settings", drive_quota_mb: 300 }), { action: "settings", drive_quota_mb: 300 });
+  assertEquals(parseAction({ action: "settings", drive_quota_mb: -1 }), { error: "bad_drive_quota_mb" });
+  assertEquals(parseAction({ action: "settings", drive_quota_mb: 1.5 }), { error: "bad_drive_quota_mb" });
+  assertEquals(parseAction({ action: "settings" }), { error: "nothing_to_change" });
+});

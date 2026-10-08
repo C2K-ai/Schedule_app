@@ -33,11 +33,13 @@ import {
   isBanned,
   userCostKrw,
   type AdminSettings,
+  type SettingsPatch,
   type AdminUser,
   type CronJob,
   type Overview,
   type UserAction,
 } from "@/lib/admin";
+import { fmtBytes } from "@/lib/drive";
 import { getSupabase } from "@/lib/supabase";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
@@ -52,6 +54,7 @@ const CRON_LABEL: Record<string, string> = {
 };
 
 const LIMIT_CHOICES = [0, 10, 30, 50, 100];
+const DRIVE_CHOICES = [0, 50, 100, 150, 300, 500];
 
 const fmtStudy = (sec: number) => {
   const h = Math.floor(sec / 3600);
@@ -140,7 +143,7 @@ function AdminBody() {
     refresh();
   };
 
-  const saveSettings = async (patch: Partial<Pick<AdminSettings, "signups_open" | "ai_daily_limit">>) => {
+  const saveSettings = async (patch: SettingsPatch) => {
     try {
       const r = await adminSettings(sb, patch);
       setOv((o) => (o ? { ...o, settings: r.settings } : o));
@@ -288,6 +291,11 @@ function OverviewTab({ ov, now, onUsers }: { ov: Overview; now: number; onUsers:
         <ul className="divide-y divide-line rounded-2xl bg-surface-2 px-3.5">
           <StatusRow ok={ov.ai_key} label="AI 키 (Claude)" value={ov.ai_key ? "연결됨" : "없음 — 설정 → AI 에서 넣는 방법"} />
           <StatusRow ok={null} label="새 가입" value={ov.settings.signups_open ? "신청 받는 중 (내가 승인해야 사용)" : "닫힘 — 있는 계정만"} />
+          <StatusRow
+            ok={ov.drive_bytes < 900 * 1024 * 1024}
+            label="드라이브 (전체)"
+            value={`${fmtBytes(ov.drive_bytes)} / 무료 요금제 1GB · 1인 ${ov.settings.drive_quota_mb}MB`}
+          />
           {ov.cron.length === 0 && <StatusRow ok={null} label="예약 작업" value="정보 없음" />}
           {ov.cron.map((j) => {
             const s = cronState(j, now);
@@ -439,13 +447,14 @@ function UserCard({
         </div>
       ) : (
         <>
-          <dl className="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-5">
+          <dl className="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
             {[
               ["일정", `${u.tasks}`, `완료 ${u.tasks_done}`],
               ["습관", `${u.habits}`, null],
               ["공부", fmtStudy(u.study_sec), null],
               ["AI 이번 달", `${u.ai_month_calls}회`, `≈${fmtKrw(cost)} · 오늘 ${u.ai_today}`],
               ["알림 기기", `${u.devices}대`, null],
+          ["드라이브", fmtBytes(u.drive_bytes), `파일 ${u.drive_files}개`],
             ].map(([k, v, s]) => (
               <div key={k} className="min-w-0 rounded-xl bg-surface px-2 py-2">
                 <dt className="truncate text-[11px] text-muted">{k}</dt>
@@ -611,7 +620,7 @@ function SettingsTab({
   ask,
 }: {
   settings: AdminSettings;
-  save: (p: Partial<Pick<AdminSettings, "signups_open" | "ai_daily_limit">>) => Promise<void>;
+  save: (p: SettingsPatch) => Promise<void>;
   ask: (c: Confirm) => void;
 }) {
   const [limit, setLimit] = useState(String(settings.ai_daily_limit));
@@ -679,6 +688,21 @@ function SettingsTab({
           </span>
         </div>
         {!validLimit && <p className="mt-1.5 text-xs font-semibold text-danger">0~1000 사이 숫자만 넣을 수 있어요.</p>}
+      </section>
+
+      <section>
+        <h3 className="font-bold">드라이브 용량 (한 사람당)</h3>
+        <p className="mt-1 text-sm leading-relaxed text-muted">
+          각자 파일을 넣어 둘 수 있는 크기예요(파일 하나는 최대 50MB). Supabase 무료 요금제는 모두 합쳐 1GB 라서, 6명이면 150MB 쯤이
+          알맞아요. 줄여도 이미 올린 파일은 지워지지 않고 새로 못 올리기만 해요.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {DRIVE_CHOICES.map((n) => (
+            <Chip key={n} active={settings.drive_quota_mb === n} onClick={() => void save({ drive_quota_mb: n })}>
+              {n === 0 ? "막기" : `${n}MB`}
+            </Chip>
+          ))}
+        </div>
       </section>
 
       <section className="rounded-2xl bg-surface-2 p-3.5 text-sm leading-relaxed">

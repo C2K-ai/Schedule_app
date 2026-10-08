@@ -40,7 +40,7 @@ export interface Alarm {
   at: number;
 }
 
-export type Sheet = null | "settings" | "habits" | "log" | "voice" | "completed" | "admin";
+export type Sheet = null | "settings" | "habits" | "log" | "voice" | "completed" | "admin" | "drive";
 
 export interface EditorState {
   taskId?: string;

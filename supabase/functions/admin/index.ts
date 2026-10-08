@@ -1,4 +1,4 @@
-// 운영자(관리자) 화면 — 통계 보기 · 가입/AI 한도 설정 · 가입 승인 · 사용자 정지·로그아웃·삭제·비밀번호 재설정 메일
+// 운영자(관리자) 화면 — 통계 보기 · 가입/AI 한도/드라이브 용량 설정 · 가입 승인 · 사용자 정지·로그아웃·삭제·비밀번호 재설정 메일
 //   배포: npx supabase functions deploy admin   (JWT 검증 켠 채로)
 //   부른 사람이 must_admins 에 있을 때만 동작한다. 나머지는 403.
 //   비밀번호는 누구도 볼 수 없다(되돌릴 수 없는 해시로만 저장) — 대신 재설정 메일을 보낸다.
@@ -30,29 +30,37 @@ Deno.serve(async (req) => {
 
   try {
     if (a.action === "overview") {
-      const [{ data, error }, aiKey, pend] = await Promise.all([
+      const [{ data, error }, aiKey, pend, drive] = await Promise.all([
         db.rpc("must_admin_overview"),
         setting("ANTHROPIC_API_KEY").then(Boolean, () => false),
         db.from("must_members").select("user_id", { count: "exact", head: true }).eq("approved", false),
+        db.rpc("must_admin_drive"),
       ]);
       if (error) throw error;
       if (pend.error) throw pend.error;
-      return json({ ...(data as Record<string, unknown>), ai_key: aiKey, pending: pend.count ?? 0 });
+      if (drive.error) throw drive.error;
+      const driveBytes = ((drive.data ?? []) as { bytes: number }[]).reduce((n, r) => n + Number(r.bytes), 0);
+      return json({ ...(data as Record<string, unknown>), ai_key: aiKey, pending: pend.count ?? 0, drive_bytes: driveBytes });
     }
 
     if (a.action === "users") {
-      const [{ data, error }, members] = await Promise.all([
+      const [{ data, error }, members, drive] = await Promise.all([
         db.rpc("must_admin_users"),
         db.from("must_members").select("user_id, approved, requested_at"),
+        db.rpc("must_admin_drive"),
       ]);
       if (error) throw error;
       if (members.error) throw members.error;
+      if (drive.error) throw drive.error;
       const m = new Map((members.data ?? []).map((r) => [r.user_id as string, r]));
+      const d = new Map(((drive.data ?? []) as { user_id: string; files: number; bytes: number }[]).map((r) => [r.user_id, r]));
       // 승인 기록이 없는 사용자(표가 생기기 전)는 승인 대기로 보인다 — must_my_access 와 같은 규칙
       const users = ((data ?? []) as { id: string; is_admin: boolean }[]).map((u) => ({
         ...u,
         approved: u.is_admin || Boolean(m.get(u.id)?.approved),
         requested_at: m.get(u.id)?.requested_at ?? null,
+        drive_files: d.get(u.id)?.files ?? 0,
+        drive_bytes: Number(d.get(u.id)?.bytes ?? 0),
       }));
       return json({ users, me });
     }
@@ -61,7 +69,13 @@ Deno.serve(async (req) => {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (a.signups_open !== undefined) patch.signups_open = a.signups_open;
       if (a.ai_daily_limit !== undefined) patch.ai_daily_limit = a.ai_daily_limit;
-      const { data, error } = await db.from("must_app_settings").update(patch).eq("id", true).select("signups_open, ai_daily_limit, updated_at").single();
+      if (a.drive_quota_mb !== undefined) patch.drive_quota_mb = a.drive_quota_mb;
+      const { data, error } = await db
+        .from("must_app_settings")
+        .update(patch)
+        .eq("id", true)
+        .select("signups_open, ai_daily_limit, drive_quota_mb, updated_at")
+        .single();
       if (error) throw error;
       return json({ settings: data });
     }
@@ -141,6 +155,15 @@ Deno.serve(async (req) => {
       }
       case "delete": {
         if (!emailMatches(a.confirm_email, target.user.email)) return json({ error: "confirm_email" }, 400);
+        // 드라이브 파일부터 — 계정을 지우면 표(drive_files)는 같이 지워지지만 Storage 의 실제 파일은 남는다
+        const bucket = db.storage.from("drive");
+        for (let i = 0; i < 50; i++) {
+          const { data: objs, error: lErr } = await bucket.list(a.user_id, { limit: 1000 });
+          if (lErr) throw lErr;
+          if (!objs?.length) break;
+          const { error: rErr } = await bucket.remove(objs.map((o) => `${a.user_id}/${o.name}`));
+          if (rErr) throw rErr;
+        }
         const { error } = await db.auth.admin.deleteUser(a.user_id);
         if (error) throw error;
         return json({ ok: true });

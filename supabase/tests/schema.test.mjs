@@ -33,6 +33,14 @@ await db.exec(`
   grant execute on function auth.uid() to authenticated, anon;
   grant usage on schema public to authenticated, anon, service_role;
   create publication supabase_realtime;
+  create schema storage;
+  create table storage.buckets (id text primary key, name text not null, public boolean default false, file_size_limit bigint, allowed_mime_types text[]);
+  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets (id), name text, owner uuid, metadata jsonb);
+  create function storage.foldername(name text) returns text[] language sql immutable as
+    $$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
+  alter table storage.objects enable row level security;
+  grant usage on schema storage to authenticated, anon, service_role;
+  grant all on storage.objects, storage.buckets to authenticated, service_role;
   alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
   alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 `);
@@ -57,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -484,6 +492,69 @@ await db.exec(`reset role;`);
     threw = true;
   }
   ok(threw, "AI 한도는 0~1000 만");
+}
+
+// ── 드라이브 ──
+{
+  const as = async (uid, sql, params) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql, params);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const fails = async (uid, sql) => {
+    try {
+      const r = await as(uid, sql);
+      return r.length === 0;
+    } catch {
+      return true;
+    }
+  };
+  const C = "cccccccc-0000-4000-8000-000000000003"; // 위에서 가입 받기로 들어온 승인 대기 사용자
+  const bucket = (await q(`select public, file_size_limit from storage.buckets where id = 'drive'`))[0];
+  ok(bucket && bucket.public === false && Number(bucket.file_size_limit) === 52428800, "드라이브 버킷: 비공개, 파일 하나 50MB");
+  const f1 = (await as(B, `insert into public.drive_files (filename, size, mime) values ('여권 사본.pdf', 1048576, 'application/pdf') returning id, user_id, ready`))[0];
+  ok(f1 && f1.user_id === B && f1.ready === false, "드라이브: 한글 이름 그대로 한 줄 등록(주인은 자동, 아직 안 올림)");
+  ok((await as(B, `insert into storage.objects (bucket_id, name, owner) values ('drive', '${B}/${f1.id}', '${B}') returning id`)).length === 1, "Storage: 등록한 경로로 올리기 됨");
+  ok(await fails(B, `insert into storage.objects (bucket_id, name, owner) values ('drive', '${B}/${A}', '${B}') returning id`), "Storage: 등록 안 한 경로는 못 올림");
+  ok(await fails(B, `insert into storage.objects (bucket_id, name, owner) values ('drive', '${A}/${f1.id}', '${B}') returning id`), "Storage: 남의 폴더엔 못 올림");
+  await as(B, `update public.drive_files set ready = true, filename = '여권.pdf', starred = true, updated_at = now() where id = '${f1.id}' returning id`);
+  ok((await as(B, `select filename, ready, starred from public.drive_files`))[0].ready === true, "드라이브: 이름·별표·다 올림 표시는 고칠 수 있음");
+  ok(await fails(B, `update public.drive_files set size = 1 where id = '${f1.id}' returning id`), "드라이브: 크기는 못 바꿈(용량 속이기 막기)");
+  ok(await fails(B, `update public.drive_files set user_id = '${A}' where id = '${f1.id}' returning id`), "드라이브: 주인은 못 바꿈");
+  ok((await as(A, `select * from public.drive_files`)).length === 0, "드라이브: 남의 파일 목록은 안 보임");
+  ok((await as(A, `select * from storage.objects where bucket_id = 'drive'`)).length === 0, "Storage: 남의 파일은 안 보임");
+  ok((await as(B, `select * from storage.objects where bucket_id = 'drive'`)).length === 1, "Storage: 내 파일은 보임");
+  // 용량 — 기본 150MB, 관리자가 바꿀 수 있음
+  await db.exec(`update public.must_app_settings set drive_quota_mb = 2`);
+  let msg = "";
+  try {
+    await as(B, `insert into public.drive_files (filename, size) values ('큰 파일.zip', 1500000) returning id`);
+  } catch (e) {
+    msg = String(e.message);
+  }
+  ok(msg.includes("drive_quota"), `드라이브: 용량을 넘으면 막힘 (${msg.slice(0, 40)})`);
+  ok((await as(B, `insert into public.drive_files (filename, size) values ('작은 파일.txt', 900000) returning id`)).length === 1, "드라이브: 남은 용량 안이면 됨");
+  const use = (await as(B, `select public.must_drive_usage() v`))[0].v;
+  ok(Number(use.used) === 1948576 && Number(use.quota) === 2 * 1048576 && use.files === 1, `드라이브 사용량: ${JSON.stringify(use)}`);
+  msg = "";
+  try {
+    await as(C, `insert into public.drive_files (filename, size) values ('a.txt', 10) returning id`);
+  } catch (e) {
+    msg = String(e.message);
+  }
+  ok(msg.includes("drive_pending"), "드라이브: 승인 대기 중이면 못 올림");
+  ok(await fails(B, `select * from public.must_admin_drive()`), "드라이브 관리자 통계는 앱에서 직접 못 부름");
+  await db.exec(`set role service_role;`);
+  const ad = await q(`select * from public.must_admin_drive()`);
+  await db.exec(`reset role;`);
+  ok(ad.length === 1 && ad[0].user_id === B && ad[0].files === 2 && Number(ad[0].bytes) === 1948576, "관리자: 사람별 드라이브 사용량");
+  await db.exec(`update public.must_app_settings set drive_quota_mb = 150`);
+  ok((await as(B, `delete from public.drive_files where id = '${f1.id}' returning id`)).length === 1, "드라이브: 내 파일 지우기");
+  await db.exec(readFileSync(new URL("../migrations/20261009000100_drive.sql", import.meta.url), "utf8"));
+  ok((await q(`select count(*)::int n from pg_policies where policyname in ('own drive files', 'drive own folder')`))[0].n === 2, "드라이브 마이그레이션 다시 돌려도 정책 그대로");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

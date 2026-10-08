@@ -17,7 +17,7 @@ type LinkAction = "reset_password" | "recovery_link";
 export type Action =
   | { action: "overview" }
   | { action: "users" }
-  | { action: "settings"; signups_open?: boolean; ai_daily_limit?: number }
+  | { action: "settings"; signups_open?: boolean; ai_daily_limit?: number; drive_quota_mb?: number }
   | { action: Exclude<TargetAction, "delete" | LinkAction>; user_id: string }
   | { action: LinkAction; user_id: string; redirect_to: string | null }
   | { action: "delete"; user_id: string; confirm_email: string };
@@ -50,7 +50,7 @@ export function parseAction(body: unknown): Action | { error: string } {
   const a = b.action;
   if (a === "overview" || a === "users") return { action: a };
   if (a === "settings") {
-    const out: { action: "settings"; signups_open?: boolean; ai_daily_limit?: number } = { action: "settings" };
+    const out: { action: "settings"; signups_open?: boolean; ai_daily_limit?: number; drive_quota_mb?: number } = { action: "settings" };
     if (b.signups_open !== undefined) {
       if (typeof b.signups_open !== "boolean") return { error: "bad_signups_open" };
       out.signups_open = b.signups_open;
@@ -60,7 +60,14 @@ export function parseAction(body: unknown): Action | { error: string } {
       if (typeof n !== "number" || !Number.isInteger(n) || n < 0 || n > 1000) return { error: "bad_ai_daily_limit" };
       out.ai_daily_limit = n;
     }
-    if (out.signups_open === undefined && out.ai_daily_limit === undefined) return { error: "nothing_to_change" };
+    if (b.drive_quota_mb !== undefined) {
+      const n = b.drive_quota_mb;
+      if (typeof n !== "number" || !Number.isInteger(n) || n < 0 || n > 10000) return { error: "bad_drive_quota_mb" };
+      out.drive_quota_mb = n;
+    }
+    if (out.signups_open === undefined && out.ai_daily_limit === undefined && out.drive_quota_mb === undefined) {
+      return { error: "nothing_to_change" };
+    }
     return out;
   }
   if (typeof a === "string" && (TARGET as string[]).includes(a)) {

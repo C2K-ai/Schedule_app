@@ -40,14 +40,20 @@
 18. **가입 승인**: 관리자 화면 → 설정 → '가입 신청 받기'를 켜면 로그인 화면에 '처음이에요'가 생긴다. 신청은 Edge Function
     `signup`(JWT 검증 끔)이 메일 확인 없이 계정을 만들고(`must_members.approved = false`) 관리자 기기로 푸시. 승인 전에는
     앱 대신 '승인을 기다리고 있어요' 화면(`AccessGate`), AI 한도 0. 관리자 화면 → 사용자 맨 위에 승인/거절(거절 = 계정 삭제).
+19. **드라이브**(☰ 메뉴 → 드라이브, 로그인 필요): Storage 비공개 버킷 `drive`, 경로 `<user id>/<파일 id>`, 이름(한글)·크기·별표는
+    `drive_files`. 올리기 = 표에 한 줄(용량 트리거 `must_drive_quota`, 승인 대기면 막음) → Storage 업로드(XHR, 진행률) → ready.
+    Storage 정책은 '내 폴더 + 표에 먼저 적은 경로'만. 한 사람 용량은 관리자 화면 → 설정(기본 150MB, 무료 요금제 전체 1GB),
+    파일 하나 50MB. 관리자 화면은 사람별 개수·용량만 보여 준다(내용은 안 보임). 계정 삭제 때 Storage 파일도 지운다.
+    ※ 파일은 서버에 암호화 없이(Supabase 기본 디스크 암호화만) 저장 — 프로젝트 주인은 대시보드 Storage 에서 볼 수 있다.
+20. PC 전체 화면 버튼은 위쪽 막대 오른쪽 위 구석.
 
 ## 서버(Supabase `gcnosxcojuefkaaxefug`)에 이미 반영된 것
 
 - 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`, `20261008000400_admin`,
-  `20261009000000_approval`
+  `20261009000000_approval`, `20261009000100_drive`
   (`20261008000500_admin_guards` — 마지막 관리자 보호 트리거·크론 기록 정리 — 는 아직 미적용: DELETE 문이 있어 MCP 승인 창이 뜬다. SQL Editor 에서 실행)
   (모두 다시 돌려도 안전, DROP 없음 — DROP 이 있으면 MCP 가 확인 창을 띄워 멈춘다).
-- Edge Functions: `parse-schedule`(v5, Haiku 5.5 — thinking 끔, 한 번 1원 미만), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v2, 가입 승인), `signup`(v2, JWT 검증 끔),
+- Edge Functions: `parse-schedule`(v5, Haiku 5.5 — thinking 끔, 한 번 1원 미만), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v3, 가입 승인·드라이브), `signup`(v2, JWT 검증 끔),
   `send-due-notifications`(v3, 브리핑 포함). AI 함수는 부르기 전에 `must_ai_claim` 으로 한 칸 예약(하루 한도, 한국 자정 기준,
   관리자 무제한)하고 끝나면 토큰을 채운다. 모델은 각 `index.ts` 의 `MODEL` 만 바꾸면 된다.
 - Claude API 키: Vault `must_anthropic_key` 에 넣고 Anthropic 에 확인 완료(2026-10-07).

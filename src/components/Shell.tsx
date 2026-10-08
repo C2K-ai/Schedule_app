@@ -3,6 +3,7 @@
 import {
   Brain,
   BriefcaseBusiness,
+  HardDrive,
   CalendarDays,
   ListChecks,
   Menu as MenuIcon,
@@ -27,6 +28,7 @@ import { MIN } from "@/lib/time";
 import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
 import { AdminSheet } from "./AdminSheet";
+import { DriveSheet } from "./DriveSheet";
 import { AlarmOverlay } from "./AlarmOverlay";
 import { BackgroundPicker } from "./BackgroundPicker";
 import { Backdrop } from "./Backdrop";
@@ -172,6 +174,7 @@ function MenuPanel({
       <MenuHeading>기록</MenuHeading>
       <MenuItem icon={<Repeat size={17} />} label="습관" onClick={() => p.openSheet("habits")} />
       <MenuItem icon={<BriefcaseBusiness size={17} />} label="커리어 기록" onClick={onCareer} />
+      <MenuItem icon={<HardDrive size={17} />} label="드라이브" onClick={() => p.openSheet("drive")} />
       <MenuItem icon={<NotebookPen size={17} />} label="변명 노트·주간 리포트" onClick={() => p.openSheet("log")} />
       <MenuItem icon={<Brain size={17} />} label="집중(뽀모도로)" onClick={() => p.setFocusScreen(true)} />
 
@@ -420,6 +423,7 @@ export function Shell() {
       <LogSheet />
       <SettingsSheet />
       <AdminSheet />
+      <DriveSheet />
       <VoiceAdd />
       <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.postpone)} />
       <AlarmOverlay />
