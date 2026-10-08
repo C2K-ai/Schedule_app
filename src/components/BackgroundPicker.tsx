@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ImagePlus } from "lucide-react";
+import { Check, Image as ImageIcon, ImagePlus } from "lucide-react";
 import { useRef, useState } from "react";
 import { BACKGROUNDS, bgUrl, CUSTOM_BG, findBackground } from "@/lib/backgrounds";
 import { clearCustomBg, saveCustomBg, useCustomBg } from "@/lib/customBg";
@@ -9,7 +9,7 @@ import { cx } from "./ui";
 
 /** 사진 배경 고르기 — ☰ 메뉴(작게)와 설정 → 화면(크게)에서 같이 쓴다. 맨 앞 칸은 '내 사진'(이 기기에만 저장) */
 export function BackgroundPicker({ compact = false }: { compact?: boolean }) {
-  const { settings, updateSettings, toast } = usePlanner();
+  const { settings, updateSettings, toast, setWallpaper } = usePlanner();
   const custom = useCustomBg();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,6 @@ export function BackgroundPicker({ compact = false }: { compact?: boolean }) {
     try {
       await saveCustomBg(file);
       updateSettings({ background: CUSTOM_BG });
-      toast({ text: "내 사진을 배경으로 했어요 — 이 기기에서만 보여요", tone: "ok" });
     } catch (e) {
       toast({ text: (e as Error).message, tone: "danger" });
     } finally {
@@ -92,18 +91,27 @@ export function BackgroundPicker({ compact = false }: { compact?: boolean }) {
           if (f) void pick(f);
         }}
       />
-      {!compact && custom && (
+      <div className="mt-2 flex items-center gap-3">
         <button
           type="button"
-          onClick={() => {
-            void clearCustomBg();
-            if (settings.background === CUSTOM_BG) updateSettings({ background: BACKGROUNDS[0].key });
-          }}
-          className="mt-2 text-xs font-semibold text-muted underline hover:text-fg"
+          onClick={() => setWallpaper(true)}
+          className={cx("inline-flex items-center gap-1.5 font-semibold text-accent-text hover:underline", compact ? "text-xs" : "text-sm")}
         >
-          내 사진 지우기
+          <ImageIcon size={compact ? 13 : 15} /> 배경만 보기
         </button>
-      )}
+        {!compact && custom && (
+          <button
+            type="button"
+            onClick={() => {
+              void clearCustomBg();
+              if (settings.background === CUSTOM_BG) updateSettings({ background: BACKGROUNDS[0].key });
+            }}
+            className="ml-auto text-xs font-semibold text-muted underline hover:text-fg"
+          >
+            내 사진 지우기
+          </button>
+        )}
+      </div>
     </div>
   );
 }

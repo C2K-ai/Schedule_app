@@ -333,6 +333,28 @@ select {
   }
 }
 
+/* 배경만 보기 — 사진이 스르르 뜨고, 안내 글은 잠깐 보였다가 사라진다 */
+.wallpaper-view {
+  animation: wallpaper-in 0.35s ease-out both;
+}
+@keyframes wallpaper-in {
+  from {
+    opacity: 0;
+  }
+}
+.wallpaper-hint {
+  animation: wallpaper-hint 3.2s ease-in forwards;
+}
+@keyframes wallpaper-hint {
+  0%,
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .fade-up {
   animation: fade-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }

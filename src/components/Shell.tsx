@@ -34,7 +34,7 @@ import { DriveSheet } from "./DriveSheet";
 import { PalettePicker } from "./PalettePicker";
 import { AlarmOverlay } from "./AlarmOverlay";
 import { BackgroundPicker } from "./BackgroundPicker";
-import { Backdrop } from "./Backdrop";
+import { Backdrop, WallpaperView } from "./Backdrop";
 import { BriefingEngine } from "./Briefing";
 import { CalendarTab } from "./CalendarTab";
 import { CareerSheet } from "./Career";
@@ -437,6 +437,7 @@ export function Shell() {
       <VoiceAdd />
       <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.activityEditor || p.reschedule || p.postpone)} />
       <AlarmOverlay />
+      <WallpaperView />
       <OverdueSiren />
       <Toasts />
       <ReminderEngine />

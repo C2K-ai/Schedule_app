@@ -1,6 +1,6 @@
 "use client";
 
-import { Cloud, CloudOff, Download, Maximize, Mic, Minimize, PanelLeftOpen } from "lucide-react";
+import { Cloud, CloudOff, Download, Image as ImageIcon, Maximize, Mic, Minimize, PanelLeftOpen } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
@@ -8,6 +8,7 @@ import { currentTask, dayStats, enforcementQueue, nextTask, tasksOnDay } from "@
 import { fmtCountdown, fmtDate, fmtTime, startOfDay } from "@/lib/time";
 import { COLOR_HEX } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
+import { useHasBackdrop } from "./Backdrop";
 import { usePlanner } from "./PlannerProvider";
 import { cx, IconButton } from "./ui";
 
@@ -196,7 +197,8 @@ export function TopBar({
   onShowRail?: () => void;
   children?: ReactNode;
 }) {
-  const { openSheet } = usePlanner();
+  const { openSheet, setWallpaper } = usePlanner();
+  const photo = useHasBackdrop();
   const now = useNow(30_000);
   return (
     // PC 설치 앱(창 제목 줄 숨김 모드)에선 이 막대가 창 맨 위 — 잡고 끌면 창이 움직이고, 오른쪽 위 창 버튼 자리는 비운다
@@ -215,6 +217,11 @@ export function TopBar({
         <div className="ml-auto flex items-center gap-1.5">
           <InstallButton />
           <SyncPill />
+          {photo && (
+            <IconButton label="배경만 보기" onClick={() => setWallpaper(true)}>
+              <ImageIcon size={19} />
+            </IconButton>
+          )}
           <button
             onClick={() => openSheet("voice")}
             className="hidden h-9 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-bold text-accent-fg md:inline-flex"
