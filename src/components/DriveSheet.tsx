@@ -513,7 +513,6 @@ function DriveBody() {
             setDeleting(null);
             setPreview(null);
             refreshUsage();
-            toast({ text: "지웠어요", tone: "ok" });
           }}
         />
       )}

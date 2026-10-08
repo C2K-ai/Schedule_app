@@ -78,11 +78,12 @@ export function ActivityEditor() {
 }
 
 function ActivityEditorBody({ editor }: { editor: ActivityEditorState }) {
-  const { store, snap, closeActivity, toast } = usePlanner();
+  const { store, snap, closeActivity } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const current = editor.activityId ? (store.db.activities[editor.activityId] ?? null) : null;
   const [d, setD] = useState<Draft>(() => initialDraft(current, editor));
   const [err, setErr] = useState<string | null>(null);
+  const [sure, setSure] = useState(false);
   const set = (p: Partial<Draft>) => setD({ ...d, ...p });
   const win = d.timed ? windowOf(d) : null;
   const span = win ? win.end.getTime() - win.start.getTime() : 0;
@@ -91,7 +92,7 @@ function ActivityEditorBody({ editor }: { editor: ActivityEditorState }) {
     const title = d.title.trim();
     if (!title) return setErr("무엇을 했는지 적어 주세요");
     if (win && span > 24 * 60 * MIN) return setErr("한 번에 24시간까지 기록할 수 있어요");
-    const row = saveActivity(store, {
+    saveActivity(store, {
       id: current?.id,
       title: title.slice(0, 200),
       notes: d.notes.trim() ? d.notes.trim().slice(0, 5000) : null,
@@ -101,14 +102,13 @@ function ActivityEditorBody({ editor }: { editor: ActivityEditorState }) {
       color: d.color,
       category_id: d.categoryId,
     });
-    if (!current) toast({ text: `✓ 한 일 기록: ${row.title}`, tone: "ok" });
     closeActivity();
   };
 
   const remove = () => {
     if (!current) return;
+    if (!sure) return setSure(true);
     deleteActivity(store, current.id);
-    toast({ text: `삭제: ${current.title}`, action: { label: "되돌리기", onClick: () => store.patch("activities", current.id, { deleted_at: null }) } });
     closeActivity();
   };
 
@@ -125,8 +125,8 @@ function ActivityEditorBody({ editor }: { editor: ActivityEditorState }) {
       footer={
         <div className="flex items-center gap-2">
           {current && (
-            <Button variant="dangerSoft" onClick={remove} aria-label="삭제">
-              <Trash size={15} /> 삭제
+            <Button variant={sure ? "danger" : "dangerSoft"} onClick={remove}>
+              <Trash size={15} /> {sure ? "정말 삭제" : "삭제"}
             </Button>
           )}
           <div className="ml-auto flex gap-2">

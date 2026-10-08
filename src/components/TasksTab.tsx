@@ -113,7 +113,7 @@ function dateLabel(iso: string, now: Date) {
 }
 
 export function TaskRow({ t, categories, showDate = false }: { t: Task; categories: Category[]; showDate?: boolean }) {
-  const { store, settings, openEditor, toast } = usePlanner();
+  const { store, settings, openTask, openReschedule } = usePlanner();
   const now = useNow(15_000);
   const st = taskState(t, now, settings.graceMin);
   const done = t.status === "done";
@@ -123,12 +123,11 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
   return (
     <li className={cx("group flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-surface-2/70", st === "overdue" && "bg-danger-soft")}>
       <button
-        aria-label={done ? "완료 취소" : "완료"}
+        aria-label={done ? "완료 취소" : closed ? "다시 잡기" : "완료"}
         onClick={() => {
           if (done) return reopenTask(store, t.id);
-          if (closed) return;
+          if (closed) return openReschedule(t.id);
           completeTask(store, t.id);
-          toast({ text: `✓ ${t.title}`, tone: "ok", action: { label: "되돌리기", onClick: () => reopenTask(store, t.id) } });
         }}
         className={cx(
           "grid size-6 shrink-0 place-items-center rounded-full border-2 transition",
@@ -138,7 +137,7 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
         {done && <Check size={14} strokeWidth={3} />}
         {st === "overdue" && <TriangleAlert size={11} className="text-danger" />}
       </button>
-      <button onClick={() => openEditor({ taskId: t.id })} className="min-w-0 flex-1 text-left">
+      <button onClick={() => openTask(t)} className="min-w-0 flex-1 text-left">
         <p className={cx("truncate text-[15px] font-semibold", closed && "text-muted line-through")}>
           {t.habit_id && <Repeat size={12} className="mr-1 inline text-muted" />}
           {t.title}
@@ -152,6 +151,7 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
           )}
           {!timed && showDate && t.schedule === "day" && <span>{dateLabel(t.starts_at, new Date(now))}</span>}
           {st === "overdue" && <span className="font-bold text-danger">미시작</span>}
+          {closed && !done && <span>{t.status === "missed" ? "놓침" : "건너뜀"} · 눌러서 다시 잡기</span>}
           {st === "in_progress" && <span className="font-bold text-accent-text">진행 중</span>}
           {cat && (
             <span className="inline-flex items-center gap-1">
@@ -225,7 +225,7 @@ const WHEN: { value: "today" | "tomorrow" | "someday"; label: string }[] = [
 ];
 
 function QuickAdd({ filter }: { filter: TaskFilter }) {
-  const { store, settings, openEditor, toast } = usePlanner();
+  const { store, settings, openEditor } = usePlanner();
   const [title, setTitle] = useState("");
   const [when, setWhen] = useState<(typeof WHEN)[number]["value"]>("today");
   const categoryId = filter.kind === "category" ? filter.id : null;
@@ -237,7 +237,6 @@ function QuickAdd({ filter }: { filter: TaskFilter }) {
     if (!v) return;
     createTask(store, { title: v, schedule, day, category_id: categoryId, starred }, settings);
     setTitle("");
-    toast({ text: `추가: ${v}`, tone: "ok" });
   };
   const label = WHEN.find((w) => w.value === when)!.label;
   return (
@@ -291,7 +290,7 @@ export function TasksTab({
     [tasks, filter],
   );
   const g = useMemo(() => groupTasks(filtered, new Date(now)), [filtered, now]);
-  const openCount = g.overdue.length + g.today.length + g.tomorrow.length + g.later.length + g.someday.length;
+  const openCount = g.overdue.length + g.today.length + g.tomorrow.length + g.later.length + g.someday.length + g.missedToday.length;
 
   const chip = (active: boolean, onClick: () => void, children: ReactNode, key?: string) => (
     <button
@@ -347,6 +346,7 @@ export function TasksTab({
           <div className="space-y-3 px-1">
             <Group title="지난 일정" tasks={g.overdue} categories={categories} tone="danger" showDate />
             <Group title="오늘" tasks={g.today} categories={categories} />
+            <Group title="오늘 못 한 일" tasks={g.missedToday} categories={categories} />
             <Group title="내일" tasks={g.tomorrow} categories={categories} />
             <Group title="다가오는 일정" tasks={g.later} categories={categories} showDate />
             <Group title="날짜 없음" tasks={g.someday} categories={categories} />

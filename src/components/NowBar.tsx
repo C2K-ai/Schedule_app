@@ -43,7 +43,7 @@ export function OverdueBanner({ onOpen }: { onOpen: () => void }) {
 
 /** 작업 탭 맨 위 한 장 — 지금 할 일(있으면 버튼 하나) 또는 다음 일정까지 남은 시간 + 오늘 달성률 */
 export function NowStrip() {
-  const { store, tasks, settings, toast } = usePlanner();
+  const { store, tasks, settings } = usePlanner();
   const now = useNow(1000);
   const cur = currentTask(tasks, now);
   const nx = nextTask(tasks, now);
@@ -84,7 +84,6 @@ export function NowStrip() {
             variant="primary"
             onClick={() => {
               completeTask(store, cur.id);
-              toast({ text: `✓ 완료: ${cur.title}`, tone: "ok" });
             }}
           >
             <Check size={16} /> 완료
@@ -94,7 +93,6 @@ export function NowStrip() {
             variant={late ? "danger" : "primary"}
             onClick={() => {
               startTask(store, cur.id);
-              toast({ text: "▶ 시작! 지금부터 카운트합니다", tone: "ok" });
             }}
           >
             <Play size={16} /> 시작

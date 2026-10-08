@@ -13,7 +13,7 @@ import { Button, Chip, ColorPicker, cx, Empty, inputCls, Label, Modal, Switch } 
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => void }) {
-  const { store, settings, toast } = usePlanner();
+  const { store, settings } = usePlanner();
   const [f, setF] = useState<HabitInput>(
     initial
       ? {
@@ -45,10 +45,8 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
     if (!f.days.length) return setErr("요일을 하나 이상 고르세요");
     if (initial) {
       updateHabit(store, initial.id, { ...f, title: f.title.trim() });
-      toast({ text: "습관을 고쳤습니다 — 오늘 이후 예정 회차에도 반영", tone: "ok" });
     } else {
       createHabit(store, f);
-      toast({ text: `습관 등록: ${f.title}`, tone: "ok" });
     }
     onDone();
   };
@@ -147,7 +145,7 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
 }
 
 export function HabitsSheet() {
-  const { sheet, openSheet, habits, tasks, store, toast } = usePlanner();
+  const { sheet, openSheet, habits, tasks, store } = usePlanner();
   const [editing, setEditing] = useState<Habit | "new" | null>(null);
   const today = startOfDay(new Date());
   const days14 = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13));
@@ -235,7 +233,6 @@ export function HabitsSheet() {
                     onClick={() => {
                       if (!window.confirm(`'${h.title}' 습관을 지울까요? 지난 기록은 남고, 앞으로의 예정 회차만 지워집니다.`)) return;
                       deleteHabit(store, h.id);
-                      toast({ text: "습관을 지웠습니다" });
                     }}
                   >
                     <Trash size={14} /> 삭제

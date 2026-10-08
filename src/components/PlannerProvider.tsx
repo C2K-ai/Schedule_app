@@ -83,6 +83,12 @@ interface Ctx {
   activityEditor: ActivityEditorState | null;
   openActivity: (e: ActivityEditorState) => void;
   closeActivity: () => void;
+  /** 못 한 일정 '다시 잡기' 창 */
+  reschedule: string | null;
+  openReschedule: (taskId: string) => void;
+  closeReschedule: () => void;
+  /** 일정 누르기 — 못 한 일정이면 다시 잡기, 아니면 편집 */
+  openTask: (t: Task) => void;
   sheet: Sheet;
   sheetTab: string | null;
   openSheet: (s: Sheet, tab?: string) => void;
@@ -192,6 +198,7 @@ function Inner({
 
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [activityEditor, setActivityEditor] = useState<ActivityEditorState | null>(null);
+  const [reschedule, setReschedule] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [sheetTab, setSheetTab] = useState<string | null>(null);
   const [focusScreen, setFocusScreen] = useState(false);
@@ -299,6 +306,10 @@ function Inner({
     activityEditor,
     openActivity: setActivityEditor,
     closeActivity: () => setActivityEditor(null),
+    reschedule,
+    openReschedule: setReschedule,
+    closeReschedule: () => setReschedule(null),
+    openTask: (t) => (t.status === "missed" || t.status === "skipped" ? setReschedule(t.id) : setEditor({ taskId: t.id })),
     sheet,
     sheetTab,
     openSheet: (s, tab) => {

@@ -38,7 +38,7 @@ export function careerMarkdown(list: CareerEntry[]): string {
 type Draft = Omit<CareerEntry, "created_at" | "updated_at" | "deleted_at">;
 
 function Editor({ initial, onDone }: { initial: Draft; onDone: () => void }) {
-  const { store, snap, session, toast } = usePlanner();
+  const { store, snap, session } = usePlanner();
   const [d, setD] = useState<Draft>(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -85,7 +85,6 @@ function Editor({ initial, onDone }: { initial: Draft; onDone: () => void }) {
     if (d.end_day && d.end_day < d.start_day) return setErr("끝 날짜가 시작보다 앞서요");
     const skills = [...new Set(skillText.split(/[,\n]/).map((x) => x.trim()).filter(Boolean))].slice(0, 20);
     saveCareer(store, { ...d, title: title.slice(0, 120), skills, task_ids: [...picked] });
-    toast({ text: "커리어 기록을 저장했어요", tone: "ok" });
     onDone();
   };
 
@@ -294,7 +293,6 @@ export function CareerSheet({ open, onClose }: { open: boolean; onClose: () => v
                           aria-label="삭제"
                           onClick={() => {
                             deleteCareer(store, e.id);
-                            toast({ text: `삭제: ${e.title}`, action: { label: "되돌리기", onClick: () => store.patch("career_entries", e.id, { deleted_at: null }) } });
                           }}
                           className="grid size-8 place-items-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger"
                         >

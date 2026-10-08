@@ -250,7 +250,7 @@ function ManualAdd({ day, subjects, onClose }: { day: Date; subjects: Subject[];
 }
 
 export function TimerTab() {
-  const { snap, store, settings, updateSettings, toast } = usePlanner();
+  const { snap, store, settings, updateSettings } = usePlanner();
   const now = useNow(1000);
   const subjects = useMemo(() => liveSubjects(snap.db), [snap.db]);
   const subjectMap = useMemo(() => new Map(Object.values(snap.db.subjects).map((s) => [s.id, s])), [snap.db.subjects]);
@@ -528,10 +528,6 @@ export function TimerTab() {
                           aria-label="이 구간 지우기"
                           onClick={() => {
                             deleteStudySession(store, x.id);
-                            toast({
-                              text: "공부 구간을 지웠어요",
-                              action: { label: "되돌리기", onClick: () => store.patch("study_sessions", x.id, { deleted_at: null }) },
-                            });
                           }}
                           className="text-faint hover:text-danger md:opacity-0 md:group-hover:opacity-100"
                         >
@@ -563,7 +559,6 @@ export function TimerTab() {
         onUpdate={(id, patch) => updateSubject(store, id, patch)}
         onDelete={(s) => {
           deleteSubject(store, s.id);
-          toast({ text: `과목 삭제: ${s.name}` });
         }}
       />
     </div>

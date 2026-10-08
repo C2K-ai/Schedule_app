@@ -1,12 +1,14 @@
 "use client";
 
-import { CalendarClock, Play, SkipForward, TriangleAlert, VolumeX } from "lucide-react";
+import { CalendarClock, Play, SkipForward, Trash, TriangleAlert, VolumeX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  deleteTask,
   enforcementQueue,
   isExpired,
   markMissed,
   postponeTask,
+  rescheduleTask,
   skipTask,
   startTask,
 } from "@/lib/planner";
@@ -74,7 +76,7 @@ export function ReasonForm({
   );
 }
 
-function TimeChoices({ base, value, now, onChange }: { base: Task; value: Date; now: number; onChange: (d: Date) => void }) {
+export function TimeChoices({ base, value, now, onChange }: { base: Task; value: Date; now: number; onChange: (d: Date) => void }) {
   const today = new Date(now);
   const origStart = new Date(base.starts_at);
   const roundNow = new Date(Math.ceil(now / (5 * MIN)) * 5 * MIN);
@@ -147,7 +149,7 @@ export function EnforcementModal({ suppressed }: { suppressed: boolean }) {
 }
 
 function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now: number }) {
-  const { store, settings, toast, overdueRing, stopOverdue } = usePlanner();
+  const { store, settings, overdueRing, stopOverdue } = usePlanner();
   const [step, setStep] = useState<Step>("choose");
   const [reason, setReason] = useState("");
   const [shake, setShake] = useState(0);
@@ -224,7 +226,6 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
                 startTask(store, task.id);
                 stopOverdue();
                 stopAllSounds();
-                toast({ text: "▶ 좋아요. 지금 시작합니다", tone: "ok" });
               }}
             >
               <Play size={18} /> 지금 바로 시작
@@ -268,7 +269,6 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
               onClick={() =>
                 guard(() => {
                   postponeTask(store, task.id, newStart, reason.trim());
-                  toast({ text: `${fmtTime(newStart)}로 미뤘습니다 — 사유 기록됨` });
                 })
               }
             >
@@ -297,7 +297,6 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
                 guard(() => {
                   if (expired) markMissed(store, task.id, reason.trim());
                   else skipTask(store, task.id, reason.trim());
-                  toast({ text: expired ? "놓침으로 기록했습니다" : "건너뛰기 — 사유 기록됨", tone: "danger" });
                 })
               }
             >
@@ -328,7 +327,6 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
               onClick={() =>
                 guard(() => {
                   expiredOnes.forEach((t) => markMissed(store, t.id, reason.trim()));
-                  toast({ text: `${expiredOnes.length}개를 놓침으로 기록했습니다`, tone: "danger" });
                 })
               }
             >
@@ -350,7 +348,7 @@ export function PostponeDialog() {
 }
 
 function PostponeCard({ task, proposed }: { task: Task; proposed: Date }) {
-  const { store, closePostpone, settings, toast } = usePlanner();
+  const { store, closePostpone, settings } = usePlanner();
   const now = useNow(5000);
   const [reason, setReason] = useState("");
   const [shake, setShake] = useState(0);
@@ -377,7 +375,6 @@ function PostponeCard({ task, proposed }: { task: Task; proposed: Date }) {
             onClick={() => {
               if (reason.trim().length < need) return setShake((n) => n + 1);
               postponeTask(store, task.id, start, reason.trim());
-              toast({ text: `${fmtTime(start)}로 미뤘습니다 — 사유 기록됨` });
               closePostpone();
             }}
           >
@@ -385,6 +382,62 @@ function PostponeCard({ task, proposed }: { task: Task; proposed: Date }) {
           </Button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+/** 못 한 일정(놓침·건너뜀)을 눌렀을 때 — 언제 다시 할지 정하면 그날 목록에서 빠지고 새 시각으로 간다 */
+export function RescheduleDialog() {
+  const { store, reschedule } = usePlanner();
+  const task = reschedule ? store.db.tasks[reschedule] : null;
+  if (!reschedule || !task) return null;
+  return <RescheduleCard key={task.id} task={task} />;
+}
+
+function RescheduleCard({ task }: { task: Task }) {
+  const { store, closeReschedule } = usePlanner();
+  const now = useNow(5000);
+  const [start, setStart] = useState<Date>(() => nextSlot(now));
+  const [sure, setSure] = useState(false);
+  const what = task.status === "skipped" ? "건너뛴" : "못 한";
+  return (
+    <Modal
+      open
+      onClose={closeReschedule}
+      title="언제 다시 할까요?"
+      subtitle={`‘${task.title}’ — ${fmtTime(task.starts_at)}에 ${what} 일정이에요.`}
+      footer={
+        <div className="flex items-center gap-2">
+          <Button
+            variant={sure ? "danger" : "ghost"}
+            onClick={() => {
+              if (!sure) return setSure(true);
+              deleteTask(store, task.id);
+              closeReschedule();
+            }}
+          >
+            <Trash size={15} /> {sure ? "정말 지우기" : "지우기"}
+          </Button>
+          <div className="ml-auto flex gap-2">
+            <Button variant="ghost" onClick={closeReschedule}>
+              그대로 두기
+            </Button>
+            <Button
+              variant="primary"
+              disabled={start.getTime() <= now}
+              onClick={() => {
+                rescheduleTask(store, task.id, start);
+                closeReschedule();
+              }}
+            >
+              {start.toDateString() === new Date(now).toDateString() ? fmtTime(start) : `${start.getMonth() + 1}/${start.getDate()} ${fmtTime(start)}`}로 다시 잡기
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      <TimeChoices base={task} value={start} now={now} onChange={setStart} />
+      <p className="mt-3 text-xs text-muted">다시 잡으면 이날 목록에서 빠져요. {what === "못 한" ? "놓친" : "건너뛴"} 기록은 변명 노트에 그대로 남아요.</p>
     </Modal>
   );
 }

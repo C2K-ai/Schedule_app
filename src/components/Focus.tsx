@@ -30,7 +30,7 @@ function useFocus() {
 }
 
 function AbandonDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { store, settings, snap, toast } = usePlanner();
+  const { store, settings, snap } = usePlanner();
   const [reason, setReason] = useState("");
   const [shake, setShake] = useState(0);
   const f = activeFocus(snap.db);
@@ -63,7 +63,6 @@ function AbandonDialog({ open, onClose }: { open: boolean; onClose: () => void }
           onClick={() => {
             if (!isBreak && reason.trim().length < Math.min(settings.reasonMinLength, 6)) return setShake((n) => n + 1);
             abandonFocus(store, f.id, isBreak ? "휴식 종료" : reason.trim());
-            if (!isBreak) toast({ text: "집중 중단 — 사유 기록됨", tone: "danger" });
             setReason("");
             onClose();
           }}

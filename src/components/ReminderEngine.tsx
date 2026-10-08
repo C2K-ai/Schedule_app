@@ -223,7 +223,7 @@ export function ReminderEngine() {
   // 서비스 워커 메시지(서버 푸시 도착 / 알림 버튼 클릭)
   const handleAction = useCallback(
     (action: string, taskId: string | null | undefined, handled: boolean) => {
-      const { store: st, toast, setFocusScreen, openEditor, openSheet, dismissAlarm } = latest.current;
+      const { store: st, setFocusScreen, openEditor, openSheet, dismissAlarm } = latest.current;
       if (handled) {
         void st.pull();
         return;
@@ -236,11 +236,9 @@ export function ReminderEngine() {
       if (action === "start") {
         startTask(st, taskId);
         dismissAlarm();
-        toast({ text: "▶ 시작했습니다. 집중!", tone: "ok" });
       } else if (action === "snooze") {
         addSnooze(taskId, 5);
         dismissAlarm();
-        toast({ text: "⏱ 5분 뒤 다시 알려드릴게요" });
       }
     },
     [],

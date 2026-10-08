@@ -73,21 +73,28 @@ export interface TaskGroups {
   someday: Task[];
   /** 오늘 완료한 것(완료 시각 기준) */
   doneToday: Task[];
+  /** 오늘 못 한 것(놓침·건너뜀) — 그날 하루만 남겨 두고, 누르면 다시 잡는다 */
+  missedToday: Task[];
 }
 
 const isOpen = (t: Task) => t.status === "planned" || t.status === "in_progress";
+/** 못 한 일정(놓침·건너뜀) — 누르면 편집 대신 '다시 잡기' 창이 뜬다 */
+export const isMissed = (t: Task) => t.status === "missed" || t.status === "skipped";
 
 /** 작업 탭 목록 — 습관 회차는 오늘 것만 보여 준다(앞으로 7일치가 미리 만들어져 있어 목록이 넘친다) */
 export function groupTasks(tasks: Task[], now: Date): TaskGroups {
   const today = dayKey(now);
   const tomorrow = dayKey(addDays(startOfDay(now), 1));
-  const g: TaskGroups = { overdue: [], today: [], tomorrow: [], later: [], someday: [], doneToday: [] };
+  const g: TaskGroups = { overdue: [], today: [], tomorrow: [], later: [], someday: [], doneToday: [], missedToday: [] };
   for (const t of tasks) {
     if (t.status === "done") {
       if (t.completed_at && dayKey(new Date(t.completed_at)) === today) g.doneToday.push(t);
       continue;
     }
-    if (!isOpen(t)) continue;
+    if (!isOpen(t)) {
+      if (isMissed(t) && !isSomeday(t) && dayKey(new Date(t.starts_at)) === today) g.missedToday.push(t);
+      continue;
+    }
     if (isSomeday(t)) {
       g.someday.push(t);
       continue;
@@ -111,6 +118,7 @@ export function groupTasks(tasks: Task[], now: Date): TaskGroups {
   g.later.sort(byTime);
   g.someday.sort((a, b) => Number(b.starred) - Number(a.starred) || b.created_at.localeCompare(a.created_at));
   g.doneToday.sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? ""));
+  g.missedToday.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
   return g;
 }
 
@@ -447,6 +455,25 @@ export function skipTask(store: PlannerStore, id: string, reason: string) {
 export function markMissed(store: PlannerStore, id: string, reason: string) {
   const next = store.patch("tasks", id, { status: "missed" });
   log(store, "missed", next, { reason });
+}
+
+/**
+ * 못 한 일정을 새 시각으로 다시 잡는다 — 길이는 그대로, 상태는 다시 '예정'.
+ * 놓침·건너뜀 사유는 이미 기록에 남아 있으니 다시 묻지 않는다.
+ */
+export function rescheduleTask(store: PlannerStore, id: string, newStart: Date) {
+  const t = store.db.tasks[id];
+  if (!t) return;
+  const dur = isTimed(t) ? Date.parse(t.ends_at) - Date.parse(t.starts_at) : 30 * MIN;
+  const next = store.patch("tasks", id, {
+    schedule: "timed",
+    starts_at: newStart.toISOString(),
+    ends_at: new Date(newStart.getTime() + dur).toISOString(),
+    status: "planned",
+    started_at: null,
+    completed_at: null,
+  });
+  log(store, "reopened", next, { from_starts_at: t.starts_at, to_starts_at: newStart.toISOString() });
 }
 
 export function deleteTask(store: PlannerStore, id: string) {

@@ -19,7 +19,7 @@ function PanelTitle({ icon, children, action }: { icon: React.ReactNode; childre
 }
 
 export function HabitMini() {
-  const { habits, tasks, store, openSheet, toast } = usePlanner();
+  const { habits, tasks, store, openSheet } = usePlanner();
   const today = startOfDay(new Date());
   const last7 = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
   const byKey = useMemo(() => {
@@ -64,7 +64,6 @@ export function HabitMini() {
                   onClick={() => {
                     if (!todayTask) return;
                     completeTask(store, todayTask.id);
-                    toast({ text: `🔥 ${h.title} — ${streak + 1}일 연속!`, tone: "ok" });
                   }}
                   className={cx(
                     "grid size-9 shrink-0 place-items-center rounded-xl text-sm transition",

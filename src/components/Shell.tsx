@@ -39,7 +39,7 @@ import { BriefingEngine } from "./Briefing";
 import { CalendarTab } from "./CalendarTab";
 import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
-import { EnforcementModal, OverdueSiren, PostponeDialog } from "./Enforcement";
+import { EnforcementModal, OverdueSiren, PostponeDialog, RescheduleDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
 import { AutoFullscreen, TopBar } from "./Header";
 import { HabitsSheet } from "./HabitsSheet";
@@ -417,7 +417,6 @@ export function Shell() {
         onDelete={(c) => {
           deleteCategory(p.store, c.id);
           if (filter.kind === "category" && filter.id === c.id) setFilter({ kind: "all" });
-          p.toast({ text: `카테고리 삭제: ${c.name}` });
         }}
       />
       <CareerSheet open={career} onClose={() => setCareer(false)} />
@@ -429,13 +428,14 @@ export function Shell() {
       <TaskEditor />
       <ActivityEditor />
       <PostponeDialog />
+      <RescheduleDialog />
       <HabitsSheet />
       <LogSheet />
       <SettingsSheet />
       <AdminSheet />
       <DriveSheet />
       <VoiceAdd />
-      <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.activityEditor || p.postpone)} />
+      <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.activityEditor || p.reschedule || p.postpone)} />
       <AlarmOverlay />
       <OverdueSiren />
       <Toasts />

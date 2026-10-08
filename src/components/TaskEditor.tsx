@@ -10,7 +10,6 @@ import {
   liveCategories,
   reopenTask,
   scheduleWindow,
-  restoreTask,
   startTask,
   taskState,
   updateTask,
@@ -93,12 +92,14 @@ export function TaskEditor() {
 }
 
 function EditorBody({ editor }: { editor: EditorState }) {
-  const { closeEditor, store, settings, toast, snap } = usePlanner();
+  const { closeEditor, openReschedule, store, settings, snap } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const now = useNow(10_000);
   const task = editor.taskId ? (store.db.tasks[editor.taskId] ?? null) : null;
   const [d, setD] = useState<Draft>(() => initialDraft(task, editor, settings));
   const [err, setErr] = useState<string | null>(null);
+  // 삭제는 두 번 눌러야 된다(되돌리기 알림 대신)
+  const [sure, setSure] = useState(false);
   const set = (p: Partial<Draft>) => setD({ ...d, ...p });
   const start = atTime(parseDayKey(d.date), d.time);
   const end = new Date(start.getTime() + d.duration * MIN);
@@ -134,7 +135,6 @@ function EditorBody({ editor }: { editor: EditorState }) {
         strict: timed ? d.strict : false,
         notes: d.notes.trim() || null,
       });
-      toast({ text: "저장했습니다" });
     } else if (timed && d.repeat) {
       if (!d.days.length) return setErr("반복할 요일을 하나 이상 고르세요");
       createHabit(store, {
@@ -147,7 +147,6 @@ function EditorBody({ editor }: { editor: EditorState }) {
         sound_id: d.soundId,
         strict: d.strict,
       });
-      toast({ text: `습관 등록: 매주 ${d.days.map((x) => WEEKDAYS[x]).join("·")} ${d.time}`, tone: "ok" });
     } else {
       createTask(
         store,
@@ -167,7 +166,6 @@ function EditorBody({ editor }: { editor: EditorState }) {
         },
         settings,
       );
-      toast({ text: timed ? `추가: ${fmtTime(start)} ${d.title}` : `추가: ${d.title}`, tone: "ok" });
     }
     closeEditor();
   };
@@ -182,20 +180,16 @@ function EditorBody({ editor }: { editor: EditorState }) {
         <div className="flex items-center gap-2">
           {task && (
             <Button
-              variant="ghost"
+              variant={sure ? "danger" : "ghost"}
               disabled={Boolean(lockedDelete)}
               title={lockedDelete ? "시작 안 한 강제 일정은 지울 수 없습니다 — 경고창에서 사유와 함께 건너뛰세요" : undefined}
               onClick={() => {
+                if (!sure) return setSure(true);
                 deleteTask(store, task.id);
                 closeEditor();
-                toast({
-                  text: `삭제: ${task.title}`,
-                  action: { label: "되돌리기", onClick: () => restoreTask(store, task.id) },
-                  ttl: 7000,
-                });
               }}
             >
-              <Trash size={16} /> 삭제
+              <Trash size={16} /> {sure ? "정말 삭제" : "삭제"}
             </Button>
           )}
           <div className="ml-auto flex gap-2">
@@ -282,9 +276,14 @@ function EditorBody({ editor }: { editor: EditorState }) {
                 <Check size={14} /> 완료
               </Button>
             )}
-            {(task.status === "done" || task.status === "skipped" || task.status === "missed") && (
+            {task.status === "done" && (
               <Button size="sm" onClick={() => (reopenTask(store, task.id), closeEditor())}>
                 <RotateCcw size={14} /> 다시 열기
+              </Button>
+            )}
+            {(task.status === "skipped" || task.status === "missed") && (
+              <Button size="sm" onClick={() => (closeEditor(), openReschedule(task.id))}>
+                <RotateCcw size={14} /> 다시 잡기
               </Button>
             )}
             <span className="ml-auto self-center text-xs text-muted">

@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { dayStats, isTimed, moveTask, tasksOnDay, weekDays } from "@/lib/planner";
-import { addDays, dayKey, fmtDate, fmtTime, MIN, sameDay, startOfDay, WEEKDAYS } from "@/lib/time";
+import { addDays, dayKey, fmtDate, MIN, sameDay, startOfDay, WEEKDAYS } from "@/lib/time";
 import type { Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
@@ -67,7 +67,7 @@ export function Board({
   view: View;
   setView: (v: View) => void;
 }) {
-  const { tasks, activities, settings, store, openEditor, openActivity, askPostpone, toast } = usePlanner();
+  const { tasks, activities, settings, store, openEditor, openTask, openActivity, askPostpone } = usePlanner();
   const now = useNow(60_000);
 
   const days = useMemo(() => (view === "day" ? [startOfDay(selected)] : weekDays(selected)), [selected, view]);
@@ -86,10 +86,9 @@ export function Board({
     (t: Task, s: Date, e: Date) => {
       const ok = moveTask(store, t.id, s, e);
       if (!ok) askPostpone(t.id, s);
-      else toast({ text: `${t.title} → ${fmtTime(s)}–${fmtTime(e)}` });
       return ok;
     },
-    [store, askPostpone, toast],
+    [store, askPostpone],
   );
 
   const step = view === "day" ? 1 : 7;
@@ -146,7 +145,7 @@ export function Board({
         graceMin={settings.graceMin}
         dayStartHour={settings.dayStartHour}
         onCreate={(start) => openEditor({ start })}
-        onOpen={(t) => openEditor({ taskId: t.id })}
+        onOpen={openTask}
         onMove={onMove}
         onSelectDay={(d) => {
           setSelected(d);

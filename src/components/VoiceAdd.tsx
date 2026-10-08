@@ -39,7 +39,7 @@ export function VoiceAdd() {
 }
 
 function VoiceBody() {
-  const { openSheet, store, settings, snap, session, toast } = usePlanner();
+  const { openSheet, store, settings, snap, session } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const [text, setText] = useState("");
   const { listening, error: micError, start, stop, interrupt } = useSpeech(setText);
@@ -78,9 +78,7 @@ function VoiceBody() {
   const chosen = drafts?.filter((d) => d.on && d.title.trim()) ?? [];
   const save = () => {
     if (!chosen.length) return;
-    const r = saveParsed(store, chosen.map((d) => ({ ...d, title: d.title.trim() })), settings, categories);
-    const parts = [r.tasks && `일정 ${r.tasks}개`, r.habits && `습관 ${r.habits}개`].filter(Boolean).join(" · ");
-    toast({ text: `✓ ${parts} 추가했어요`, tone: "ok" });
+    saveParsed(store, chosen.map((d) => ({ ...d, title: d.title.trim() })), settings, categories);
     close();
   };
 

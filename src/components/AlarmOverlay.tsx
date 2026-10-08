@@ -21,7 +21,7 @@ const KIND_LABEL = {
 
 /** 전체화면 알람 — 앱이 열려 있을 때 정각/미시작 시점에 뜬다. 자체 사운드가 반복되며 점점 커진다. */
 export function AlarmOverlay() {
-  const { alarm, dismissAlarm, settings, store, toast, snap } = usePlanner();
+  const { alarm, dismissAlarm, settings, store, snap } = usePlanner();
   const now = useNow(1000);
   const [mutedKey, setMutedKey] = useState<string | null>(null);
   const alarmKey = alarm?.key;
@@ -103,7 +103,6 @@ export function AlarmOverlay() {
             <button
               onClick={() => {
                 startTask(store, task.id);
-                toast({ text: "▶ 시작! 지금부터입니다", tone: "ok" });
                 close();
               }}
               className={cx(
@@ -119,7 +118,6 @@ export function AlarmOverlay() {
               <button
                 onClick={() => {
                   addSnooze(task.id, 5);
-                  toast({ text: "⏱ 5분 뒤 다시 울립니다" });
                   close();
                 }}
                 className="h-12 rounded-2xl bg-white/10 font-bold hover:bg-white/15"
