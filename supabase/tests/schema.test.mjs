@@ -19,7 +19,7 @@ await db.exec(`
   create table auth.users (
     id uuid primary key, email text, created_at timestamptz not null default clock_timestamp(),
     last_sign_in_at timestamptz, banned_until timestamptz, email_confirmed_at timestamptz,
-    raw_app_meta_data jsonb not null default '{}'::jsonb
+    raw_app_meta_data jsonb not null default '{}'::jsonb, raw_user_meta_data jsonb not null default '{}'::jsonb
   );
   create table auth.sessions (
     id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users (id) on delete cascade,
@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -474,6 +474,10 @@ await db.exec(`reset role;`);
   await q(`insert into auth.users (id, email) values ('${C}', 'c@x')`);
   ok((await q(`select count(*)::int n from public.must_admins where user_id = '${C}'`))[0].n === 0, "가입 받기 켜짐: 가입됨, 관리자는 아님");
   ok((await q(`select approved from public.must_members where user_id = '${C}'`))[0].approved === false, "가입 받기 켜짐: 새 가입자는 승인 대기");
+  const E = "eeeeeeee-0000-4000-8000-000000000005";
+  await q(`insert into auth.users (id, email, raw_user_meta_data) values ('${E}', 'e@x', '{"name": "  홍길동  "}')`);
+  ok((await q(`select name, approved from public.must_members where user_id = '${E}'`))[0].name === "홍길동", "가입 신청 이름이 승인 표에 저장됨(앞뒤 공백 정리)");
+  ok((await q(`select name from public.must_members where user_id = '${C}'`))[0].name === null, "이름 없이 가입하면 비어 있음");
   // 관리자가 아무도 없게 된 서버에서도, 다른 사용자가 있으면 새 가입자는 관리자가 되지 않는다
   await db.exec(`alter table public.must_admins disable trigger must_keep_one_admin; delete from public.must_admins;
                  alter table public.must_admins enable trigger must_keep_one_admin;`);
@@ -552,6 +556,9 @@ await db.exec(`reset role;`);
   await db.exec(`reset role;`);
   ok(ad.length === 1 && ad[0].user_id === B && ad[0].files === 2 && Number(ad[0].bytes) === 1948576, "관리자: 사람별 드라이브 사용량");
   await db.exec(`update public.must_app_settings set drive_quota_mb = 150`);
+  const lk = (await as(B, `insert into public.drive_files (filename, size, mime, locked) values ('잠긴 메모.txt', 100, 'text/plain', true) returning locked`))[0];
+  ok(lk && lk.locked === true, "드라이브: 비밀번호로 잠근 파일 표시");
+  ok(await fails(B, `update public.drive_files set locked = false where filename = '잠긴 메모.txt' returning id`), "드라이브: 잠금 표시는 나중에 못 바꿈");
   ok((await as(B, `delete from public.drive_files where id = '${f1.id}' returning id`)).length === 1, "드라이브: 내 파일 지우기");
   await db.exec(readFileSync(new URL("../migrations/20261009000100_drive.sql", import.meta.url), "utf8"));
   ok((await q(`select count(*)::int n from pg_policies where policyname in ('own drive files', 'drive own folder')`))[0].n === 2, "드라이브 마이그레이션 다시 돌려도 정책 그대로");

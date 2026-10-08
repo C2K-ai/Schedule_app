@@ -17,11 +17,12 @@ const SIGNUP_ERRORS: Record<string, string> = {
   weak_password: "비밀번호는 6자 이상이어야 해요.",
   long_password: "비밀번호가 너무 길어요(72자까지).",
   bad_email: "이메일 주소를 확인해 주세요.",
+  bad_name: "이름을 적어 주세요(40자까지).",
 };
 
 /** 가입 신청(Edge Function `signup`) — 메일 확인 없이 계정을 만들고 운영자 승인을 기다린다 */
-async function requestSignup(sb: SupabaseClient, email: string, password: string) {
-  const { error } = await sb.functions.invoke("signup", { body: { email, password } });
+async function requestSignup(sb: SupabaseClient, name: string, email: string, password: string) {
+  const { error } = await sb.functions.invoke("signup", { body: { name, email, password } });
   if (!error) return;
   const ctx = (error as { context?: Response }).context;
   const code = ctx && typeof ctx.json === "function" ? ((await ctx.json().catch(() => ({}))) as { error?: string }).error : undefined;
@@ -52,6 +53,7 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
   const { toast } = usePlanner();
   const sb = getSupabase();
   const [mode, setMode] = useState<Mode>("login");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -115,7 +117,7 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
                 if (error) throw error;
                 toast({ text: "로그인했습니다 — 이 기기와 동기화를 시작해요", tone: "ok" });
               } else {
-                await requestSignup(sb, email.trim(), password);
+                await requestSignup(sb, name.trim(), email.trim(), password);
                 // 바로 로그인 — 운영자가 승인할 때까지는 '승인 대기' 화면이 뜬다
                 const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
                 if (error) {
@@ -128,6 +130,18 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
             });
           }}
         >
+          {mode === "signup" && (
+            <input
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={40}
+              placeholder="이름 (운영자가 보고 승인해요)"
+              aria-label="이름"
+              className={inputCls}
+              autoComplete="name"
+            />
+          )}
           <input
             type="email"
             required

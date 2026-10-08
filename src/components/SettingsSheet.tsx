@@ -552,7 +552,7 @@ function AiTab() {
           </Button>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-muted">
-          비용: 말로 정리는 빠르고 싼 Claude Haiku 5.5(한 번 1원 미만), 커리어 다듬기는 글을 더 잘 쓰는 Sonnet(한 번 약 20~40원) — 혼자 쓰면 $5 로 1년 넘게. 이 탭을 다시 열면 연결 상태가 바뀌어 있을 거예요.
+          비용: 말로 정리는 빠르고 싼 Claude Haiku 5.5(한 번 1원 미만), 커리어 다듬기는 없는 사실을 덜 지어내는 Sonnet(한 번 약 10원) — 혼자 쓰면 $5 로 1년 넘게. 이 탭을 다시 열면 연결 상태가 바뀌어 있을 거예요.
         </p>
       </Section>
     </>

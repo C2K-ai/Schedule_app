@@ -27,7 +27,13 @@ Deno.serve(async (req) => {
     if (cErr) throw cErr;
     if ((count ?? 0) >= MAX_PENDING) return json({ error: "too_many" }, 429);
 
-    const { data: created, error } = await db.auth.admin.createUser({ email: p.email, password: p.password, email_confirm: true });
+    // 이름은 user_metadata 로 — DB 트리거가 승인 표(must_members.name)로 옮긴다
+    const { data: created, error } = await db.auth.admin.createUser({
+      email: p.email,
+      password: p.password,
+      email_confirm: true,
+      user_metadata: { name: p.name },
+    });
     if (error || !created.user) {
       const e = createError(error ?? {});
       if (e.error === "internal") console.error("signup createUser", error?.message);
@@ -40,7 +46,7 @@ Deno.serve(async (req) => {
       (admins ?? []).map((a) =>
         sendToUser(db, a.user_id, {
           title: "🙋 새 가입 신청",
-          body: `${p.email} — 눌러서 관리자 화면에서 승인하세요`,
+          body: `${p.name} (${p.email}) — 눌러서 관리자 화면에서 승인하세요`,
           tag: `must-signup-${created.user.id}`,
           kind: "signup",
           requireInteraction: false,

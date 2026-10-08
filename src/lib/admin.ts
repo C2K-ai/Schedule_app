@@ -75,6 +75,8 @@ export interface AdminUser {
   /** 관리자가 승인했는지(관리자는 늘 true) */
   approved: boolean;
   requested_at: string | null;
+  /** 가입 신청 때 적은 이름 */
+  name: string | null;
   drive_files: number;
   drive_bytes: number;
 }

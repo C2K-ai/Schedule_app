@@ -5,6 +5,7 @@
 //   실패하면 그 줄을 지운다. 파일은 나만 볼 수 있다(남의 폴더는 서버 정책이 막음).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SUPABASE_KEY, SUPABASE_URL } from "./supabase";
+import { lockBytes, OVERHEAD, unlockBytes } from "./vault";
 
 export const DRIVE_BUCKET = "drive";
 export const MAX_FILE = 50 * 1024 * 1024;
@@ -17,6 +18,8 @@ export interface DriveFile {
   mime: string;
   starred: boolean;
   ready: boolean;
+  /** 비밀번호로 잠가서(브라우저에서 암호화해) 올린 파일 */
+  locked: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -44,6 +47,7 @@ export function fileKind(f: Pick<DriveFile, "mime" | "filename">): FileKind {
 }
 
 export function fmtBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) n = 0;
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)}MB`;
@@ -86,13 +90,20 @@ export async function driveUsage(sb: SupabaseClient): Promise<DriveUsage> {
   return { used: Number(u.used), files: Number(u.files), quota: Number(u.quota), max_file: Number(u.max_file) };
 }
 
-/** 올리기 — 진행률(0~1)을 알려 준다. 끝나면 새 파일 */
-export async function uploadFile(sb: SupabaseClient, file: File, onProgress?: (p: number) => void, signal?: AbortSignal): Promise<DriveFile> {
-  if (file.size > MAX_FILE) throw new Error("파일 하나는 50MB 까지 올릴 수 있어요.");
+/** 올리기 — 진행률(0~1)을 알려 준다. password 가 있으면 이 기기에서 암호화해서 올린다. 끝나면 새 파일 */
+export async function uploadFile(
+  sb: SupabaseClient,
+  file: File,
+  onProgress?: (p: number) => void,
+  signal?: AbortSignal,
+  password?: string,
+): Promise<DriveFile> {
+  if (file.size + (password ? OVERHEAD : 0) > MAX_FILE) throw new Error("파일 하나는 50MB 까지 올릴 수 있어요.");
   const mime = (file.type || "application/octet-stream").slice(0, 255);
+  const body: Blob = password ? new Blob([(await lockBytes(await file.arrayBuffer(), password)) as BlobPart]) : file;
   const { data, error } = await sb
     .from("drive_files")
-    .insert({ filename: cleanName(file.name), size: file.size, mime })
+    .insert({ filename: cleanName(file.name), size: body.size, mime, locked: Boolean(password) })
     .select("*")
     .single();
   if (error) throw new Error(driveError(error));
@@ -107,7 +118,8 @@ export async function uploadFile(sb: SupabaseClient, file: File, onProgress?: (p
       xhr.setRequestHeader("authorization", `Bearer ${token}`);
       xhr.setRequestHeader("apikey", SUPABASE_KEY);
       xhr.setRequestHeader("x-upsert", "false");
-      xhr.setRequestHeader("content-type", mime);
+      // 잠근 파일은 암호문이라 종류를 숨긴다(이름·종류는 표에만)
+      xhr.setRequestHeader("content-type", password ? "application/octet-stream" : mime);
       xhr.setRequestHeader("cache-control", "max-age=3600");
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
       xhr.onload = () =>
@@ -115,7 +127,7 @@ export async function uploadFile(sb: SupabaseClient, file: File, onProgress?: (p
       xhr.onerror = () => reject(new Error("인터넷 연결을 확인해 주세요."));
       xhr.onabort = () => reject(new Error("올리기를 취소했어요."));
       signal?.addEventListener("abort", () => xhr.abort());
-      xhr.send(file);
+      xhr.send(body);
     });
     const { data: done, error: e2 } = await sb
       .from("drive_files")
@@ -151,4 +163,12 @@ export async function fileUrl(sb: SupabaseClient, f: DriveFile, download = false
   const { data, error } = await sb.storage.from(DRIVE_BUCKET).createSignedUrl(path(f), 300, download ? { download: f.filename } : undefined);
   if (error || !data?.signedUrl) throw new Error(driveError(error ?? "주소를 만들지 못했어요"));
   return data.signedUrl;
+}
+
+/** 잠긴 파일을 받아 이 기기에서 푼다 — 틀린 비밀번호면 WrongPassword */
+export async function openLocked(sb: SupabaseClient, f: DriveFile, password: string): Promise<Blob> {
+  const res = await fetch(await fileUrl(sb, f));
+  if (!res.ok) throw new Error(driveError(`${res.status} ${await res.text().catch(() => "")}`));
+  const plain = await unlockBytes(await res.arrayBuffer(), password);
+  return new Blob([plain], { type: f.mime });
 }

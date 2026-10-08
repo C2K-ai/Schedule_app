@@ -10,6 +10,7 @@ import {
   FileText,
   FileVideo,
   HardDrive,
+  Lock,
   LogIn,
   Pencil,
   Search,
@@ -27,6 +28,7 @@ import {
   fmtBytes,
   listFiles,
   MAX_FILE,
+  openLocked,
   removeFile,
   updateFile,
   uploadFile,
@@ -35,8 +37,10 @@ import {
   type FileKind,
 } from "@/lib/drive";
 import { getSupabase } from "@/lib/supabase";
+import { uuid } from "@/lib/time";
+import { MIN_PASSWORD, WrongPassword } from "@/lib/vault";
 import { usePlanner } from "./PlannerProvider";
-import { Button, Chip, cx, Empty, IconButton, inputCls, Modal } from "./ui";
+import { Button, Chip, cx, Empty, IconButton, inputCls, Modal, Switch } from "./ui";
 
 const KIND_ICON: Record<FileKind, { icon: typeof FileIcon; tint: string }> = {
   image: { icon: FileImage, tint: "bg-[#8b5cf6]/15 text-[#a78bfa]" },
@@ -93,10 +97,17 @@ function DriveBody() {
   const [filter, setFilter] = useState<Filter>("all");
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [drag, setDrag] = useState(false);
-  const [preview, setPreview] = useState<{ f: DriveFile; url: string } | null>(null);
+  const [preview, setPreview] = useState<{ f: DriveFile; url: string; local?: boolean } | null>(null);
   const [renaming, setRenaming] = useState<DriveFile | null>(null);
   const [deleting, setDeleting] = useState<DriveFile | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  // 비밀번호 잠금 — 비밀번호는 어디에도 저장하지 않는다(이 창을 연 동안 메모리에만, 다시 열 때 또 묻지 않게)
+  const [lockOn, setLockOn] = useState(false);
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const sessionPw = useRef<string | null>(null);
+  const [unlocking, setUnlocking] = useState<{ f: DriveFile; mode: "open" | "download" } | null>(null);
+  const lockReady = !lockOn || (pw.length >= MIN_PASSWORD && pw === pw2);
 
   useEffect(() => {
     if (!sb || !signedIn) return;
@@ -128,9 +139,14 @@ function DriveBody() {
 
   const upload = async (picked: FileList | File[]) => {
     if (!sb) return;
+    if (!lockReady) {
+      toast({ text: `잠글 비밀번호를 ${MIN_PASSWORD}자 이상, 두 칸 똑같이 적어 주세요.`, tone: "danger" });
+      return;
+    }
+    const password = lockOn ? pw : undefined;
     const arr = Array.from(picked);
     for (const file of arr) {
-      const key = `${file.name}-${file.size}-${Math.random()}`;
+      const key = uuid();
       const set = (patch: Partial<Upload>) => setUploads((l) => l.map((u) => (u.key === key ? { ...u, ...patch } : u)));
       setUploads((l) => [...l, { key, name: file.name, progress: 0 }]);
       if (file.size > MAX_FILE) {
@@ -138,7 +154,8 @@ function DriveBody() {
         continue;
       }
       try {
-        const f = await uploadFile(sb, file, (p) => set({ progress: p }));
+        const f = await uploadFile(sb, file, (p) => set({ progress: p }), undefined, password);
+        if (password) sessionPw.current = password;
         setFiles((l) => [f, ...(l ?? [])]);
         setUploads((l) => l.filter((u) => u.key !== key));
       } catch (e) {
@@ -148,8 +165,62 @@ function DriveBody() {
     refreshUsage();
   };
 
+  const viewable = (f: DriveFile) => ["pdf", "video", "audio"].includes(fileKind(f));
+
+  /** 푼 파일 보여 주기 — 사진은 앱 안에서, PDF·영상은 새 창, 나머지는 내려받기 */
+  const show = (f: DriveFile, blob: Blob, mode: "open" | "download", w: Window | null) => {
+    const url = URL.createObjectURL(blob);
+    if (mode === "open" && fileKind(f) === "image") {
+      w?.close();
+      setPreview({ f, url, local: true });
+      return;
+    }
+    if (mode === "open" && w) w.location.href = url;
+    else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = f.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  const unlockAndShow = async (f: DriveFile, mode: "open" | "download", password: string, w: Window | null) => {
+    if (!sb) return;
+    const blob = await openLocked(sb, f, password);
+    sessionPw.current = password;
+    show(f, blob, mode, w);
+  };
+
+  /** 잠긴 파일 — 이번에 쓴 비밀번호로 먼저 풀어 보고, 안 되면 묻는다 */
+  const openLockedFile = async (f: DriveFile, mode: "open" | "download") => {
+    const w = mode === "open" && viewable(f) ? window.open("", "_blank") : null;
+    if (sessionPw.current) {
+      try {
+        await unlockAndShow(f, mode, sessionPw.current, w);
+        return;
+      } catch (e) {
+        if (!(e instanceof WrongPassword)) {
+          w?.close();
+          toast({ text: (e as Error).message, tone: "danger" });
+          return;
+        }
+      }
+    }
+    w?.close();
+    setUnlocking({ f, mode });
+  };
+
+  const closePreview = () => {
+    if (preview?.local) URL.revokeObjectURL(preview.url);
+    setPreview(null);
+  };
+
   const open = async (f: DriveFile) => {
     if (!sb) return;
+    if (f.locked) return openLockedFile(f, "open");
     if (fileKind(f) === "image") {
       try {
         setPreview({ f, url: await fileUrl(sb, f) });
@@ -172,6 +243,7 @@ function DriveBody() {
 
   const download = async (f: DriveFile) => {
     if (!sb) return;
+    if (f.locked) return openLockedFile(f, "download");
     try {
       const a = document.createElement("a");
       a.href = await fileUrl(sb, f, true);
@@ -252,8 +324,8 @@ function DriveBody() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="primary" onClick={() => input.current?.click()}>
-                <Upload size={16} /> 파일 올리기
+              <Button variant="primary" disabled={!lockReady} onClick={() => input.current?.click()}>
+                {lockOn ? <Lock size={16} /> : <Upload size={16} />} {lockOn ? "잠가서 올리기" : "파일 올리기"}
               </Button>
               <input
                 ref={input}
@@ -271,6 +343,51 @@ function DriveBody() {
                   <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
                   <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름으로 찾기" className={cx(inputCls, "h-10 pl-9 text-sm")} />
                 </label>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-line px-3.5 py-1.5">
+              <Switch
+                checked={lockOn}
+                onChange={setLockOn}
+                label={
+                  <span className="inline-flex items-center gap-1.5">
+                    <Lock size={14} /> 비밀번호 걸어서 올리기
+                  </span>
+                }
+                desc="이 기기에서 잠근 뒤 올려서 서버에는 알아볼 수 없는 암호문만 남아요 — 운영자도 내용을 못 봐요. 열 때 비밀번호가 필요해요."
+              />
+              {lockOn && (
+                <div className="space-y-2 pb-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={pw}
+                      onChange={(e) => setPw(e.target.value)}
+                      placeholder={`비밀번호 (${MIN_PASSWORD}자 이상)`}
+                      aria-label="잠글 비밀번호"
+                      className={inputCls}
+                    />
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={pw2}
+                      onChange={(e) => setPw2(e.target.value)}
+                      placeholder="비밀번호 한 번 더"
+                      aria-label="비밀번호 확인"
+                      className={inputCls}
+                    />
+                  </div>
+                  {pw.length > 0 && pw.length < MIN_PASSWORD && (
+                    <p className="text-xs font-semibold text-danger">{MIN_PASSWORD}자 이상으로 해 주세요.</p>
+                  )}
+                  {pw2.length > 0 && pw !== pw2 && <p className="text-xs font-semibold text-danger">두 비밀번호가 달라요.</p>}
+                  <p className="rounded-xl bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
+                    비밀번호를 잊으면 <b>누구도(운영자도) 열 수 없어요</b> — 되찾는 방법이 없으니 꼭 기억할 수 있는 걸로 하세요. 파일 이름·크기는
+                    잠기지 않아요.
+                  </p>
+                </div>
               )}
             </div>
 
@@ -343,15 +460,35 @@ function DriveBody() {
       </Modal>
 
       {preview && (
-        <Modal open onClose={() => setPreview(null)} size="xl" title={<span className="break-all">{preview.f.filename}</span>} subtitle={`${fmtBytes(preview.f.size)} · ${fmtDay(preview.f.created_at)}`}>
+        <Modal open onClose={closePreview} size="xl" title={<span className="break-all">{preview.f.filename}</span>} subtitle={`${fmtBytes(preview.f.size)} · ${fmtDay(preview.f.created_at)}`}>
           {/* eslint-disable-next-line @next/next/no-img-element -- 서명된 임시 주소라 next/image 를 못 쓴다 */}
           <img src={preview.url} alt={preview.f.filename} className="mx-auto max-h-[65dvh] w-auto rounded-xl object-contain" />
           <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <Button onClick={() => void download(preview.f)}>
+            <Button
+              onClick={() => {
+                if (!preview.local) return void download(preview.f);
+                const a = document.createElement("a");
+                a.href = preview.url;
+                a.download = preview.f.filename;
+                a.click();
+              }}
+            >
               <Download size={16} /> 내려받기
             </Button>
           </div>
         </Modal>
+      )}
+
+      {unlocking && (
+        <UnlockDialog
+          f={unlocking.f}
+          needWindow={unlocking.mode === "open" && viewable(unlocking.f)}
+          onClose={() => setUnlocking(null)}
+          onUnlock={async (password, w) => {
+            await unlockAndShow(unlocking.f, unlocking.mode, password, w);
+            setUnlocking(null);
+          }}
+        />
       )}
 
       {renaming && sb && (
@@ -404,12 +541,18 @@ function FileRow({
   return (
     <li className="flex items-center gap-1 bg-surface-2/40 pr-1.5 transition hover:bg-surface-2">
       <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 text-left">
-        <span className={cx("grid size-10 shrink-0 place-items-center rounded-xl", k.tint)}>
+        <span className={cx("relative grid size-10 shrink-0 place-items-center rounded-xl", k.tint)}>
           <Icon size={19} />
+          {f.locked && (
+            <span className="absolute -right-1 -bottom-1 grid size-[18px] place-items-center rounded-full bg-surface text-warn ring-1 ring-line">
+              <Lock size={10} strokeWidth={3} />
+            </span>
+          )}
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold">{f.filename}</span>
           <span className="block truncate text-xs text-muted">
+            {f.locked && "잠김 · "}
             {fmtBytes(f.size)} · {fmtShort(f.created_at)}
           </span>
         </span>
@@ -498,6 +641,69 @@ function ConfirmDelete({ f, onClose, onDelete }: { f: DriveFile; onClose: () => 
           <Trash2 size={16} /> 지우기
         </Button>
       </div>
+    </Dialog>
+  );
+}
+
+function UnlockDialog({
+  f,
+  needWindow,
+  onClose,
+  onUnlock,
+}: {
+  f: DriveFile;
+  needWindow: boolean;
+  onClose: () => void;
+  onUnlock: (password: string, w: Window | null) => Promise<void>;
+}) {
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <Dialog title="잠긴 파일 열기" onClose={onClose}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!pw) return;
+          // 팝업 차단을 피하려고 창은 누른 순간에 먼저 연다
+          const w = needWindow ? window.open("", "_blank") : null;
+          setBusy(true);
+          setErr(null);
+          onUnlock(pw, w)
+            .catch((x: Error) => {
+              w?.close();
+              setErr(x instanceof WrongPassword ? "비밀번호가 틀렸어요." : x.message);
+            })
+            .finally(() => setBusy(false));
+        }}
+      >
+        <p className="flex items-start gap-2 text-sm leading-relaxed text-muted">
+          <Lock size={16} className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            <b className="break-all text-fg">{f.filename}</b> 은(는) 비밀번호로 잠겨 있어요. 올릴 때 정한 비밀번호를 넣어 주세요.
+          </span>
+        </p>
+        <input
+          autoFocus
+          type="password"
+          autoComplete="current-password"
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
+          placeholder="비밀번호"
+          aria-label="파일 비밀번호"
+          className={inputCls}
+        />
+        {err && <p className="text-sm font-semibold text-danger">{err}</p>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            취소
+          </Button>
+          <Button variant="primary" disabled={busy || !pw}>
+            {busy ? "푸는 중…" : "열기"}
+          </Button>
+        </div>
+      </form>
     </Dialog>
   );
 }

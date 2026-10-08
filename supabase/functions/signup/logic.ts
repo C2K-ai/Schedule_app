@@ -5,15 +5,18 @@ export const MAX_PENDING = 20;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function parseSignup(body: unknown): { email: string; password: string } | { error: string } {
+export function parseSignup(body: unknown): { name: string; email: string; password: string } | { error: string } {
   if (!body || typeof body !== "object") return { error: "bad_body" };
   const b = body as Record<string, unknown>;
+  // 이름 — 관리자가 누군지 보고 승인하도록. 제어 문자는 빼고 공백은 하나로
+  const name = typeof b.name === "string" ? b.name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim() : "";
   const email = typeof b.email === "string" ? b.email.trim().toLowerCase() : "";
   const password = typeof b.password === "string" ? b.password : "";
+  if (!name || name.length > 40) return { error: "bad_name" };
   if (!email || email.length > 254 || !EMAIL.test(email)) return { error: "bad_email" };
   if (password.length < 6) return { error: "weak_password" };
   if (password.length > 72) return { error: "long_password" };
-  return { email, password };
+  return { name, email, password };
 }
 
 /** 계정 만들기 오류 → 앱에 돌려줄 코드와 상태 */

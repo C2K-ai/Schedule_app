@@ -122,7 +122,7 @@ function AdminBody() {
 
   const runAction = async (action: UserAction, u: AdminUser, extra?: Record<string, unknown>) => {
     const r = await adminUserAction(sb, action, u.id, extra);
-    const who = u.email ?? "사용자";
+    const who = u.name ?? u.email ?? "사용자";
     if (action === "recovery_link") {
       if (r.link) setLink({ who, link: r.link });
       else toast({ text: "링크를 만들지 못했어요.", tone: "danger" });
@@ -292,9 +292,9 @@ function OverviewTab({ ov, now, onUsers }: { ov: Overview; now: number; onUsers:
           <StatusRow ok={ov.ai_key} label="AI 키 (Claude)" value={ov.ai_key ? "연결됨" : "없음 — 설정 → AI 에서 넣는 방법"} />
           <StatusRow ok={null} label="새 가입" value={ov.settings.signups_open ? "신청 받는 중 (내가 승인해야 사용)" : "닫힘 — 있는 계정만"} />
           <StatusRow
-            ok={ov.drive_bytes < 900 * 1024 * 1024}
+            ok={(ov.drive_bytes ?? 0) < 900 * 1024 * 1024}
             label="드라이브 (전체)"
-            value={`${fmtBytes(ov.drive_bytes)} / 무료 요금제 1GB · 1인 ${ov.settings.drive_quota_mb}MB`}
+            value={`${fmtBytes(ov.drive_bytes ?? 0)} / 무료 요금제 1GB · 1인 ${ov.settings.drive_quota_mb ?? 150}MB`}
           />
           {ov.cron.length === 0 && <StatusRow ok={null} label="예약 작업" value="정보 없음" />}
           {ov.cron.map((j) => {
@@ -338,7 +338,7 @@ function UsersTab({
   const [q, setQ] = useState("");
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const found = s ? users.filter((u) => (u.email ?? "").toLowerCase().includes(s)) : users;
+    const found = s ? users.filter((u) => `${u.email ?? ""} ${u.name ?? ""}`.toLowerCase().includes(s)) : users;
     // 승인 대기를 맨 위로(신청한 순서대로)
     return [...found].sort((a, b) => Number(a.approved) - Number(b.approved));
   }, [users, q]);
@@ -347,7 +347,7 @@ function UsersTab({
       {users.length > 5 && (
         <label className="relative block">
           <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이메일로 찾기" className={cx(inputCls, "pl-9")} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름·이메일로 찾기" className={cx(inputCls, "pl-9")} />
         </label>
       )}
       <ul className="space-y-2.5">
@@ -377,7 +377,7 @@ function UserCard({
   act: (a: UserAction, u: AdminUser, extra?: Record<string, unknown>) => Promise<void>;
 }) {
   const banned = isBanned(u, now);
-  const who = u.email ?? "(이메일 없음)";
+  const who = u.name ? `${u.name}(${u.email ?? "이메일 없음"})` : (u.email ?? "(이메일 없음)");
   const cost = userCostKrw(u);
   const confirmThen = (c: Omit<Confirm, "run">, action: UserAction, extra?: () => Record<string, unknown>) =>
     ask({ ...c, run: () => act(action, u, extra?.()) });
@@ -386,17 +386,18 @@ function UserCard({
     <li className={cx("rounded-2xl border border-line bg-surface-2/60 p-3.5", banned && "opacity-70")}>
       <div className="flex items-start gap-3">
         <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent font-black text-accent-fg">
-          {(u.email ?? "?").slice(0, 1).toUpperCase()}
+          {(u.name ?? u.email ?? "?").slice(0, 1).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-1.5">
-            <span className="min-w-0 truncate font-semibold">{who}</span>
+            <span className="min-w-0 truncate font-semibold">{u.name ?? u.email ?? "(이메일 없음)"}</span>
             {self && <Badge tone="accent">나</Badge>}
             {u.is_admin && <Badge tone="accent">관리자</Badge>}
             {!u.approved && <Badge tone="warn">승인 대기</Badge>}
             {banned && <Badge tone="danger">정지됨</Badge>}
             {!u.confirmed && <Badge tone="warn">메일 미확인</Badge>}
           </p>
+          {u.name && <p className="truncate text-xs text-muted">{u.email}</p>}
           <p className="mt-0.5 text-xs text-muted">
             {u.approved ? "가입" : "신청"} {fmtDay(u.created_at)} · 최근 활동 {fmtAgo(u.last_active_at, now)} · 로그인 기기 {u.sessions}
           </p>
@@ -454,7 +455,7 @@ function UserCard({
               ["공부", fmtStudy(u.study_sec), null],
               ["AI 이번 달", `${u.ai_month_calls}회`, `≈${fmtKrw(cost)} · 오늘 ${u.ai_today}`],
               ["알림 기기", `${u.devices}대`, null],
-          ["드라이브", fmtBytes(u.drive_bytes), `파일 ${u.drive_files}개`],
+          ["드라이브", fmtBytes(u.drive_bytes ?? 0), `파일 ${u.drive_files ?? 0}개`],
             ].map(([k, v, s]) => (
               <div key={k} className="min-w-0 rounded-xl bg-surface px-2 py-2">
                 <dt className="truncate text-[11px] text-muted">{k}</dt>
@@ -659,7 +660,7 @@ function SettingsTab({
       <section>
         <h3 className="font-bold">AI 하루 한도 (한 사람당)</h3>
         <p className="mt-1 text-sm leading-relaxed text-muted">
-          말로 일정 추가와 커리어 다듬기를 합쳐 하루에 몇 번까지 쓸 수 있는지예요(한국 시간 자정에 초기화). 관리자는 한도가 없어요. 0 이면 관리자 말고는 못 써요. 말로 일정 추가는 1번에 1원도 안 들고, 커리어 다듬기는 1번에 약 20~40원.
+          말로 일정 추가와 커리어 다듬기를 합쳐 하루에 몇 번까지 쓸 수 있는지예요(한국 시간 자정에 초기화). 관리자는 한도가 없어요. 0 이면 관리자 말고는 못 써요. 말로 일정 추가는 1번에 1원도 안 들고, 커리어 다듬기는 1번에 약 10원.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {LIMIT_CHOICES.map((n) => (

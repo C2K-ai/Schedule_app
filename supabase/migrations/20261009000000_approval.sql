@@ -15,6 +15,8 @@ create table if not exists public.must_members (
   approved_by  uuid
 );
 create index if not exists must_members_pending on public.must_members (requested_at) where not approved;
+-- 가입할 때 적은 이름(관리자가 승인할 때 본다) — 20261009000300_member_name.sql 과 같은 내용
+alter table public.must_members add column if not exists name text check (char_length(name) <= 40);
 -- 정책 없음: 앱은 직접 못 읽고 못 쓴다. 내 상태는 must_my_access() 로만, 승인은 Edge Function `admin` 으로만.
 alter table public.must_members enable row level security;
 revoke all on public.must_members from anon, authenticated;
@@ -29,8 +31,9 @@ create or replace function public.must_new_member() returns trigger
 language plpgsql security definer set search_path = '' as $$
 declare first boolean := not exists (select 1 from auth.users u where u.id <> new.id);
 begin
-  insert into public.must_members (user_id, approved, approved_at)
-  values (new.id, first, case when first then now() end)
+  insert into public.must_members (user_id, approved, approved_at, name)
+  values (new.id, first, case when first then now() end,
+          nullif(left(btrim(coalesce(new.raw_user_meta_data ->> 'name', '')), 40), ''))
   on conflict do nothing;
   return new;
 end $$;

@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     if (a.action === "users") {
       const [{ data, error }, members, drive] = await Promise.all([
         db.rpc("must_admin_users"),
-        db.from("must_members").select("user_id, approved, requested_at"),
+        db.from("must_members").select("user_id, approved, requested_at, name"),
         db.rpc("must_admin_drive"),
       ]);
       if (error) throw error;
@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
         ...u,
         approved: u.is_admin || Boolean(m.get(u.id)?.approved),
         requested_at: m.get(u.id)?.requested_at ?? null,
+        name: m.get(u.id)?.name ?? null,
         drive_files: d.get(u.id)?.files ?? 0,
         drive_bytes: Number(d.get(u.id)?.bytes ?? 0),
       }));

@@ -46,14 +46,20 @@
     파일 하나 50MB. 관리자 화면은 사람별 개수·용량만 보여 준다(내용은 안 보임). 계정 삭제 때 Storage 파일도 지운다.
     ※ 파일은 서버에 암호화 없이(Supabase 기본 디스크 암호화만) 저장 — 프로젝트 주인은 대시보드 Storage 에서 볼 수 있다.
 20. PC 전체 화면 버튼은 위쪽 막대 오른쪽 위 구석.
+21. **드라이브 비밀번호 잠금**: 올릴 때 '비밀번호 걸어서 올리기'를 켜면 브라우저가 PBKDF2-SHA256(60만 번) → AES-256-GCM 으로
+    암호화해서 올린다(`src/lib/vault.ts`, 파일 머리 "DRV1"). 서버엔 암호문만 — 운영자도 못 연다. 이름·크기·종류는 안 잠김.
+    비밀번호는 어디에도 저장 안 함(드라이브 창을 연 동안 메모리에만). 잊으면 복구 불가. 표: `drive_files.locked`.
+22. 가입 신청 때 **이름** 필수 → `user_metadata.name` → 트리거가 `must_members.name` 으로. 관리자 화면·신청 알림에 이름이 보인다.
+23. 커리어 다듬기 모델 비교(2026-10-08, 5건 블라인드 × 3심사): Sonnet 5.5(low) 사실 충실도 9.0·큰 과장 0건·종합 7.6,
+    Haiku 5.5 low 7.4·2건·6.6, Haiku 5.5 high 7.6·2건·6.6. 글솜씨는 비슷, 차이는 '없는 사실' 쪽 → Sonnet 유지(1번 약 8원).
 
 ## 서버(Supabase `gcnosxcojuefkaaxefug`)에 이미 반영된 것
 
 - 마이그레이션: `20261008000000_ai_key`, `20261008000100_study`, `20261008000200_career`, `20261008000300_briefing`, `20261008000400_admin`,
-  `20261009000000_approval`, `20261009000100_drive`
+  `20261009000000_approval`, `20261009000100_drive`, `20261009000200_drive_lock`, `20261009000300_member_name`
   (`20261008000500_admin_guards` — 마지막 관리자 보호 트리거·크론 기록 정리 — 는 아직 미적용: DELETE 문이 있어 MCP 승인 창이 뜬다. SQL Editor 에서 실행)
   (모두 다시 돌려도 안전, DROP 없음 — DROP 이 있으면 MCP 가 확인 창을 띄워 멈춘다).
-- Edge Functions: `parse-schedule`(v5, Haiku 5.5 — thinking 끔, 한 번 1원 미만), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v3, 가입 승인·드라이브), `signup`(v2, JWT 검증 끔),
+- Edge Functions: `parse-schedule`(v5, Haiku 5.5 — thinking 끔, 한 번 1원 미만), `career-polish`(v3, Sonnet 5.5 effort low), `admin`(v4, 가입 승인·드라이브·이름), `signup`(v3, JWT 검증 끔, 이름 필수),
   `send-due-notifications`(v3, 브리핑 포함). AI 함수는 부르기 전에 `must_ai_claim` 으로 한 칸 예약(하루 한도, 한국 자정 기준,
   관리자 무제한)하고 끝나면 토큰을 채운다. 모델은 각 `index.ts` 의 `MODEL` 만 바꾸면 된다.
 - Claude API 키: Vault `must_anthropic_key` 에 넣고 Anthropic 에 확인 완료(2026-10-07).

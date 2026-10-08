@@ -6,7 +6,8 @@ import { claim, finish, release, unbilled } from "../_shared/ai_usage.ts";
 import { admin, cors, json, setting } from "../_shared/env.ts";
 import { buildPrompt, cleanPolished, SCHEMA, SYSTEM, type Material, type Polished } from "./logic.ts";
 
-// 이력서 문장은 글솜씨와 '없는 사실 안 지어내기'가 중요해 한 단계 위 모델로(드물게 써서 비용 차이 작음, 1번 약 20~40원)
+// 이력서 문장은 '없는 사실 안 지어내기'가 중요해 한 단계 위 모델로(드물게 써서 비용 차이 작음, 1번 약 8~10원).
+//   2026-10-08 블라인드 비교(5건 × 3심사): Sonnet 5.5 는 큰 과장 0건, Haiku 5.5 는 low·high 모두 2건(예: 응시 전인 '독일어 B1'을 기술로)
 const MODEL = "claude-sonnet-5-5";
 
 Deno.serve(async (req) => {
