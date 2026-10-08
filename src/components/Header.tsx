@@ -1,6 +1,6 @@
 "use client";
 
-import { Cloud, CloudOff, Download, Image as ImageIcon, Maximize, Mic, Minimize, PanelLeftOpen } from "lucide-react";
+import { Cloud, CloudOff, Download, Image as ImageIcon, Maximize, Mic, Minimize, PanelLeftOpen, PenLine } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
@@ -113,7 +113,8 @@ function FullscreenButton() {
   return (
     <IconButton
       label={full ? "전체 화면 끄기" : "전체 화면"}
-      className="absolute top-3 right-[calc(0.5rem+var(--wco-right))] hidden md:inline-flex"
+      // 'hidden' 은 IconButton 의 inline-flex 에 져서(CSS 순서) 폰에서도 보였다 — 화면 폭 조건으로 숨긴다
+      className="absolute top-3 right-[calc(0.5rem+var(--wco-right))] max-md:hidden"
       onClick={() => {
         if (document.fullscreenElement) void document.exitFullscreen();
         else void document.documentElement.requestFullscreen?.().catch(() => {});
@@ -206,7 +207,7 @@ export function TopBar({
     <header className="safe-top wco-drag sticky top-0 z-30 border-b border-line bg-[color-mix(in_oklab,var(--bg)_70%,transparent)] backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-3 pr-[calc(1rem+var(--wco-right))] pl-4 md:h-16 md:pr-[calc(3.5rem+var(--wco-right))] md:pl-8">
         {onShowRail && (
-          <IconButton label="메뉴 보이기" onClick={onShowRail} className="-ml-2 hidden size-9 md:inline-flex md:ml-[calc(var(--wco-left)-0.5rem)]">
+          <IconButton label="메뉴 보이기" onClick={onShowRail} className="-ml-2 size-9 max-md:hidden md:ml-[calc(var(--wco-left)-0.5rem)]">
             <PanelLeftOpen size={19} />
           </IconButton>
         )}
@@ -229,8 +230,17 @@ export function TopBar({
           >
             <Mic size={14} /> Voice
           </button>
+          <button
+            onClick={() => openSheet("write")}
+            className="hidden h-9 items-center gap-1.5 rounded-xl border border-accent/60 px-3 text-xs font-bold text-accent-text hover:bg-accent/10 md:inline-flex"
+          >
+            <PenLine size={14} /> Write
+          </button>
           <IconButton label="말로 일정 추가" onClick={() => openSheet("voice")} className="md:hidden">
             <Mic size={20} />
+          </IconButton>
+          <IconButton label="적어서 일정 추가" onClick={() => openSheet("write")} className="md:hidden">
+            <PenLine size={19} />
           </IconButton>
         </div>
       </div>

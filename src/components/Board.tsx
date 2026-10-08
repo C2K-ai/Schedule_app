@@ -128,7 +128,7 @@ export function Board({
           <Button
             variant="primary"
             size="sm"
-            className="hidden md:inline-flex"
+            className="max-md:hidden"
             onClick={() => {
               const base = isToday ? new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN) : new Date(startOfDay(selected).getTime() + 9 * 60 * MIN);
               openEditor({ start: base });

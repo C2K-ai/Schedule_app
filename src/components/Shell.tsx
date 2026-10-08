@@ -11,6 +11,7 @@ import {
   Mic,
   NotebookPen,
 
+  PenLine,
   Plus,
   Repeat,
   PanelLeftClose,
@@ -57,6 +58,7 @@ import { TasksTab, type TaskFilter } from "./TasksTab";
 import { TimerTab } from "./TimerTab";
 import { Toasts } from "./Toasts";
 import { VoiceAdd } from "./VoiceAdd";
+import { WriteAdd } from "./WriteAdd";
 import { cx, IconButton, Logo, Segmented, useLayer } from "./ui";
 
 export type Tab = "tasks" | "timer" | "calendar" | "me";
@@ -313,12 +315,20 @@ export function Shell() {
               </button>
             ))}
           </div>
-          <button
-            onClick={() => p.openSheet("voice")}
-            className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-accent/50 text-sm font-bold text-accent-text hover:bg-accent/10"
-          >
-            <Mic size={17} /> Voice
-          </button>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => p.openSheet("voice")}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-accent/50 text-sm font-bold text-accent-text hover:bg-accent/10"
+            >
+              <Mic size={17} /> Voice
+            </button>
+            <button
+              onClick={() => p.openSheet("write")}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-accent/50 text-sm font-bold text-accent-text hover:bg-accent/10"
+            >
+              <PenLine size={17} /> Write
+            </button>
+          </div>
           <button
             onClick={() => p.openActivity({})}
             className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-did/60 text-sm font-bold text-did hover:bg-did-soft"
@@ -425,6 +435,8 @@ export function Shell() {
       <FocusScreen />
       {/* 완료 목록에서 일정을 누르면 편집 창이 그 위에 떠야 한다 — 편집기를 뒤에 둔다 */}
       <CompletedSheet />
+      {/* 쓰기에서 '고치기'를 누르면 편집 창이 그 위에 떠야 한다 — 편집기보다 앞에 둔다 */}
+      <WriteAdd />
       <TaskEditor />
       <ActivityEditor />
       <PostponeDialog />

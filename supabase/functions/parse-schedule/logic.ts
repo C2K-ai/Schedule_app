@@ -47,14 +47,16 @@ export const SCHEMA = {
 };
 
 export const SYSTEM = `You turn a Korean user's spoken or hastily typed words into schedule items for their personal planner app.
+Typed input is often terse, like "29일 1시부터 2시 치과" or "금 3시 미팅" — handle it the same way.
 The text usually comes from speech recognition, so expect missing spaces, filler words ("어", "음", "그니까"), homophone mistakes, run-on sentences and self-corrections ("3시, 아니 4시"). Work out what they actually meant — the user wants an assistant that understands sloppy speech. When they correct themselves, keep only the final version.
 
 Return every distinct thing they want to do as one item. Never invent items they did not mention.
 
 Fields:
-- title: short, natural Korean task name (e.g. "치과 예약", "보고서 제출"). Drop the date/time words from the title.
+- title: short, natural Korean task name (e.g. "치과 예약", "보고서 제출"). Drop the date/time words from the title. If they give only a date/time with no task name at all (e.g. "29일 1시부터 2시"), still return ONE item with title "일정".
 - kind: "timed" when a clock time is given or clearly implied; "day" when only a day is given; "someday" when no day at all ("언젠가", "나중에", "시간 날 때", or nothing said about when).
 - date: YYYY-MM-DD for timed/day items, null for someday. Resolve relative words using the calendar table in the user message — do not do date arithmetic yourself. 이번 주 = the Monday–Sunday week containing today; 다음 주 = the following Monday–Sunday. A bare weekday ("금요일에", "금요일까지") means the nearest such day from today — usually the one marked 이번 주, which can be tomorrow (today itself if it is that weekday and the time has not passed); use 다음 주 only when they say 다음 주 or this week's one has already passed. "주말" = the coming Saturday. "~까지" deadlines go on that day.
+  A bare day of the month ("29일", "29일에", "다음 달 3일") means the next date with that day number from today: this month if it has not passed yet, otherwise next month — pick that exact row from the calendar table (it covers six weeks). "N월 N일" means that date this year (next year only if it is more than a month in the past). Never shift a date the user stated explicitly.
 - start: "HH:MM" 24-hour for timed items, else null. Korean hours without 오전/오후: 1–6 → afternoon (13–18), 7–11 → morning unless context says evening ("저녁 7시" → 19:00), 12 → 12:00. 아침 ≈ 08:00, 점심 ≈ 12:00, 오후 ≈ 15:00, 저녁 ≈ 19:00, 밤 ≈ 21:00, 새벽 ≈ 06:00 when no exact time. "반" = :30. If a timed item has no day and that time has already passed today, use tomorrow.
 - duration_min: minutes if they say how long ("한 시간", "30분 동안", "3시부터 5시까지" → 120), else null.
 - repeat_days: for repeating routines ("매일", "평일마다", "주말마다", "매주 월수금") the weekdays as numbers 0=일 1=월 2=화 3=수 4=목 5=금 6=토; empty array otherwise. A repeating item must be "timed" — if no time is said, use a sensible one (매일 아침 → 08:00, otherwise 09:00) and set date to its first occurrence.
@@ -68,14 +70,14 @@ reply: one short, friendly Korean sentence summarising what you understood (e.g.
 export const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 export const isTime = (s: unknown): s is string => typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 
-/** 오늘부터 3주치 '날짜 = 요일 (이번 주/다음 주)' 표 — 모델이 날짜 계산을 직접 하지 않게 */
+/** 오늘부터 6주치 '날짜 = 요일 (이번 주/다음 주)' 표 — 모델이 날짜 계산을 직접 하지 않게("29일"처럼 먼 날짜도 표에서 고른다) */
 export function calendarTable(today: string): string {
   const [y, m, d] = today.split("-").map(Number);
   const base = Date.UTC(y, m - 1, d);
   const sinceMonday = (new Date(base).getUTCDay() + 6) % 7; // 오늘이 이번 주 월요일에서 며칠째
-  const WEEK = ["이번 주", "다음 주", "다다음 주", "3주 뒤"];
+  const WEEK = ["이번 주", "다음 주", "다다음 주", "3주 뒤", "4주 뒤", "5주 뒤", "6주 뒤"];
   const rows: string[] = [];
-  for (let i = 0; i < 21; i++) {
+  for (let i = 0; i < 42; i++) {
     const t = new Date(base + i * 86400000);
     const key = t.toISOString().slice(0, 10);
     const near = i === 0 ? "오늘" : i === 1 ? "내일" : i === 2 ? "모레" : i === 3 ? "글피" : "";

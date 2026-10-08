@@ -22,7 +22,10 @@ Deno.test("달력 표: 오늘·내일 표시와 요일", () => {
   assertEquals(rows[1], "2026-10-08 목 (내일 · 이번 주)");
   assertEquals(rows[4], "2026-10-11 일 (이번 주)");
   assertEquals(rows[5], "2026-10-12 월 (다음 주)");
-  assertEquals(rows.length, 21);
+  assertEquals(rows.length, 42);
+  // "29일"처럼 3주 넘게 먼 날짜도 표에 있어야 모델이 계산하지 않고 고른다
+  assertEquals(rows.some((r) => r.startsWith("2026-10-29 목")), true);
+  assertEquals(rows[41], "2026-11-17 화 (6주 뒤)");
   assertEquals(calendarTable("2026-12-31").split("\n")[1], "2027-01-01 금 (내일 · 이번 주)");
   assertEquals(calendarTable("2026-10-11").split("\n")[1], "2026-10-12 월 (내일 · 다음 주)");
 });

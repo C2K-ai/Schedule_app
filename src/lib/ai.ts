@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHabit, createTask } from "./planner";
 import type { PlannerStore } from "./store";
 import { atTime, dayKey, MIN, parseDayKey, toHHMM } from "./time";
-import type { Category, ScheduleKind, Settings } from "./types";
+import type { Category, Habit, ScheduleKind, Settings, Task } from "./types";
 
 /** parse-schedule 함수가 돌려주는 한 항목 (서버 logic.ts 의 clean() 결과와 같은 모양) */
 export interface ParsedItem {
@@ -66,42 +66,65 @@ export async function parseSchedule(
   return data as { items: ParsedItem[]; reply: string };
 }
 
-/** 미리보기에서 고른 항목을 실제 일정·습관으로 저장한다 */
-export function saveParsed(store: PlannerStore, items: ParsedItem[], settings: Settings, categories: Category[]) {
-  let tasks = 0,
-    habits = 0;
+/** 지난 시각의 시각 일정인가(반복 제외) — 넣자마자 '미시작' 경고가 뜨지 않게 따로 다룬다 */
+export function isPastItem(it: ParsedItem, now = Date.now()): boolean {
+  return !it.repeat_days.length && it.kind === "timed" && Boolean(it.date && it.start) && atTime(parseDayKey(it.date!), it.start!).getTime() < now;
+}
+
+/**
+ * 미리보기에서 고른(또는 '쓰기'로 바로 넣는) 항목을 실제 일정·습관으로 저장하고 만든 것을 돌려준다.
+ * strict 를 주면 시각 일정의 강제 모드를 그 값으로(지난 시각을 넣을 때 false — 바로 경고창이 뜨지 않게).
+ */
+export function saveParsed(
+  store: PlannerStore,
+  items: ParsedItem[],
+  settings: Settings,
+  categories: Category[],
+  opts: { strict?: boolean } = {},
+): { tasks: Task[]; habits: Habit[] } {
+  const tasks: Task[] = [];
+  const habits: Habit[] = [];
   for (const it of items) {
     const color = categories.find((c) => c.id === it.category_id)?.color ?? "lime";
     const reminders = it.reminders_min ?? undefined;
     const dur = it.duration_min ?? 30;
     if (it.repeat_days.length && it.start) {
-      createHabit(store, {
-        title: it.title,
-        color,
-        days: it.repeat_days,
-        start_time: it.start,
-        duration_min: dur,
-        reminder_offsets: reminders ?? settings.defaultOffsets,
-        sound_id: null,
-        strict: true,
-      });
-      habits++;
+      habits.push(
+        createHabit(store, {
+          title: it.title,
+          color,
+          days: it.repeat_days,
+          start_time: it.start,
+          duration_min: dur,
+          reminder_offsets: reminders ?? settings.defaultOffsets,
+          sound_id: null,
+          strict: opts.strict ?? true,
+        }),
+      );
       continue;
     }
     const common = { title: it.title, notes: it.notes, color, category_id: it.category_id, starred: it.starred };
     if (it.kind === "timed" && it.date && it.start) {
       const s = atTime(parseDayKey(it.date), it.start);
-      createTask(
-        store,
-        { ...common, schedule: "timed", starts_at: s.toISOString(), ends_at: new Date(s.getTime() + dur * MIN).toISOString(), reminder_offsets: reminders },
-        settings,
+      tasks.push(
+        createTask(
+          store,
+          {
+            ...common,
+            schedule: "timed",
+            starts_at: s.toISOString(),
+            ends_at: new Date(s.getTime() + dur * MIN).toISOString(),
+            reminder_offsets: reminders,
+            strict: opts.strict,
+          },
+          settings,
+        ),
       );
     } else if (it.kind !== "someday" && it.date) {
-      createTask(store, { ...common, schedule: "day", day: it.date }, settings);
+      tasks.push(createTask(store, { ...common, schedule: "day", day: it.date }, settings));
     } else {
-      createTask(store, { ...common, schedule: "someday" }, settings);
+      tasks.push(createTask(store, { ...common, schedule: "someday" }, settings));
     }
-    tasks++;
   }
   return { tasks, habits };
 }
