@@ -241,6 +241,8 @@ export interface Settings {
   /** 공부 중 다른 앱·탭으로 가면 자동 일시정지(열품타의 집중 잠금 대신) */
   studyAutoPause: boolean;
   ddays: DDay[];
+  /** 일기를 열고 닫을 때 책 넘기는 효과음(기본 꺼짐) */
+  diarySound: boolean;
 }
 
 export interface Profile {

@@ -359,6 +359,9 @@ function UsersTab({
       <p className="text-xs leading-relaxed text-faint">
         비밀번호는 되돌릴 수 없는 암호(해시)로만 저장돼서 운영자도 볼 수 없어요. 잊었으면 ‘재설정 메일’을 보내세요.
       </p>
+      <p className="text-xs leading-relaxed text-faint">
+        일기는 그 사람만 열 수 있어요. 재설정 링크는 그 사람이 일기를 쓰던 기기(폰/PC)에서 열게 하세요 — 그래야 일기도 새 비밀번호로 바로 열려요.
+      </p>
     </div>
   );
 }

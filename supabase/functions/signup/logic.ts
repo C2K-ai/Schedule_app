@@ -14,7 +14,7 @@ export function parseSignup(body: unknown): { name: string; email: string; passw
   const password = typeof b.password === "string" ? b.password : "";
   if (!name || name.length > 40) return { error: "bad_name" };
   if (!email || email.length > 254 || !EMAIL.test(email)) return { error: "bad_email" };
-  if (password.length < 6) return { error: "weak_password" };
+  if (password.length < 8) return { error: "weak_password" };
   if (password.length > 72) return { error: "long_password" };
   return { name, email, password };
 }

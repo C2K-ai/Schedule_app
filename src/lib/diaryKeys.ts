@@ -130,6 +130,30 @@ async function net<T>(p: Promise<T>): Promise<T | undefined> {
 }
 
 /**
+ * 열쇠 올리기(CAS·insert)의 답이 끊겼을 때 — 서버에 내 새 열쇠가 실제로 올라갔는지 다시 본다.
+ * true = 올라감(내 것으로 받아들인다), false = 안 올라감(다시 시도), undefined = 그것도 끊김
+ */
+async function landed(remote: DiaryRemote, kid: string, wrapped: string): Promise<boolean | undefined> {
+  const row = await net(remote.getKeyRow());
+  if (row === undefined) return undefined;
+  return !!row && row.kid === kid && row.wrapped === wrapped;
+}
+
+/** 올리기 결과 정리: "ok" = 올라감, "retry" = 그새 다른 기기가 바꿈, "network" = 모름 */
+async function settled(
+  remote: DiaryRemote,
+  res: unknown,
+  kid: string,
+  wrapped: string,
+): Promise<"ok" | "retry" | "network"> {
+  if (res === undefined) {
+    const l = await landed(remote, kid, wrapped);
+    return l === undefined ? "network" : l ? "ok" : "retry";
+  }
+  return res ? "ok" : "retry";
+}
+
+/**
  * 로그인 비밀번호로 일기 열기.
  *  verified: 방금 그 비밀번호로 로그인했으면 true(다시 확인 안 함)
  *  oldPassword: 열쇠가 예전 비밀번호로 감싸여 있을 때 — 풀리면 지금 비밀번호로 옮겨 감싼다
@@ -162,9 +186,14 @@ export async function unlockWithPassword(
       const kek = await deriveKek(pw, salt, ITERATIONS);
       const wrapped = await wrapKey(dek, kek, wrapAad(uid, kid, salt, ITERATIONS));
       const others = await wrapRing(uid, ring.keys, dek, kid);
-      const inserted = await net(remote.insertKeyRow({ kid, salt, iterations: ITERATIONS, wrapped, ring: others }));
-      if (inserted === undefined) return "network";
-      if (!inserted) continue; // 다른 기기가 먼저 만듦 → 그걸 푼다
+      const inserted = await settled(
+        remote,
+        await net(remote.insertKeyRow({ kid, salt, iterations: ITERATIONS, wrapped, ring: others })),
+        kid,
+        wrapped,
+      );
+      if (inserted === "network") return "network";
+      if (inserted === "retry") continue; // 다른 기기가 먼저 만듦 → 그걸 푼다
       await saveRing(ctx, { current: kid, keys: { ...ring.keys, [kid]: dek }, weak, pending: null });
       return "ok";
     }
@@ -183,9 +212,9 @@ export async function unlockWithPassword(
       if (viaOld) {
         // 예전 비밀번호로 풀었다 → 지금 비밀번호로 옮겨 감싼다(새 열쇠)
         const r = await rotation(uid, keys, pw);
-        const res = await net(remote.casKeyRow(row.rev, r.patch));
-        if (res === undefined) return "network";
-        if (!res) continue;
+        const res = await settled(remote, await net(remote.casKeyRow(row.rev, r.patch)), r.kid, r.patch.wrapped);
+        if (res === "network") return "network";
+        if (res === "retry") continue;
         await saveRing(ctx, { current: r.kid, keys: { ...keys, [r.kid]: r.dek }, weak, pending: ring.pending });
         return "ok";
       }
@@ -204,9 +233,9 @@ export async function unlockWithPassword(
       // 서버의 지금 열쇠는 있는데 비밀번호가 안 맞음 = 다른 곳에서 비밀번호가 바뀜 → 확인된 지금 비밀번호로 다시 감싼다
       const all = { ...ring.keys, ...(await openRing(uid, row, held)) };
       const r = await rotation(uid, all, pw);
-      const res = await net(remote.casKeyRow(row.rev, r.patch));
-      if (res === undefined) return "network";
-      if (!res) continue;
+      const res = await settled(remote, await net(remote.casKeyRow(row.rev, r.patch)), r.kid, r.patch.wrapped);
+      if (res === "network") return "network";
+      if (res === "retry") continue;
       await saveRing(ctx, { current: r.kid, keys: { ...all, [r.kid]: r.dek }, weak, pending: null });
       return "ok";
     }
@@ -237,10 +266,24 @@ export async function commitPending(ctx: Ctx): Promise<void> {
     if (!p || !p.confirmed) return;
     const row = await net(remote.getKeyRow());
     if (row === undefined) return;
+    if (row && row.kid === p.kid && row.wrapped === p.wrapped) {
+      // 지난번 올리기가 실제로 됐는데 답만 못 받음 — 서버 열쇠가 이 보류 열쇠 그대로다. 버리지 말고 받아들인다
+      const all = { ...ring.keys, ...(await openRing(uid, row, p.dek)) };
+      await saveRing(ctx, { current: p.kid, keys: { ...all, [p.kid]: p.dek }, weak: p.weak, pending: null });
+      return;
+    }
     const held = row ? ring.keys[row.kid] : undefined;
     if (!row || row.kid !== p.fromKid || !held) {
-      // 그새 다른 기기가 열쇠를 바꿈 — 보통 점검이 이어받는다
-      await setPending(ctx, (cur) => (cur?.kid === p.kid ? null : cur));
+      // 그새 다른 기기가 열쇠를 바꿈 — 보통 점검이 이어받는다.
+      // 서버 ring 에 이 보류 열쇠가 들어 있으면(내 바꾸기가 올라간 뒤 또 바뀜) 열쇠는 남겨 둔다 — 그걸로 잠근 글을 열 수 있게
+      if (row?.ring?.some((e) => e?.kid === p.kid)) {
+        await ctx.storage.updateKeyring(uid, (cur) =>
+          cur?.pending?.kid === p.kid ? { ...cur, keys: { ...cur.keys, [p.kid]: p.dek }, pending: null } : null,
+        );
+        announce(channelName(uid, ctx.storage), { t: "keys" });
+      } else {
+        await setPending(ctx, (cur) => (cur?.kid === p.kid ? null : cur));
+      }
       return;
     }
     const all = { ...ring.keys, ...(await openRing(uid, row, held)) };
@@ -255,6 +298,7 @@ export async function commitPending(ctx: Ctx): Promise<void> {
         needs_rewrap: false,
       }),
     );
+    // 답이 끊기면 보류는 그대로 — 다음 점검이 서버를 보고 받아들이거나(올라갔으면) 다시 올린다
     if (res === undefined) return;
     if (res) {
       await saveRing(ctx, { current: p.kid, keys: { ...all, [p.kid]: p.dek }, weak: p.weak, pending: null });
@@ -364,17 +408,16 @@ export async function resetKey(ctx: Ctx, pw: string): Promise<UnlockResult> {
       return unlockWithPassword(ctx, pw, { verified: true });
     }
     const r = await rotation(uid, ring.keys, pw);
+    let res: "ok" | "retry" | "network";
     if (row) {
-      const res = await net(remote.casKeyRow(row.rev, r.patch));
-      if (res === undefined) return "network";
-      if (!res) continue;
+      res = await settled(remote, await net(remote.casKeyRow(row.rev, r.patch)), r.kid, r.patch.wrapped);
     } else {
       const { needs_rewrap: _n, ...ins } = r.patch;
       void _n;
-      const ok = await net(remote.insertKeyRow(ins));
-      if (ok === undefined) return "network";
-      if (!ok) continue;
+      res = await settled(remote, await net(remote.insertKeyRow(ins)), r.kid, r.patch.wrapped);
     }
+    if (res === "network") return "network";
+    if (res === "retry") continue;
     await saveRing(ctx, { current: r.kid, keys: { ...ring.keys, [r.kid]: r.dek }, weak: weakPassword(pw), pending: null });
     return "ok";
   }

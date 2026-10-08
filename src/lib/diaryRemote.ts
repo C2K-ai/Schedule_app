@@ -36,7 +36,7 @@ export interface PushRow {
 
 export type KeyPatch = Partial<Omit<KeyRow, "rev">>;
 
-/** 인터넷 문제 — 나중에 다시 하면 되는 실패 */
+/** 인터넷 문제·서버 일시 장애(5xx·429·401 등) — 나중에 다시 하면 되는 실패. 글마다의 실패 횟수엔 안 센다 */
 export class NetworkError extends Error {
   constructor(message?: string) {
     super(message ?? "network");
@@ -58,28 +58,44 @@ export interface DiaryRemote {
   /** null = 서버가 버림(다른 기기가 먼저 고침) */
   pushEntry(r: PushRow): Promise<{ ver: number; synced_at: string } | null>;
   getEntry(id: string): Promise<ServerEntry | null>;
-  pullEntries(after: string | null, limit: number): Promise<ServerEntry[]>;
+  /**
+   * synced_at, id 순으로. after 만 있으면 synced_at > after,
+   * afterId 도 있으면 (synced_at, id) > (after, afterId) — 같은 시각이 쪽 경계에 걸려도 빠뜨리지 않게
+   */
+  pullEntries(after: string | null, limit: number, afterId?: string | null): Promise<ServerEntry[]>;
 }
 
-// store.ts 와 같은 기준으로 '인터넷 문제'를 가른다
+// store.ts 와 같은 기준으로 '인터넷 문제'를 가른다 + 상태 코드·오류 코드로 '잠깐 뒤 다시'를 가른다
 const NET_RE = /fetch|network|Failed|timeout/i;
+/** 다시 하면 될 서버 쪽 실패 — 5xx(게이트웨이·no healthy upstream 포함)·408·429·401(토큰 만료) */
+const RETRY_STATUS = (s: number) => s === 0 || s === 401 || s === 408 || s === 429 || s >= 500;
+/** PGRST301 JWT 만료·PGRST000~003 연결 풀, 08 연결 오류, 40001/40P01 직렬화·교착, 53 자원 부족, 57014 취소, 57P0x 서버 종료 */
+const RETRY_CODE = /^(PGRST30[0-3]|PGRST00[0-3]|08...|40001|40P01|53...|57014|57P0.)$/;
 const ENTRY_COLS = "id,day,sealed,ver,created_at,updated_at,deleted_at,synced_at";
 const KEY_COLS = "kid,salt,iterations,wrapped,ring,needs_rewrap,rev";
 
-function toError(e: unknown): Error {
-  const msg = e instanceof Error ? e.message : String((e as { message?: string } | null)?.message ?? e);
-  return NET_RE.test(msg) ? new NetworkError(msg) : new Error(msg);
+/** 오류 → NetworkError(다시 하면 됨) 또는 Error(이 글만의 문제). status 는 HTTP 상태(모르면 undefined) */
+export function toError(e: unknown, status?: number): Error {
+  const o = (e ?? {}) as { message?: string; code?: unknown; status?: unknown };
+  const msg = e instanceof Error ? e.message : String(o.message ?? e);
+  const code = typeof o.code === "string" ? o.code : "";
+  const st = typeof status === "number" ? status : typeof o.status === "number" ? o.status : undefined;
+  const retry = NET_RE.test(msg) || (st !== undefined && RETRY_STATUS(st)) || RETRY_CODE.test(code);
+  const out = retry ? new NetworkError(msg) : new Error(msg);
+  if (st !== undefined) (out as Error & { status?: number }).status = st;
+  if (code) (out as Error & { code?: string }).code = code;
+  return out;
 }
 
 /** supabase-js 결과 → 값, 오류는 NetworkError/Error 로 던짐 */
-async function call<T>(p: PromiseLike<{ data: T; error: unknown }>): Promise<T> {
-  let res: { data: T; error: unknown };
+async function call<T>(p: PromiseLike<{ data: T; error: unknown; status?: number }>): Promise<T> {
+  let res: { data: T; error: unknown; status?: number };
   try {
     res = await p;
   } catch (e) {
     throw toError(e);
   }
-  if (res.error) throw toError(res.error);
+  if (res.error) throw toError(res.error, res.status);
   return res.data;
 }
 
@@ -127,9 +143,16 @@ export function supabaseDiaryRemote(sb: SupabaseClient, uid: string): DiaryRemot
     async getEntry(id) {
       return call<ServerEntry | null>(sb.from("diary_entries").select(ENTRY_COLS).eq("id", id).maybeSingle());
     },
-    async pullEntries(after, limit) {
-      let q = sb.from("diary_entries").select(ENTRY_COLS).order("synced_at", { ascending: true }).limit(limit);
-      if (after) q = q.gt("synced_at", after);
+    async pullEntries(after, limit, afterId) {
+      let q = sb
+        .from("diary_entries")
+        .select(ENTRY_COLS)
+        .order("synced_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(limit);
+      // 값은 큰따옴표로 — 시각의 ':'·'+' 가 PostgREST 논리식에서 갈리지 않게
+      if (after && afterId) q = q.or(`synced_at.gt."${after}",and(synced_at.eq."${after}",id.gt."${afterId}")`);
+      else if (after) q = q.gt("synced_at", after);
       return (await call<ServerEntry[] | null>(q)) ?? [];
     },
   };

@@ -17,7 +17,7 @@ import { mergeSettings } from "@/lib/settings";
 import { unsubscribePush } from "@/lib/push";
 import { PlannerStore, type Snapshot } from "@/lib/store";
 import { clearRecovery, inRecovery, linkErrorMessage, markRecovery, RECOVERY_EVENT } from "@/lib/authLinks";
-import { getSupabase } from "@/lib/supabase";
+import { cloudEnabled, getSupabase } from "@/lib/supabase";
 import { addDays, startOfDay, uuid } from "@/lib/time";
 import type { Activity, AlarmKind, Habit, ScheduleKind, Settings, Task } from "@/lib/types";
 
@@ -135,7 +135,8 @@ export function PlannerProvider({ children, splash }: { children: ReactNode; spl
     const cur = storeRef.current;
     if (cur && cur.userId === userId) return;
     cur?.dispose();
-    const s = new PlannerStore(userId ?? "local", userId, userId ? getSupabase() : null);
+    // 일기: 로그인하면 계정(cloud), 서버 없는 빌드는 이 기기(device), 서버 있는데 로그아웃이면 꺼 둠(off)
+    const s = new PlannerStore(userId ?? "local", userId, userId ? getSupabase() : null, userId ? "cloud" : cloudEnabled ? "off" : "device");
     s.start();
     storeRef.current = s;
     setStore(s);

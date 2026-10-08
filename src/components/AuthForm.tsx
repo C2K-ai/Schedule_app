@@ -4,6 +4,7 @@ import { KeyRound, LogIn, Mail, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BASE_PATH } from "@/lib/base";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { diaryAfterLogin } from "@/lib/diary";
 import { getSupabase } from "@/lib/supabase";
 import { usePlanner } from "./PlannerProvider";
 import { Button, cx, inputCls, Segmented } from "./ui";
@@ -14,7 +15,7 @@ const SIGNUP_ERRORS: Record<string, string> = {
   exists: "이미 가입된 이메일이에요. ‘로그인’으로 들어가세요(비밀번호를 잊었으면 ‘비밀번호를 잊었어요’).",
   closed: "지금은 가입 신청을 받지 않아요. 운영자에게 열어 달라고 하세요.",
   too_many: "승인을 기다리는 신청이 많아요. 운영자가 정리한 뒤 다시 해 주세요.",
-  weak_password: "비밀번호는 6자 이상이어야 해요.",
+  weak_password: "비밀번호는 8자 이상이어야 해요.",
   long_password: "비밀번호가 너무 길어요(72자까지).",
   bad_email: "이메일 주소를 확인해 주세요.",
   bad_name: "이름을 적어 주세요(40자까지).",
@@ -39,7 +40,8 @@ export function friendly(message: string): string {
     return "지금은 새 가입을 받지 않아요. 이미 만든 계정으로 로그인하세요.";
   if (m.includes("already registered") || m.includes("already been registered")) return "이미 가입된 이메일이에요. ‘로그인’으로 들어가세요.";
   if (m.includes("rate limit")) return "메일 발송 한도를 넘었어요(무료는 시간당 몇 통). 잠시 뒤 다시 하거나 비밀번호로 로그인하세요.";
-  if (m.includes("password") && m.includes("6")) return "비밀번호는 6자 이상이어야 해요.";
+  const least = /at least (\d+)/.exec(m);
+  if (m.includes("password") && least) return `비밀번호는 ${least[1]}자 이상이어야 해요.`;
   if (m.includes("for security purposes") || m.includes("only request this after")) return "잠시 뒤(1분쯤) 다시 눌러 주세요.";
   if (m.includes("signups not allowed")) return "가입된 이메일이 아니에요. 가입할 때 쓴 주소를 넣어 주세요.";
   if (m.includes("token has expired") || m.includes("otp")) return "코드가 틀렸거나 만료됐어요. 다시 받아 주세요.";
@@ -113,18 +115,21 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
             e.preventDefault();
             void run(async () => {
               if (mode === "login") {
-                const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+                const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
                 if (error) throw error;
+                // 같은 비밀번호로 일기 열쇠도 연다(뒤에서, 실패해도 로그인엔 상관없음)
+                if (data.user) void diaryAfterLogin(sb, data.user.id, password);
                 toast({ text: "로그인했습니다 — 이 기기와 동기화를 시작해요", tone: "ok" });
               } else {
                 await requestSignup(sb, name.trim(), email.trim(), password);
                 // 바로 로그인 — 운영자가 승인할 때까지는 '승인 대기' 화면이 뜬다
-                const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+                const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
                 if (error) {
                   setMode("login");
                   setInfo("가입 신청을 보냈어요. 운영자가 승인하면 ‘로그인’으로 들어오세요.");
                   return;
                 }
+                if (data.user) void diaryAfterLogin(sb, data.user.id, password);
                 toast({ text: "가입 신청 완료 — 운영자가 승인하면 바로 쓸 수 있어요", tone: "ok" });
               }
             });
@@ -155,10 +160,11 @@ export function AuthForm({ compact = false }: { compact?: boolean }) {
           <input
             type="password"
             required
-            minLength={6}
+            // 새로 만드는 비밀번호만 8자 — 예전에 6자로 만든 비밀번호도 로그인은 된다
+            minLength={mode === "signup" ? 8 : 6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === "signup" ? "새 비밀번호 (6자 이상)" : "비밀번호"}
+            placeholder={mode === "signup" ? "새 비밀번호 (8자 이상)" : "비밀번호"}
             className={inputCls}
             autoComplete={mode === "signup" ? "new-password" : "current-password"}
           />

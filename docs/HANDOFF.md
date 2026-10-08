@@ -3,6 +3,58 @@
 > 새 계정·새 세션에서 이 앱을 이어서 고칠 때 **이 파일부터** 읽으세요. 기능별 자세한 기록은 `docs/REVAMP-HANDOFF.md`,
 > 구조는 `docs/ARCHITECTURE.md`, 알림은 `docs/PWA-NOTIFICATIONS.md`, 서버 처음 설정은 `docs/SETUP-SUPABASE.md`.
 
+## 0. ⚠️ 지금 진행 중 — 2026-10-08 오후, 다른 계정으로 넘기기 직전 상태 (여기부터 읽기)
+
+**브랜치**: `main` = `64f2afa`(Write 기능까지, 배포됨). `ui-revamp` = main 위에 **'작업 중' 커밋들**(일기 기능, 아직 미완성).
+→ **일기가 끝나서 시험을 다 통과하기 전엔 `ui-revamp:main` 으로 push 하지 말 것**(그러면 미완성 일기가 배포된다).
+`git log main..ui-revamp` 로 작업 중 커밋 확인.
+
+### 0-1. 일기 (☰ 기록 → 무지개색 "DREAM") — 진행 중
+사용자 요구(확정):
+- '하루 노트'(캘린더, 낙서용)는 **그대로 둔다**. 일기는 완전히 따로.
+- **서버·운영자(그리고 Claude)도 못 읽게** — 기기 안에서 암호화해서 올린다. **일기 전용 비밀번호는 없음**: 로그인 비밀번호로 만든 열쇠가
+  로그인할 때 자동으로 열린다(이미 로그인돼 있던 기기·메일 코드 로그인 기기는 로그인 비밀번호를 한 번만 넣음).
+- 메뉴 이름은 **"DREAM"**, 글자는 **무지개색**(사용자가 제일 마음에 들어 하는 부분).
+- 쓰는 대로 자동 저장(0.7초), 서버엔 최대 5초마다·닫을 때 바로. 두 기기 충돌은 둘 다 남김.
+- 새 가입 비밀번호 **8자 이상**(기존 6자 사용자는 로그인 그대로). 짧은 비밀번호면 일기 화면에서 살짝 권유.
+
+설계·명세: **`docs/diary/SPEC.md`**(3명 검토 → 합친 최종 명세, 반영·기각한 지적 목록 포함), UI 가 쓰는 엔진 API: **`docs/diary/UI-API.md`**.
+- 코어(완료·검토 중): `src/lib/diaryCrypto.ts`·`diaryStorage.ts`(IndexedDB, 기기 안에서도 잠긴 채 저장)·`diaryRemote.ts`·`diaryKeys.ts`(열쇠 수명주기)·
+  `diary.ts`(DiaryEngine), `store.ts` 연결(`snap.diary`, `store.diary`). 일기는 `TABLES`/백업 파일에 **안 들어감**.
+  시험: `npm run test:unit`(31개, node 22 타입 스트리핑 — `tests/`), `npm run test:db`(157개, 일기 36개 포함). 넘길 때 전부 통과 상태였음.
+- 마이그레이션 **`supabase/migrations/20261011000000_diary.sql` — 서버에 아직 적용 안 함!** (`diary_entries`·`diary_keys`, RLS·CHECK·realtime).
+  배포 전에 Supabase MCP `apply_migration` 으로 적용.
+- UI(넘길 때 다른 에이전트가 만드는 중이었음 — 반쯤 됐을 수 있음): `src/components/DiarySheet.tsx`(전체 화면 '종이 일기장'),
+  `DiaryIntro.tsx`(지금은 0.35초 페이드 임시 — 아래 애니메이션으로 바꿀 자리, 계약: `DiaryIntro({ mode: "open"|"close", sound, onDone })`),
+  Shell(기록 첫 줄 DREAM), PlannerProvider(4번째 인자 diaryMode), AuthForm(`diaryAfterLogin`), SettingsSheet(비밀번호 바꾸기 → `store.diary.changePassword`,
+  로그아웃 '이 기기에서 일기도 지우기', 효과음 스위치), AdminSheet 안내문, `supabase/functions/signup/logic.ts`(8자).
+  → 이어서 할 때 `npx tsc --noEmit`·`npx eslint src`·`npm run test:db`·`npm run test:unit`·`next build` 로 상태부터 확인하고,
+  폰·PC 화면(Playwright)으로 일기 열기→쓰기→새로 고침 후 남아 있는지→닫기 확인.
+- **signup Edge 함수 재배포 필요**(8자) — `_shared/env.ts` 등과 함께 MCP `deploy_edge_function`, `verify_jwt: false`(원래 꺼져 있음).
+
+### 0-2. 일기 열고 닫는 애니메이션 — 진행 중
+- 확정: 덮여 눕혀진 하드커버(표지 **DREAM 2026**, 은은한 **무지개빛 홀로그램 박**) → 표지가 왼쪽 책등 축으로 열림 → 페이지가 촤라락 넘어가며
+  **금빛 빛줄기·반짝이** → 오른쪽 종이가 앞으로 나와 줄 노트 일기장이 됨(약 2.5초, 누르면 건너뜀, 움직임 줄이기면 페이드).
+- **닫기**: 종이가 작아져 오른쪽 페이지로 돌아감 → 표지가 열릴 때와 **반대 방향(왼→오)으로 덮임** → 책이 **뒤집혀 뒷표지가 보이며** 마무리.
+  **뒷표지 글자는 "DIARY"**. 여는 것보다 짧게(1.5초 안쪽), 누르면 건너뜀.
+- **효과음은 기본 꺼짐**, 설정의 '일기 열고 닫을 때 효과음'을 켠 사람만. 애니메이션 위 스피커 버튼은 앱에선 빼기.
+- 파일(`docs/design/diary-intro/`): `winner-layered.html`(심사 우승 원본), `polish-wip.html`(다듬던 중 — 홀로그램 DREAM·그래프트 일부),
+  `preview-artifact.html`(사용자에게 보여 준 미리보기: 누르면 재생·소리 기본 꺼짐), `alt-*.html`(다른 시안, 가져올 부분 참고),
+  `JUDGES.md`(심사 점수·가져올 것 목록), 참고 사진 `ref-*.png/webp`, 장면 모음 `winner-frames-*.png`.
+  모두 라이브러리 없는 단일 HTML, `window.__seek(ms)` 로 아무 시각이나 똑같이 그려 확인 가능.
+- 남은 일: polish 마무리(JUDGES graft) → 닫기 장면 추가(뒷표지 DIARY) → `createDiaryIntro(root, {...})` 형태로 정리해 `DiaryIntro.tsx` 에 이식
+  (마지막 종이 장면이 DiarySheet 종이와 같아 보이게 — 색·줄 간격 32/36px·제목 위치).
+
+### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
+- 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf
+- 진행률 페이지: https://claude.ai/artifact/6sH8vdW4FcEFsLpnzu9xec
+- 다른 계정에선 공유받지 않으면 못 열고, 고쳐 올리려면 편집 권한이 필요 — 안 되면 새 Artifact 로 올리고 사용자에게 새 링크를 줄 것.
+
+### 0-4. 그 밖의 대기
+- 잠금화면 카드가 사용자 폰에서 안 보이는 문제(7절 '이어서 할 것') — 사용자가 "나중에" 하자고 함.
+- 도구: Deno 는 `npm i deno`(스크래치 폴더에), Playwright 는 `npm i playwright-core@1.56.1` + `executablePath: '/opt/pw-browsers/chromium'`.
+- 사용자 방식: 오래 걸리는 일은 진행률을 알려 주길 원함, 완료되면 PushNotification.
+
 ## 1. 한눈에
 
 - **DREAM**(예전 이름 MUST) — 개인 플래너 PWA. 폰·PC에 설치해서 쓴다. 일정·습관·공부 타이머·커리어 기록·드라이브·알림·AI.
@@ -90,8 +142,7 @@
 
 ## 7. 사용자가 아직 할 일 / 남은 일
 
-- (사용자) Supabase → Authentication → URL Configuration: Site URL `https://c2k-ai.github.io/Schedule_app/`,
-  Redirect URLs `https://c2k-ai.github.io/Schedule_app/**` — 비밀번호 재설정 메일 링크용. 가입은 이제 메일 없이 되므로 급하지 않음.
+- ~~(사용자) Supabase Auth URL Configuration(Site URL·Redirect URLs)~~ — 2026-10-08 사용자가 "다 돼 있다"고 확인.
 - (사용자) Auth 설정의 '유출 비밀번호 보호' 켜기(보안 점검 경고 1건).
 - (선택) `20261008000500_admin_guards` 의 크론 정리 부분(`do $do$` 블록)을 SQL Editor 에서 실행 — 4절 참고.
 - **이어서 할 것(2026-10-08 사용자 요청, 나중에)**: 잠금화면 카드가 사용자 폰(안드로이드·크롬)에서 안 보인다고 함.

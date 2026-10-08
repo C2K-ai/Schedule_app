@@ -29,6 +29,8 @@ export const DEFAULT_SETTINGS: Settings = {
   studyGoalMin: 360,
   studyAutoPause: true,
   ddays: [],
+  // 일기 책 효과음 — 조용한 게 기본
+  diarySound: false,
 };
 
 export function mergeSettings(partial: Partial<Settings> | null | undefined): Settings {

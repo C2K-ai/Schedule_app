@@ -40,6 +40,9 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "data", label: "화면·데이터" },
 ];
 
+/** updateUser 등의 오류(모양이 제각각) → 글자 */
+const errText = (e: unknown) => (e instanceof Error ? e.message : String((e as { message?: unknown } | null)?.message ?? e));
+
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
     <section className="border-b border-line py-5 first:pt-1 last:border-0">
@@ -456,6 +459,14 @@ function SoundTab() {
           ))}
         </div>
       </Section>
+      <Section title="일기">
+        <Switch
+          checked={settings.diarySound}
+          onChange={(diarySound) => updateSettings({ diarySound })}
+          label="일기 열고 닫을 때 효과음"
+          desc="책이 열리고 덮일 때 소리를 내요. 기본은 꺼져 있어요."
+        />
+      </Section>
       <Section title="사운드 스튜디오" desc="녹음 음원은 Kenney.nl 의 CC0(퍼블릭 도메인) 징글입니다. 칸을 눌러 음을 찍으면 나만의 합성 알람도 만들 수 있어요.">
         <SoundStudio />
       </Section>
@@ -588,7 +599,7 @@ function AiTab() {
 
 /** 비밀번호 바꾸기 — 재설정 메일 링크로 들어왔으면 '새 비밀번호 정하기'로 */
 function PasswordSection() {
-  const { toast, session } = usePlanner();
+  const { toast, session, store, snap } = usePlanner();
   const [recovering, setRecovering] = useState(() => inRecovery(session.userId));
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -596,15 +607,19 @@ function PasswordSection() {
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState(recovering);
   const sb = getSupabase();
+  const ds = snap.diary.state;
+  // 이 기기엔 일기 열쇠가 없지만 서버엔 있다 — 여기서 바꾸면 이 기기는 '예전 비밀번호' 상태가 된다
+  const diaryKeyLocked = ds.kind === "locked" && ds.why !== "first_time";
   if (!sb) return null;
   const submit = async () => {
-    if (pw.length < 6) return setErr("비밀번호는 6자 이상이어야 해요.");
+    if (pw.length < 8) return setErr("비밀번호는 8자 이상이어야 해요.");
     if (pw !== pw2) return setErr("두 칸의 비밀번호가 달라요.");
     setBusy(true);
     setErr(null);
-    const { error } = await sb.auth.updateUser({ password: pw });
+    // 일기 열쇠도 새 비밀번호로 같이 잠근다(열쇠 다시 감싸기는 뒤에서)
+    const { error } = await store.diary.changePassword(pw, () => sb.auth.updateUser({ password: pw }));
     setBusy(false);
-    if (error) return setErr(friendly(error.message));
+    if (error) return setErr(friendly(errText(error)));
     clearRecovery();
     setRecovering(false);
     setOpen(false);
@@ -615,7 +630,11 @@ function PasswordSection() {
   return (
     <Section
       title={recovering ? "새 비밀번호 정하기" : "비밀번호"}
-      desc={recovering ? "메일 링크로 들어왔어요. 새 비밀번호를 정하면 끝나요." : "비밀번호는 암호화돼 저장돼서 운영자도 볼 수 없어요."}
+      desc={
+        recovering
+          ? "메일 링크로 들어왔어요. 새 비밀번호를 정하면 끝나요."
+          : "비밀번호는 암호화돼 저장돼서 운영자도 볼 수 없어요. 일기 열쇠도 새 비밀번호로 같이 바뀌어요."
+      }
     >
       {!open ? (
         <Button onClick={() => setOpen(true)}>
@@ -633,10 +652,10 @@ function PasswordSection() {
             type="password"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
-            placeholder="새 비밀번호 (6자 이상)"
+            placeholder="새 비밀번호 (8자 이상)"
             autoComplete="new-password"
             className={inputCls}
-            minLength={6}
+            minLength={8}
             required
           />
           <input
@@ -649,6 +668,11 @@ function PasswordSection() {
             required
           />
           {err && <p className="text-sm font-semibold text-danger">{err}</p>}
+          {diaryKeyLocked && (
+            <p className="rounded-xl bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
+              이 기기에선 일기가 아직 잠겨 있어요. 일기가 열리는 기기(폰 등)에서 비밀번호를 바꾸면 모든 기기에서 그대로 열려요.
+            </p>
+          )}
           <div className="flex gap-2">
             <Button variant="primary" disabled={busy}>
               {busy ? "바꾸는 중…" : "저장"}
@@ -672,8 +696,40 @@ function PasswordSection() {
   );
 }
 
+/** 로그아웃 — 같이 쓰는 컴퓨터면 이 기기의 일기(잠긴 글·열쇠)도 지울 수 있다 */
+function LogoutButton() {
+  const { store, signOut } = usePlanner();
+  const [wipe, setWipe] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const go = async () => {
+    setErr(null);
+    if (wipe) {
+      setBusy(true);
+      const ok = await store.diary.wipe();
+      setBusy(false);
+      if (!ok) return setErr("아직 안 올라간 일기가 있어요 — 인터넷에 연결된 뒤 다시 해 주세요.");
+    }
+    await signOut();
+  };
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
+          <input type="checkbox" checked={wipe} onChange={(e) => setWipe(e.target.checked)} className="size-4 accent-[var(--accent)]" />
+          이 기기에서 일기도 지우기 (같이 쓰는 컴퓨터일 때만)
+        </label>
+        <Button variant="ghost" disabled={busy} onClick={() => void go()}>
+          <LogOut size={16} /> {busy ? "잠시만요…" : "로그아웃"}
+        </Button>
+      </div>
+      {err && <p className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{err}</p>}
+    </div>
+  );
+}
+
 function AccountTab() {
-  const { session, snap, store, signOut, toast } = usePlanner();
+  const { session, snap, store, toast } = usePlanner();
   const importedKey = session.userId ? `must:local-imported:${session.userId}` : "";
   const [importedNow, setImportedNow] = useState(false);
   const alreadyImported = (() => {
@@ -714,10 +770,8 @@ function AccountTab() {
               <p className="truncate font-semibold">{session.email}</p>
               <p className="text-xs text-muted">같은 이메일로 다른 기기에서 로그인하면 실시간으로 이어집니다.</p>
             </div>
-            <Button variant="ghost" onClick={() => void signOut()}>
-              <LogOut size={16} /> 로그아웃
-            </Button>
           </div>
+          <LogoutButton />
         </Section>
         <PasswordSection />
         <Section title="동기화 상태">
@@ -853,6 +907,7 @@ function DataTab() {
             }}
           />
         </div>
+        <p className="mt-2 text-xs text-faint">일기는 백업 파일에 들어가지 않아요 — 계정에 잠긴 채로 저장돼요.</p>
       </Section>
     </>
   );

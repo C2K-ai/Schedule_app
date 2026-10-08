@@ -1,9 +1,10 @@
 // 테스트용 '서버' — PGlite(진짜 Postgres) 위에 init.sql + 일기 마이그레이션을 올리고,
 // DiaryRemote 를 PostgREST 처럼 흉내 낸다(로그인 사용자 권한 + RLS + 트리거 그대로).
-// 고장 내기: fail(method, "network"|"error") · afterCommitThrow(method)(커밋은 됐는데 답이 끊김) · setOffline(true)
+// 고장 내기: fail(method, "network"|"error"|{status, code, message}) · afterCommitThrow(method)(커밋은 됐는데 답이 끊김) · setOffline(true)
+//   {status, …} 는 supabase-js 가 돌려주는 오류 모양 그대로 diaryRemote 의 분류(toError)를 거친다 — 503·401 등
 import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
-import { NetworkError } from "../src/lib/diaryRemote.ts";
+import { NetworkError, toError } from "../src/lib/diaryRemote.ts";
 
 const migration = (f) => readFileSync(new URL(`../supabase/migrations/${f}`, import.meta.url), "utf8");
 
@@ -61,6 +62,7 @@ export async function bootDb() {
       if (i >= 0) {
         const f = faults[i];
         if (--f.times <= 0) faults.splice(i, 1);
+        if (f.kind && typeof f.kind === "object") throw toError({ message: f.kind.message ?? `injected ${method} ${f.kind.status}`, code: f.kind.code ?? "" }, f.kind.status);
         throw f.kind === "network" ? new NetworkError("TypeError: Failed to fetch (injected)") : new Error(`injected ${method} error`);
       }
       const res = await impl(...args);
@@ -121,13 +123,16 @@ export async function bootDb() {
       getEntry: wrap("getEntry", async (id) =>
         as(async (tx) => (await tx.query(`select ${ENTRY_JSON} as j from public.diary_entries e where id = $1`, [id])).rows[0]?.j ?? null),
       ),
-      pullEntries: wrap("pullEntries", async (after, limit) =>
+      // PostgREST 와 같이: order=synced_at,id · after 만 있으면 gt, afterId 도 있으면 (synced_at, id) 키셋
+      pullEntries: wrap("pullEntries", async (after, limit, afterId = null) =>
         as(async (tx) =>
           (
             await tx.query(
               `select ${ENTRY_JSON} as j from public.diary_entries e
-               where ($1::timestamptz is null or synced_at > $1::timestamptz) order by synced_at limit $2`,
-              [after, limit],
+               where ($1::timestamptz is null or synced_at > $1::timestamptz
+                      or ($3::uuid is not null and synced_at = $1::timestamptz and id > $3::uuid))
+               order by synced_at, id limit $2`,
+              [after, limit, afterId],
             )
           ).rows.map((x) => x.j),
         ),

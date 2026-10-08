@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diary Intro</title>
+<style>
+/* ==========================================================================
+   Diary opening intro — pure CSS 3D + canvas sparkles + WebAudio
+   All colours are tokens; all timings live in TL (script).
+   ========================================================================== */
+:root {
+  /* scene */
+  --di-bg-0: #1c1648;
+  --di-bg-1: #0d0b26;
+  --di-bg-2: #05040f;
+  --di-accent: #ffa36c;
+  /* cover */
+  --di-cover-hi: #2b3577;
+  --di-cover: #1b2155;
+  --di-cover-lo: #0e1236;
+  --di-cover-edge: #0a0c28;
+  --di-endpaper: #241c58;
+  /* gold foil */
+  --di-gold-hi: #fff3cf;
+  --di-gold: #efc86f;
+  --di-gold-mid: #c8973f;
+  --di-gold-lo: #94641f;
+  --di-foil-line: rgba(236, 199, 122, .92);
+  /* paper */
+  --di-paper: #f7f1e3;
+  --di-paper-shade: #ebe2cd;
+  --di-rule: rgba(92, 108, 160, .26);
+  --di-rule-mini: rgba(92, 108, 160, .19);
+  --di-ink: #2d2944;
+  --di-ink-soft: #a39cad;
+  /* light (rgb triplets so they can take alpha) */
+  --di-light-hot: 255, 242, 208;
+  --di-light: 255, 194, 100;
+  --di-light-warm: 255, 148, 66;
+  /* ribbon */
+  --di-ribbon-hi: #ffb07c;
+  --di-ribbon: #f0874f;
+  --di-ribbon-lo: #b9512c;
+  --di-ui-fg: #f6f3ff;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--di-bg-2); }
+body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
+
+/* ---------- root ---------- */
+.di {
+  position: fixed; inset: 0; overflow: hidden;
+  background:
+    radial-gradient(120% 75% at 50% 38%, var(--di-bg-0) 0%, var(--di-bg-1) 52%, var(--di-bg-2) 100%);
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  user-select: none; -webkit-user-select: none;
+  cursor: pointer;
+}
+.di.is-done { cursor: auto; }
+.di-dither { /* dither: kills gradient banding on dark backgrounds + glow */
+  position: absolute; inset: 0; pointer-events: none; opacity: .06;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='d'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 -.25'/></filter><rect width='100%' height='100%' filter='url(%23d)'/></svg>");
+}
+.di-stars { position: absolute; left: 0; top: 0; width: 1px; height: 1px; border-radius: 50%; }
+.di-vignette {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(130% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%);
+}
+
+/* ---------- 3D stage ---------- */
+.di-stage { position: absolute; inset: 0; pointer-events: none; }
+.di-scene, .di-book, .di-cover, .di-leaf, .di-seg {
+  position: absolute; left: 0; top: 0; width: 0; height: 0;
+  transform-style: preserve-3d; transform-origin: 0 0;
+}
+.di .f { position: absolute; left: 0; top: 0; transform-origin: 0 0; outline: 1px solid transparent; }
+.di .f > i, .di .ov { position: absolute; inset: 0; display: block; pointer-events: none; }
+
+/* table: warm pool of light + contact shadow */
+.di-floor {
+  width: calc(var(--W) * 4.4); height: calc(var(--H) * 3);
+  transform: translate3d(calc(var(--W) * -2.2), calc(var(--H) * -1), -1px);
+  background: radial-gradient(closest-side, rgba(var(--di-light), .30), rgba(var(--di-light), .18) 20%, rgba(var(--di-light-warm), .08) 42%, rgba(var(--di-light-warm), .025) 66%, rgba(var(--di-light-warm), 0) 100%);
+  opacity: 0;
+}
+.di-shadow {
+  width: var(--W); height: var(--H); border-radius: 10px;
+  background: rgba(2, 1, 10, .72);
+  box-shadow: 0 0 calc(var(--u) * 6) calc(var(--u) * 3) rgba(2, 1, 10, .62),
+              0 calc(var(--u) * 6) calc(var(--u) * 26) calc(var(--u) * 10) rgba(2, 1, 10, .45);
+}
+
+/* back board */
+.di-back-top {
+  width: var(--W); height: var(--H); border-radius: 2px 5px 5px 2px;
+  transform: translate3d(0, 0, var(--B));
+  background: linear-gradient(160deg, var(--di-cover-hi), var(--di-cover) 45%, var(--di-cover-lo));
+}
+.di-back-near {
+  width: var(--W); height: var(--B);
+  transform: translate3d(0, var(--H), var(--B)) rotateX(-90deg);
+  background: linear-gradient(180deg, #1c2459, var(--di-cover-edge));
+}
+
+/* page block (right) */
+.di-block-top { width: var(--Wp); height: var(--Hp); transform: translate3d(0, var(--ov), var(--zTop)); }
+.di-block-near {
+  width: var(--Wp); height: var(--T);
+  transform: translate3d(0, calc(var(--H) - var(--ov)), var(--zTop)) rotateX(-90deg);
+  background:
+    repeating-linear-gradient(180deg, rgba(120, 80, 20, 0) 0 1.1px, rgba(110, 72, 18, .38) 1.1px 1.6px),
+    linear-gradient(90deg, #9c6f25 0%, #f2d38c 18%, #c99a45 42%, #f7dea0 66%, #b8892f 88%, #8c611c 100%);
+}
+.di-block-near::after { /* top highlight + bottom occlusion */
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(255, 245, 210, .35), rgba(0, 0, 0, 0) 30%, rgba(30, 15, 0, .35));
+}
+.di-block-near > .lit { background: rgba(var(--di-light), .9); mix-blend-mode: screen; opacity: 0; }
+
+/* ribbon bookmark (accent) */
+.di-rib { width: var(--rw); background: linear-gradient(90deg, var(--di-ribbon-lo), var(--di-ribbon-hi) 45%, var(--di-ribbon) 70%, var(--di-ribbon-lo)); }
+.di-rib-a { height: calc(var(--T) * .55); transform: translate3d(var(--rx), calc(var(--H) - var(--ov) + .4px), calc(var(--B) + var(--T) * .55)) rotateX(-90deg); }
+.di-rib-b { height: var(--ov); transform: translate3d(var(--rx), calc(var(--H) - var(--ov)), calc(var(--B) + .3px)); filter: brightness(.9); }
+.di-rib-c { height: calc(var(--B) + .6px); transform: translate3d(var(--rx), calc(var(--H) + 1.2px), calc(var(--B) + .3px)) rotateX(-90deg); filter: brightness(.85); }
+.di-rib-d {
+  height: var(--rl); transform: translate3d(var(--rx), calc(var(--H) - .5px), .3px);
+  /* swallowtail end via gradient masks (stays anti-aliased in 3D, unlike clip-path) */
+  --notch: calc(var(--rw) * .55);
+  -webkit-mask: linear-gradient(#000, #000) top / 100% calc(100% - var(--notch) + 1px) no-repeat,
+    linear-gradient(to top left, transparent 48%, #000 54%) left bottom / 50.5% var(--notch) no-repeat,
+    linear-gradient(to top right, transparent 48%, #000 54%) right bottom / 50.5% var(--notch) no-repeat;
+          mask: linear-gradient(#000, #000) top / 100% calc(100% - var(--notch) + 1px) no-repeat,
+    linear-gradient(to top left, transparent 48%, #000 54%) left bottom / 50.5% var(--notch) no-repeat,
+    linear-gradient(to top right, transparent 48%, #000 54%) right bottom / 50.5% var(--notch) no-repeat;
+}
+
+/* ---------- sheets (shared by 3D pages, leaves and final paper) ---------- */
+.sheet { background-color: var(--di-paper); overflow: hidden; }
+.sheet-rules {
+  position: absolute; left: var(--padx); right: var(--padx); top: var(--hdr); bottom: 0;
+  background-image: repeating-linear-gradient(180deg,
+    transparent 0, transparent calc(var(--gap) - var(--lw)),
+    var(--di-rule) calc(var(--gap) - var(--lw)), var(--di-rule) var(--gap));
+}
+.sheet-hdr {
+  position: absolute; left: var(--padx); right: var(--padx); top: calc(var(--hdr) - var(--lw) * 1.5); height: calc(var(--lw) * 1.5);
+  background: linear-gradient(90deg, rgba(240, 135, 79, .75), rgba(240, 135, 79, .38) 55%, rgba(240, 135, 79, .08));
+}
+.sheet-tone { /* gentle paper tone: warm centre, cooler edges */
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(140% 110% at 55% 40%, rgba(255, 255, 255, .35), rgba(255, 255, 255, 0) 55%, rgba(120, 95, 50, .10) 100%);
+}
+.gutter { background: linear-gradient(90deg, rgba(70, 45, 15, .42) 0%, rgba(70, 45, 15, .16) 7%, rgba(70, 45, 15, .04) 16%, rgba(70, 45, 15, 0) 26%); }
+.lit {
+  background: radial-gradient(130% 95% at 0% 50%, rgba(var(--di-light-hot), .95), rgba(var(--di-light), .75) 40%, rgba(var(--di-light-warm), .45) 100%);
+  mix-blend-mode: multiply; opacity: 0;
+}
+.lit-add { background: radial-gradient(120% 90% at 0% 50%, rgba(var(--di-light), .55), rgba(var(--di-light), 0) 75%); mix-blend-mode: screen; opacity: 0; }
+.shade { background: #120e2a; opacity: 0; }
+
+/* leaves (flipping pages): overlays are offset per segment so gradients stay continuous */
+.di-leaf-face { height: var(--Hp); }
+.di-book .sheet-rules { --di-rule: var(--di-rule-mini); }
+.di-leaf-face > .gutter, .di-leaf-face > .lit, .di-leaf-face > .lit-add, .di-leaf-face > .sheet-tone {
+  background-size: var(--Wp) 100%; background-repeat: no-repeat; background-position: calc(var(--segx) * -1) 0;
+}
+.di-leaf-face > .sheet-hdr { background: rgba(240, 135, 79, .42); }
+
+/* ---------- cover ---------- */
+.di-cover-out, .di-cover-in { width: var(--W); height: var(--H); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.di-cover-out {
+  transform: translate3d(0, 0, var(--B));
+  border-radius: 2px 5px 5px 2px; overflow: hidden;
+  background:
+    radial-gradient(90% 60% at 28% 18%, rgba(140, 150, 255, .16), rgba(140, 150, 255, 0) 70%),
+    linear-gradient(160deg, var(--di-cover-hi) 0%, var(--di-cover) 42%, var(--di-cover-lo) 100%);
+}
+.co-grain {
+  position: absolute; inset: 0; opacity: .55;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .55  0 0 0 0 .6  0 0 0 0 1  0 0 0 .22 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: 180px 180px;
+}
+.co-groove { /* hinge joint near the spine */
+  position: absolute; top: 0; bottom: 0; left: 0; width: calc(var(--u) * 12);
+  background: linear-gradient(90deg, rgba(0, 0, 0, .45) 0%, rgba(0, 0, 0, .12) 45%, rgba(170, 180, 255, .13) 62%, rgba(0, 0, 0, .3) 74%, rgba(0, 0, 0, 0) 100%);
+}
+.co-frame {
+  position: absolute; inset: calc(var(--u) * 7) calc(var(--u) * 7) calc(var(--u) * 7) calc(var(--u) * 13);
+  border: max(1px, calc(var(--u) * .7)) solid var(--di-foil-line);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .35), inset 0 0 0 .5px rgba(0, 0, 0, .35);
+}
+.co-frame::before {
+  content: ""; position: absolute; inset: calc(var(--u) * 2.2);
+  border: max(.6px, calc(var(--u) * .35)) solid rgba(236, 199, 122, .55);
+}
+.co-gem { position: absolute; width: calc(var(--u) * 3.2); height: calc(var(--u) * 3.2); background: linear-gradient(135deg, var(--di-gold-hi), var(--di-gold-mid)); transform: translate(-50%, -50%) rotate(45deg); }
+.co-gem.tl { left: 0; top: 0; } .co-gem.tr { left: 100%; top: 0; } .co-gem.bl { left: 0; top: 100%; } .co-gem.br { left: 100%; top: 100%; }
+.co-title {
+  position: absolute; left: calc(var(--u) * 13); right: calc(var(--u) * 7); top: 0; bottom: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding-bottom: calc(var(--u) * 4);
+}
+.co-moon { width: calc(var(--u) * 13); height: calc(var(--u) * 13); margin-bottom: calc(var(--u) * 5); filter: drop-shadow(0 .5px 0 rgba(0, 0, 0, .45)); }
+.foil {
+  background: linear-gradient(172deg, var(--di-gold-hi) 0%, var(--di-gold) 32%, var(--di-gold-mid) 52%, #f7dc9a 70%, var(--di-gold-lo) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 .6px 0 rgba(0, 0, 0, .5));
+}
+.co-word {
+  font-family: "Didot", "Bodoni 72", "Bodoni MT", "Playfair Display", "Times New Roman", "Liberation Serif", Georgia, serif;
+  font-size: calc(var(--u) * 14); letter-spacing: .26em; margin-right: -.26em;
+  line-height: 1; font-weight: 400;
+}
+.co-rule {
+  position: relative; width: calc(var(--u) * 40); height: 1px; margin: calc(var(--u) * 5) 0 calc(var(--u) * 4.4);
+  background: linear-gradient(90deg, rgba(236, 199, 122, 0), rgba(236, 199, 122, .95) 30%, rgba(236, 199, 122, .95) 70%, rgba(236, 199, 122, 0));
+}
+.co-rule::after { content: ""; position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 2.4); height: calc(var(--u) * 2.4); background: var(--di-gold); transform: translate(-50%, -50%) rotate(45deg); }
+.co-year {
+  font-family: "Didot", "Bodoni 72", "Times New Roman", "Liberation Serif", Georgia, serif;
+  font-size: calc(var(--u) * 5.6); letter-spacing: .55em; margin-right: -.55em; line-height: 1;
+}
+.co-sheen {
+  position: absolute; display: block; pointer-events: none; top: -10%; bottom: -10%; left: -70%; width: 70%;
+  background: linear-gradient(105deg, rgba(255, 240, 210, 0) 22%, rgba(255, 240, 210, .12) 42%, rgba(255, 250, 235, .2) 50%, rgba(255, 240, 210, .12) 58%, rgba(255, 240, 210, 0) 78%);
+}
+.di-cover-in { transform: translate3d(var(--W), 0, 0) rotateY(180deg); border-radius: 5px 2px 2px 5px; overflow: hidden; background: var(--di-cover-lo); }
+.ci-paper {
+  position: absolute; inset: calc(var(--ov) * .9) calc(var(--ov) * .9) calc(var(--ov) * .9) 0;
+  background:
+    radial-gradient(circle, rgba(236, 199, 122, .22) 0 .8px, rgba(236, 199, 122, 0) 1.3px) 0 0 / calc(var(--u) * 7) calc(var(--u) * 7),
+    radial-gradient(circle, rgba(236, 199, 122, .12) 0 .7px, rgba(236, 199, 122, 0) 1.2px) calc(var(--u) * 3.5) calc(var(--u) * 3.5) / calc(var(--u) * 7) calc(var(--u) * 7),
+    linear-gradient(200deg, #2c2367, var(--di-endpaper) 50%, #171140);
+}
+.di-cover-near {
+  width: var(--W); height: var(--B);
+  transform: translate3d(0, var(--H), var(--B)) rotateX(-90deg);
+  background: linear-gradient(180deg, #34408a, var(--di-cover-edge));
+}
+.di-cover-fore {
+  width: var(--B); height: var(--H);
+  transform: translate3d(var(--W), 0, var(--B)) rotateY(90deg);
+  background: linear-gradient(90deg, #303b80, var(--di-cover-edge));
+}
+
+/* ---------- light (2D, screen-blended) ---------- */
+.di-light { position: absolute; left: 0; top: 0; width: 0; height: 0; mix-blend-mode: screen; pointer-events: none; opacity: 0; will-change: transform, opacity; }
+.di-light > div, .di-beam { position: absolute; will-change: transform, opacity; }
+.di-halo {
+  width: var(--hw); height: var(--hh); left: calc(var(--hw) / -2); top: calc(var(--hh) * -.6);
+  background: radial-gradient(closest-side, rgba(var(--di-light), .28), rgba(var(--di-light), .17) 18%, rgba(var(--di-light-warm), .085) 38%, rgba(var(--di-light-warm), .035) 58%, rgba(var(--di-light-warm), .01) 80%, rgba(var(--di-light-warm), 0) 100%);
+}
+.di-fan {
+  width: var(--fw); height: var(--fh); left: calc(var(--fw) / -2); bottom: 0; transform-origin: 50% 100%;
+  background: repeating-conic-gradient(from -90deg at 50% 100%,
+    rgba(var(--di-light), 0) 0deg, rgba(var(--di-light), 0) 1.8deg, rgba(var(--di-light), .12) 3.4deg, rgba(var(--di-light), 0) 5deg,
+    rgba(var(--di-light), 0) 6.2deg, rgba(var(--di-light), .07) 7.1deg, rgba(var(--di-light), 0) 8deg, rgba(var(--di-light), 0) 10.5deg);
+  -webkit-mask-image: radial-gradient(50% 100% at 50% 100%, #000 0%, rgba(0, 0, 0, .55) 40%, transparent 100%);
+          mask-image: radial-gradient(50% 100% at 50% 100%, #000 0%, rgba(0, 0, 0, .5) 35%, transparent 100%);
+}
+.di-rays { left: 0; top: 0; width: 0; height: 0; }
+.di-beam {
+  bottom: 0; transform-origin: 50% 100%;
+  background: radial-gradient(50% 100% at 50% 100%, rgba(var(--di-light-hot), .8) 0%, rgba(var(--di-light), .42) 20%, rgba(var(--di-light), .13) 56%, rgba(var(--di-light), 0) 100%);
+}
+.di-core {
+  width: var(--cw); height: var(--ch); left: calc(var(--cw) / -2); top: calc(var(--ch) / -2);
+  background: radial-gradient(closest-side, rgba(var(--di-light-hot), .62), rgba(var(--di-light), .36) 34%, rgba(var(--di-light-warm), .10) 70%, rgba(var(--di-light-warm), 0) 100%);
+}
+
+.di-dim { position: absolute; inset: 0; background: var(--di-bg-2); opacity: 0; pointer-events: none; will-change: opacity; }
+
+/* ---------- final writing paper ---------- */
+.di-paper {
+  position: absolute; left: 0; top: 0; transform-origin: 0 0;
+  visibility: hidden; opacity: 0;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+}
+.di-paper .gutter, .di-paper .lit, .di-paper .lit-add { position: absolute; inset: 0; pointer-events: none; }
+.di-paper .grain {
+  position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .36  0 0 0 0 .2  0 0 0 .09 0'/></filter><rect width='100%' height='100%' filter='url(%23p)'/></svg>");
+}
+.dp-head {
+  position: absolute; left: var(--padx); right: var(--padx); top: 0; height: var(--hdr);
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding-bottom: calc(var(--gap) * .38);
+  opacity: 0;
+}
+.dp-date {
+  font-family: "AppleMyungjo", "Noto Serif KR", "Nanum Myeongjo", "Pretendard", serif;
+  color: var(--di-ink); font-size: var(--dateSize); font-weight: 600; letter-spacing: -.01em; white-space: nowrap;
+}
+.dp-mark { width: calc(var(--dateSize) * 1.05); height: calc(var(--dateSize) * 1.05); flex: none; opacity: .9; }
+.dp-body {
+  position: absolute; left: var(--padx); right: var(--padx); top: var(--hdr); bottom: 0;
+  font-size: var(--bodySize); line-height: var(--gap); color: var(--di-ink);
+  padding-top: calc(var(--gap) * .12); outline: none; opacity: 0;
+  user-select: text; -webkit-user-select: text; cursor: text; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.dp-body:empty::before { content: attr(data-placeholder); color: var(--di-ink-soft); }
+
+/* ---------- sparkles + UI ---------- */
+.di-sparks, .di-lines { position: absolute; left: 0; top: 0; pointer-events: none; }
+.di-sound {
+  position: absolute; top: calc(env(safe-area-inset-top, 0px) + 14px); right: 14px;
+  width: 38px; height: 38px; border-radius: 50%; padding: 0;
+  display: grid; place-items: center; cursor: pointer;
+  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14);
+  color: var(--di-ui-fg); opacity: 0;
+}
+.di-sound svg { width: 18px; height: 18px; }
+.di-sound .wave { transition: opacity .2s; }
+.di-sound[aria-pressed="false"] .wave { opacity: 0; }
+.di-sound[aria-pressed="true"] .mute { opacity: 0; }
+.di-replay {
+  position: absolute; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  font: 500 12px/1 "Pretendard", system-ui, sans-serif; color: var(--di-ink-soft);
+  background: rgba(45, 41, 68, .06); border: 1px solid rgba(45, 41, 68, .12); border-radius: 999px;
+  padding: 8px 12px; cursor: pointer; display: none;
+}
+.di.is-done:not(.is-capture) .di-replay { display: block; }
+
+/* reduced motion: hide 3D scene entirely */
+.di.is-reduced .di-stage, .di.is-reduced .di-light, .di.is-reduced .di-sparks { display: none; }
+</style>
+</head>
+<body>
+
+<div class="di" id="diaryIntro" aria-label="일기장 여는 중">
+  <div class="di-stars"></div>
+  <div class="di-vignette"></div>
+
+  <div class="di-stage">
+    <div class="di-scene">
+      <div class="di-book">
+        <div class="f di-floor"></div>
+        <div class="f di-shadow"></div>
+
+        <div class="f di-back-top"></div>
+        <div class="f di-back-near"></div>
+
+        <div class="f di-block-top sheet">
+          <div class="sheet-tone"></div>
+          <div class="sheet-rules"></div>
+          <div class="sheet-hdr"></div>
+          <i class="gutter"></i>
+          <i class="lit"></i>
+          <i class="lit-add"></i>
+        </div>
+        <div class="f di-block-near"><i class="lit"></i></div>
+
+        <div class="f di-rib di-rib-a"></div>
+        <div class="f di-rib di-rib-b"></div>
+        <div class="f di-rib di-rib-c"></div>
+        <div class="f di-rib di-rib-d"></div>
+
+        <div class="di-cover">
+          <div class="f di-cover-in">
+            <div class="ci-paper"></div>
+            <i class="lit-add"></i>
+            <i class="shade"></i>
+          </div>
+          <div class="f di-cover-out">
+            <div class="co-grain"></div>
+            <div class="co-groove"></div>
+            <div class="co-frame">
+              <span class="co-gem tl"></span><span class="co-gem tr"></span><span class="co-gem bl"></span><span class="co-gem br"></span>
+            </div>
+            <div class="co-title">
+              <svg class="co-moon" viewBox="0 0 40 40" aria-hidden="true">
+                <defs>
+                  <linearGradient id="diGold" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#fff3cf"/><stop offset=".45" stop-color="#efc86f"/><stop offset="1" stop-color="#a8742a"/>
+                  </linearGradient>
+                  <mask id="diMoonCut"><rect width="40" height="40" fill="#fff"/><circle cx="25.5" cy="15.5" r="12.5" fill="#000"/></mask>
+                </defs>
+                <circle cx="19" cy="21" r="13" fill="url(#diGold)" mask="url(#diMoonCut)"/>
+                <path d="M30 4.5l1.1 3.4 3.4 1.1-3.4 1.1L30 13.5l-1.1-3.4-3.4-1.1 3.4-1.1z" fill="url(#diGold)"/>
+              </svg>
+              <div class="co-word foil">DIARY</div>
+              <div class="co-rule"></div>
+              <div class="co-year foil">2026</div>
+            </div>
+            <i class="co-sheen"></i>
+            <i class="shade"></i>
+          </div>
+          <div class="f di-cover-near"></div>
+          <div class="f di-cover-fore"></div>
+        </div>
+        <!-- flipping leaves are injected here -->
+      </div>
+    </div>
+  </div>
+
+  <div class="di-light">
+    <div class="di-halo"></div>
+    <div class="di-fan"></div>
+    <div class="di-rays"></div>
+    <div class="di-core"></div>
+  </div>
+
+  <div class="di-dither"></div>
+  <div class="di-dim"></div>
+  <canvas class="di-sparks"></canvas>
+
+  <div class="di-paper sheet">
+    <div class="sheet-tone"></div>
+    <div class="grain"></div>
+    <div class="sheet-rules"></div>
+    <div class="sheet-hdr"></div>
+    <div class="gutter"></div>
+    <div class="lit"></div>
+    <div class="lit-add"></div>
+    <div class="dp-head">
+      <div class="dp-date"></div>
+      <svg class="dp-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <defs><mask id="diMoonCut2"><rect width="40" height="40" fill="#fff"/><circle cx="25.5" cy="15.5" r="12.5" fill="#000"/></mask></defs>
+        <circle cx="19" cy="21" r="13" fill="#d9a54f" mask="url(#diMoonCut2)"/>
+        <path d="M30 4.5l1.1 3.4 3.4 1.1-3.4 1.1L30 13.5l-1.1-3.4-3.4-1.1 3.4-1.1z" fill="#d9a54f"/>
+      </svg>
+    </div>
+    <div class="dp-body" contenteditable="true" spellcheck="false" data-placeholder="오늘 하루는 어땠나요?"></div>
+  </div>
+
+  <canvas class="di-lines"></canvas>
+
+  <button class="di-sound" type="button" aria-pressed="true" aria-label="효과음 켜기/끄기">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity=".18"/>
+      <path class="wave" d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/>
+      <path class="mute" d="M16 9.5l5 5M21 9.5l-5 5"/>
+    </svg>
+  </button>
+  <button class="di-replay" type="button">다시 보기</button>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ==========================================================================
+   Timeline (ms). Everything visual is a pure function of t on this timeline.
+   ========================================================================== */
+const TL = Object.freeze({
+  zoom:        [80, 1050],    // camera eases from close-up to full spread
+  cover:       [200, 980],    // cover swings open around the spine
+  shift:       [300, 1080],   // book slides so the spread is centred (lags the cover so its inside stays visible)
+  light:       [430, 1120],   // golden light rises out of the pages
+  riffleStart: 860,           // first leaf starts flipping
+  riffleSpan:  520,           // last leaf starts riffleStart + riffleSpan
+  leafDur:     420,           // one leaf flip
+  lift:        [1720, 2320],  // right page lifts and becomes the writing paper
+  fxOut:       [1840, 2280],  // light + sparkles fade out
+  text:        [2040, 2340],  // date / placeholder fade in
+  end:         2350,
+  reducedEnd:  360,
+});
+const LEAVES = 10;
+const SEGS = 6;
+const SEED = 20261008;
+
+/* ---------- small math helpers ---------- */
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const lerp = (a, b, k) => a + (b - a) * k;
+const smooth = (a, b, x) => { const k = clamp01((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+const span = (r, x) => clamp01((x - r[0]) / (r[1] - r[0]));
+const eio3 = (k) => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eio2 = (k) => k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+const eo3 = (k) => 1 - Math.pow(1 - k, 3);
+const eioSine = (k) => -(Math.cos(Math.PI * k) - 1) / 2;
+const DEG = Math.PI / 180;
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ==========================================================================
+   Procedural sound (WebAudio, no files)
+   playIntroSound(ctx, {destination, volume}) -> { stop(), output }
+   ========================================================================== */
+function playIntroSound(ctx, opts = {}) {
+  const at0 = ctx.currentTime + 0.03;
+  const s = (ms) => at0 + ms / 1000;
+  const rnd = mulberry32(opts.seed || 77);
+  const out = ctx.createGain();
+  out.gain.value = opts.volume == null ? 0.7 : opts.volume;
+  out.connect(opts.destination || ctx.destination);
+
+  // shared white-noise buffer
+  const nb = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.5), ctx.sampleRate);
+  const nd = nb.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = rnd() * 2 - 1;
+
+  // tiny "room": feedback delay with a darkening filter in the loop
+  const wet = ctx.createGain(); wet.gain.value = 0.42;
+  const dl = ctx.createDelay(1); dl.delayTime.value = 0.17;
+  const fb = ctx.createGain(); fb.gain.value = 0.36;
+  const damp = ctx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 3800;
+  wet.connect(dl); dl.connect(damp); damp.connect(fb); fb.connect(dl); damp.connect(out);
+
+  const sources = [];
+  const env = (g, t, peak, a, d) => {
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
+  };
+  function noise(t, dur, filt, peak, a, d, toWet = 0) {
+    const src = ctx.createBufferSource(); src.buffer = nb;
+    const f = ctx.createBiquadFilter(); f.type = filt.type; f.frequency.value = filt.f; f.Q.value = filt.q || 0.7;
+    if (filt.to) f.frequency.exponentialRampToValueAtTime(filt.to, t + dur);
+    const g = ctx.createGain(); env(g, t, peak, a, d);
+    src.connect(f); f.connect(g); g.connect(out);
+    if (toWet) { const w = ctx.createGain(); w.gain.value = toWet; g.connect(w); w.connect(wet); }
+    src.start(t, rnd() * 0.9, dur + 0.05);
+    sources.push(src);
+  }
+  function tone(t, freq, peak, a, d, type = 'sine', toWet = 0.6, glideTo) {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + a + d * 0.6);
+    const g = ctx.createGain(); env(g, t, peak, a, d);
+    o.connect(g); g.connect(out);
+    if (toWet) { const w = ctx.createGain(); w.gain.value = toWet; g.connect(w); w.connect(wet); }
+    o.start(t); o.stop(t + a + d + 0.05);
+    sources.push(o);
+  }
+
+  // 1) cover: soft leather swish while it swings, then a felt "thump" as it lands
+  noise(s(TL.cover[0]), 0.7, { type: 'bandpass', f: 380, to: 1300, q: 0.9 }, 0.05, 0.25, 0.45);
+  const land = s(TL.cover[1] - 40);
+  tone(land, 118, 0.5, 0.006, 0.32, 'sine', 0, 46);
+  tone(land, 72, 0.32, 0.004, 0.22, 'triangle', 0, 40);
+  noise(land, 0.09, { type: 'lowpass', f: 900, q: 0.6 }, 0.22, 0.003, 0.08);
+
+  // 2) paper riffle: ticks dense in the middle (accelerate, then decelerate)
+  const K = 26, r0 = TL.riffleStart + 60, rs = TL.riffleSpan + TL.leafDur - 160;
+  for (let k = 0; k < K; k++) {
+    const tt = s(r0 + rs * eioSine(k / (K - 1)));
+    const f = 2400 + rnd() * 2600;
+    noise(tt, 0.06, { type: 'bandpass', f, q: 0.9 }, 0.22 + rnd() * 0.16, 0.002, 0.03 + rnd() * 0.035, 0.15);
+    noise(tt, 0.04, { type: 'highpass', f: 5200, q: 0.7 }, 0.06 + rnd() * 0.05, 0.001, 0.02);
+  }
+  for (let i = 0; i < LEAVES; i++) { // body of each page "flap"
+    const st = TL.riffleStart + TL.riffleSpan * eioSine(i / (LEAVES - 1));
+    noise(s(st + TL.leafDur * 0.55), 0.14, { type: 'bandpass', f: 800 + rnd() * 600, q: 0.8 }, 0.12, 0.012, 0.11);
+  }
+
+  // 3) shimmer: bell arpeggio + airy sparkle wash as the light appears
+  const notes = [1318.5, 1661.2, 1975.5, 2637.0, 3322.4, 3951.1];
+  notes.forEach((fq, i) => {
+    const tt = s(TL.light[0] + 40 + i * 72);
+    tone(tt, fq, 0.045, 0.008, 1.5 - i * 0.12, 'sine', 0.8);
+    tone(tt, fq * 2.01, 0.012, 0.005, 0.7, 'sine', 0.8);
+  });
+  noise(s(TL.light[0]), 1.8, { type: 'highpass', f: 6500, q: 0.5 }, 0.03, 0.5, 1.2, 0.5);
+
+  // 4) page lifts: soft air
+  noise(s(TL.lift[0]), 0.6, { type: 'bandpass', f: 300, to: 1800, q: 0.7 }, 0.045, 0.22, 0.38, 0.2);
+  tone(s(TL.lift[1] - 120), 1318.5, 0.03, 0.01, 1.1, 'sine', 0.9);
+  tone(s(TL.lift[1] - 120), 1975.5, 0.02, 0.01, 1.0, 'sine', 0.9);
+
+  return {
+    output: out,
+    stop(fade = 0.12) {
+      try {
+        out.gain.cancelScheduledValues(ctx.currentTime);
+        out.gain.setTargetAtTime(0, ctx.currentTime, fade / 3);
+        setTimeout(() => { sources.forEach((n) => { try { n.stop(); } catch (e) {} }); try { out.disconnect(); } catch (e) {} }, fade * 1000 + 300);
+      } catch (e) {}
+    },
+  };
+}
+window.playIntroSound = playIntroSound;
+
+/* ==========================================================================
+   Intro controller
+   ========================================================================== */
+function createDiaryIntro(root, options = {}) {
+  const q = (s) => root.querySelector(s);
+  const el = {
+    stars: q('.di-stars'), stage: q('.di-stage'), scene: q('.di-scene'), book: q('.di-book'),
+    floor: q('.di-floor'), shadow: q('.di-shadow'),
+    blockLit: q('.di-block-top > .lit'), blockLitAdd: q('.di-block-top > .lit-add'),
+    edgeLit: q('.di-block-near > .lit'),
+    cover: q('.di-cover'), outShade: q('.di-cover-out > .shade'), sheen: q('.co-sheen'),
+    inShade: q('.di-cover-in > .shade'), inLit: q('.di-cover-in > .lit-add'),
+    light: q('.di-light'), rays: q('.di-rays'), halo: q('.di-halo'), core: q('.di-core'), fan: q('.di-fan'),
+    dim: q('.di-dim'),
+    paper: q('.di-paper'), paperGutter: q('.di-paper > .gutter'), paperLit: q('.di-paper > .lit'),
+    paperRules: q('.di-paper > .sheet-rules'), paperHdr: q('.di-paper > .sheet-hdr'), paperLitAdd: q('.di-paper > .lit-add'),
+    paperHead: q('.dp-head'), paperBody: q('.dp-body'), paperDate: q('.dp-date'),
+    canvas: q('.di-sparks'), lineCanvas: q('.di-lines'), soundBtn: q('.di-sound'), replayBtn: q('.di-replay'),
+  };
+  const ctx2d = el.canvas.getContext('2d');
+  const lctx = el.lineCanvas.getContext('2d');
+  const reduced = options.reducedMotion != null ? options.reducedMotion
+    : window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  root.classList.toggle('is-reduced', !!reduced);
+
+  const END = reduced ? TL.reducedEnd : TL.end;
+  let g = null;            // geometry for the current viewport
+  let leaves = [];         // [{leaf, segs:[{seg, shade, lit}]}]
+  let beams = [];          // light beams
+  let parts = [];          // particles
+  let sprites = null;
+  let cur = 0, raf = 0, t0 = 0, playing = false;
+  let audio = null, sfx = null;
+
+  /* ---------- date ---------- */
+  const d = options.date || new Date();
+  el.paperDate.textContent = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]})`;
+
+  /* ---------- build leaves ---------- */
+  function buildLeaves() {
+    leaves.forEach((l) => l.leaf.remove());
+    leaves = [];
+    for (let i = 0; i < LEAVES; i++) {
+      const leaf = document.createElement('div'); leaf.className = 'di-leaf';
+      let parent = leaf; const segs = [];
+      for (let k = 0; k < SEGS; k++) {
+        const seg = document.createElement('div'); seg.className = 'di-seg';
+        const face = document.createElement('div'); face.className = 'f di-leaf-face sheet';
+        face.innerHTML = '<div class="sheet-tone"></div><div class="sheet-rules"></div><div class="sheet-hdr"></div>'
+          + '<i class="gutter"></i><i class="lit"></i><i class="lit-add"></i><i class="shade"></i>';
+        seg.appendChild(face); parent.appendChild(seg); parent = seg;
+        segs.push({ seg, face, shade: face.querySelector('.shade'), lit: face.querySelector('.lit'), litAdd: face.querySelector('.lit-add') });
+      }
+      el.book.appendChild(leaf);
+      leaves.push({ leaf, segs });
+    }
+  }
+
+  /* ---------- geometry ---------- */
+  function computeGeom() {
+    const vw = root.clientWidth, vh = root.clientHeight;
+    const W = Math.round(Math.min(vw * 0.395, vh * 0.32));
+    const H = Math.round(W / 0.72);
+    const u = W / 100;
+    const B = Math.max(2, Math.round(u * 1.9));
+    const T = Math.max(8, Math.round(u * 8.2));
+    const ov = Math.max(3, Math.round(u * 2.6));
+    const Wp = W - ov, Hp = H - 2 * ov;
+    const zTop = B + T;
+    const zLeafTop = zTop + LEAVES * 0.25;
+    const zCover = zLeafTop + 0.4;
+    const tilt = 46;
+    const P = H * 3.3;
+    const cx = vw / 2, cy = vh * 0.6;
+    const ox = cx, oy = cy - H * 0.65;
+    // perspective matrix of the stage (about perspective-origin)
+    const PM = new DOMMatrix().translate(ox, oy)
+      .multiply(new DOMMatrix([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, -1 / P, 0, 0, 0, 1]))
+      .translate(-ox, -oy);
+    // final paper (content area). In-app this is the diary content rect.
+    const target = options.targetRect ? options.targetRect(vw, vh) : { x: 0, y: 0, w: vw, h: vh };
+    const small = vw < 600;
+    const paper = {
+      gap: small ? 34 : 40,
+      hdr: small ? 104 : 136,
+      padx: small ? 22 : Math.max(48, Math.round((target.w - 980) / 2)),
+      dateSize: small ? 20 : 26,
+      bodySize: small ? 16 : 17,
+    };
+    return { vw, vh, W, H, u, B, T, ov, Wp, Hp, zTop, zLeafTop, zCover, tilt, P, cx, cy, ox, oy, PM, target, paper,
+      zoomClosed: small ? 1.28 : 1.22 };
+  }
+
+  function layout() {
+    g = computeGeom();
+    const rs = root.style, px = (v) => v + 'px';
+    rs.setProperty('--W', px(g.W)); rs.setProperty('--H', px(g.H)); rs.setProperty('--u', px(g.u));
+    rs.setProperty('--B', px(g.B)); rs.setProperty('--T', px(g.T)); rs.setProperty('--ov', px(g.ov));
+    rs.setProperty('--Wp', px(g.Wp)); rs.setProperty('--Hp', px(g.Hp)); rs.setProperty('--zTop', px(g.zTop));
+    rs.setProperty('--rw', px(Math.max(6.5, g.u * 4.2))); rs.setProperty('--rx', px(g.Wp * 0.7)); rs.setProperty('--rl', px(g.H * 0.17));
+    el.stage.style.perspective = px(g.P);
+    el.stage.style.perspectiveOrigin = `${g.ox}px ${g.oy}px`;
+
+    // sheet metrics: 3D pages are a scaled copy of the final paper so the hand-off is seamless
+    const sx = g.Wp / g.target.w, sy = g.Hp / g.target.h, P = g.paper;
+    const bs = el.book.style;
+    bs.setProperty('--gap', px(P.gap * sy)); bs.setProperty('--hdr', px(P.hdr * sy));
+    bs.setProperty('--padx', px(P.padx * sx)); bs.setProperty('--lw', '1px');
+    const ps = el.paper.style;
+    ps.width = px(g.target.w); ps.height = px(g.target.h);
+    ps.setProperty('--gap', px(P.gap)); ps.setProperty('--hdr', px(P.hdr)); ps.setProperty('--padx', px(P.padx));
+    ps.setProperty('--lw', '1px'); ps.setProperty('--dateSize', px(P.dateSize)); ps.setProperty('--bodySize', px(P.bodySize));
+
+    // leaves: segment widths
+    const ws = g.Wp / SEGS;
+    leaves.forEach((l) => l.segs.forEach((s, k) => {
+      s.face.style.width = px(ws + (k < SEGS - 1 ? 0.8 : 0));
+      s.face.style.setProperty('--segx', px(k * ws));
+      const rules = s.face.querySelector('.sheet-rules'), hdr = s.face.querySelector('.sheet-hdr');
+      const padL = k === 0 ? P.padx * sx : 0, padR = k === SEGS - 1 ? P.padx * sx : 0;
+      rules.style.left = hdr.style.left = px(padL); rules.style.right = hdr.style.right = px(padR);
+    }));
+
+    // spread size on screen (open state) drives the light layout; the lift starts from this pose
+    const sOpen = frameState(TL.lift[0]);
+    g.lift = {
+      Q: [[0, g.ov], [g.Wp, g.ov], [g.Wp, g.ov + g.Hp], [0, g.ov + g.Hp]].map(([x, y]) => project(sOpen.M, x, y, g.zTop)),
+      light: sOpen.light,
+    };
+    const a = project(sOpen.M, -g.Wp, g.H / 2, g.zTop), b = project(sOpen.M, g.Wp, g.H / 2, g.zTop);
+    g.spreadW = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const L = el.light.style;
+    L.setProperty('--hw', px(g.spreadW * 1.9)); L.setProperty('--hh', px(Math.min(g.spreadW * 1.7, g.vh * 1.1)));
+    L.setProperty('--cw', px(g.spreadW * 1.05)); L.setProperty('--ch', px(g.spreadW * 0.34));
+    L.setProperty('--fw', px(g.vh * 0.95)); L.setProperty('--fh', px(g.vh * 0.8));
+    buildBeams();
+
+    // canvas
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (const [cv, cx2] of [[el.canvas, ctx2d], [el.lineCanvas, lctx]]) {
+      cv.width = Math.round(g.vw * dpr); cv.height = Math.round(g.vh * dpr);
+      cv.style.width = px(g.vw); cv.style.height = px(g.vh);
+      cx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    if (!sprites) sprites = makeSprites();
+    buildParticles();
+    buildStars();
+  }
+
+  /* ---------- projection ---------- */
+  function project(M, x, y, z) {
+    const p = M.transformPoint(new DOMPoint(x, y, z, 1));
+    return [p.x / p.w, p.y / p.w];
+  }
+
+  /* ---------- per-frame scalar state ---------- */
+  function frameState(t) {
+    const pc = span(TL.cover, t);
+    const ec = pc < 0.5 ? 0.5 * Math.pow(2 * pc, 2.4) : 1 - 0.5 * Math.pow(2 - 2 * pc, 2.6);
+    const theta = -180 * ec;
+    const drop = (1 - Math.cos(ec * Math.PI)) / 2;          // hinge slides down to the table
+    const coverZ = lerp(g.zCover, g.B, drop);
+    const shift = -g.W / 2 * (1 - eio3(span(TL.shift, t)));
+    const zm = lerp(g.zoomClosed, 1, eio3(span(TL.zoom, t)));
+    const sceneStr = `translate3d(${g.cx}px,${g.cy}px,0px) rotateX(${g.tilt}deg) scale3d(${zm},${zm},${zm})`;
+    const bookStr = `translate3d(${shift}px,${-g.H / 2}px,0px)`;
+    const M = g.PM.multiply(new DOMMatrix(sceneStr)).multiply(new DOMMatrix(bookStr));
+    const fxOut = 1 - smooth(TL.fxOut[0], TL.fxOut[1], t);
+    const light = smooth(TL.light[0], TL.light[1], t) * fxOut;
+    const leak = smooth(TL.cover[0] - 80, TL.cover[0] + 380, t) * fxOut;
+    // how much of the left side is covered by riffled (glowing) pages
+    const pagesL = smooth(TL.riffleStart + 120, TL.riffleStart + TL.riffleSpan + 200, t);
+    return { t, pc, ec, theta, coverZ, shift, zm, sceneStr, bookStr, M, light, leak, fxOut, pagesL };
+  }
+
+  /* ---------- light beams ---------- */
+  function buildBeams() {
+    el.rays.textContent = '';
+    beams = [];
+    const rnd = mulberry32(SEED + 3);
+    const n = 15;
+    for (let i = 0; i < n; i++) {
+      const b = document.createElement('div'); b.className = 'di-beam';
+      const k = i / (n - 1) - 0.5;
+      const w = g.spreadW * (0.05 + rnd() * 0.12) * (1 - Math.abs(k) * 0.6);
+      const h = g.vh * (0.5 + rnd() * 0.5) * (1 - Math.abs(k) * 0.35);
+      b.style.width = w + 'px'; b.style.height = h + 'px'; b.style.left = (-w / 2) + 'px';
+      el.rays.appendChild(b);
+      beams.push({ el: b, bx: k * g.spreadW * 0.7 + (rnd() - 0.5) * g.spreadW * 0.06, ang: k * 64 + (rnd() - 0.5) * 7,
+        base: 0.6 + rnd() * 0.4, f: 0.5 + rnd() * 1.3, ph: rnd() * 6.28, delay: Math.abs(k) * 220 + rnd() * 120 });
+    }
+  }
+
+  /* ---------- stars (static) ---------- */
+  function buildStars() {
+    const rnd = mulberry32(SEED + 9);
+    const n = Math.round(g.vw * g.vh / 7000);
+    const sh = [];
+    for (let i = 0; i < n; i++) {
+      const x = Math.round(rnd() * g.vw), y = Math.round(rnd() * g.vh * 0.75);
+      const a = (0.15 + rnd() * 0.5) * (1 - y / (g.vh * 0.9));
+      sh.push(`${x}px ${y}px 0 ${rnd() < 0.12 ? 0.6 : 0}px rgba(220,215,255,${a.toFixed(2)})`);
+    }
+    el.stars.style.boxShadow = sh.join(',');
+  }
+
+  /* ---------- sparkle sprites ---------- */
+  function makeSprites() {
+    const tints = [[255, 248, 226], [255, 212, 132], [255, 168, 96]];
+    const mk = (size, draw) => { const c = document.createElement('canvas'); c.width = c.height = size; draw(c.getContext('2d'), size); return c; };
+    return tints.map(([r, gg, b]) => ({
+      glow: mk(64, (x, s) => {
+        const gr = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+        gr.addColorStop(0, 'rgba(255,255,255,1)');
+        gr.addColorStop(0.1, `rgba(${r},${gg},${b},.95)`);
+        gr.addColorStop(0.28, `rgba(${r},${gg},${b},.32)`);
+        gr.addColorStop(0.6, `rgba(${r},${gg},${b},.07)`);
+        gr.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+        x.fillStyle = gr; x.fillRect(0, 0, s, s);
+      }),
+      bokeh: mk(64, (x, s) => {
+        const gr = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+        gr.addColorStop(0, `rgba(${r},${gg},${b},.35)`);
+        gr.addColorStop(0.72, `rgba(${r},${gg},${b},.42)`);
+        gr.addColorStop(0.86, `rgba(${r},${gg},${b},.55)`);
+        gr.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+        x.fillStyle = gr; x.fillRect(0, 0, s, s);
+      }),
+      star: mk(128, (x, s) => {
+        const c = s / 2;
+        const gr = x.createRadialGradient(c, c, 0, c, c, s * 0.18);
+        gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, `rgba(${r},${gg},${b},.6)`); gr.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+        x.fillStyle = gr; x.fillRect(0, 0, s, s);
+        const streak = (len, th, a, rot) => {
+          x.save(); x.translate(c, c); x.rotate(rot);
+          const lg = x.createLinearGradient(-len, 0, len, 0);
+          lg.addColorStop(0, `rgba(${r},${gg},${b},0)`); lg.addColorStop(0.5, `rgba(255,255,255,${a})`); lg.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+          x.fillStyle = lg; x.beginPath(); x.ellipse(0, 0, len, th, 0, 0, Math.PI * 2); x.fill(); x.restore();
+        };
+        streak(c * 0.98, 1.3, 0.95, 0); streak(c * 0.98, 1.3, 0.95, Math.PI / 2);
+        streak(c * 0.42, 0.9, 0.45, Math.PI / 4); streak(c * 0.42, 0.9, 0.45, -Math.PI / 4);
+      }),
+    }));
+  }
+
+  /* ---------- particles (seeded, closed-form motion) ---------- */
+  function buildParticles() {
+    const rnd = mulberry32(SEED);
+    const area = g.vw * g.vh;
+    const n = Math.round(Math.max(330, Math.min(620, area / 2000)));
+    const k = Math.max(0.75, Math.min(1.25, g.vh / 900));
+    parts = [];
+    const cache = new Map();
+    const stateAt = (tb) => { const key = Math.round(tb / 8); if (!cache.has(key)) cache.set(key, frameState(key * 8)); return cache.get(key); };
+    for (let i = 0; i < n; i++) {
+      const r = rnd();
+      const type = r < 0.42 ? 0 : r < 0.5 ? 1 : r < 0.58 ? 2 : 3; // 0 spark, 1 star glint, 2 bokeh, 3 glitter dust
+      const burst = rnd() < 0.5;
+      const tb = burst ? TL.light[0] + 100 + 460 * Math.pow(rnd(), 1.5) : TL.light[0] + 150 + (TL.fxOut[0] - TL.light[0] - 150) * rnd();
+      const st = stateAt(tb);
+      const openK = st.pagesL;
+      // emission point on the page surface (book-local), biased to the gutter
+      let side = rnd() < 0.5 ? -1 : 1;
+      if (rnd() > openK) side = 1;
+      const lx = side * Math.pow(rnd(), 1.25) * g.Wp * 0.95 * (side < 0 ? openK : 1);
+      const ly = g.ov + g.Hp * (0.05 + 0.9 * rnd());
+      const [x0, y0] = project(st.M, lx, ly, g.zTop);
+      const [gx] = project(st.M, 0, g.H / 2, g.zTop);
+      const spread = (x0 - gx) / Math.max(1, g.spreadW * 0.5);
+      const speed = burst ? 200 + 420 * rnd() : 60 + 170 * rnd();
+      const tint = rnd();
+      const tintI = type === 2 ? (tint < 0.75 ? 1 : 2) : tint < 0.3 ? 0 : tint < 0.88 ? 1 : 2;
+      parts.push({
+        type, tb, x0, y0, tintI,
+        vy: -speed * k * (type === 2 ? 0.55 : 1), vx: (spread * (60 + 150 * rnd()) + (rnd() - 0.5) * 80) * k,
+        tau: 0.3 + 0.45 * rnd(), buoy: (16 + 50 * rnd()) * k * (type === 2 ? 0.6 : 1),
+        amp: (2 + 9 * rnd()) * k, fq: 0.5 + 1.5 * rnd(), ph: rnd() * 6.283,
+        life: (type === 2 ? 1.3 + 1.0 * rnd() : 1.0 + 1.4 * rnd()),
+        size: type === 0 ? (1.1 + 2.4 * Math.pow(rnd(), 2)) : type === 1 ? (10 + 16 * rnd()) : type === 2 ? (6 + 16 * rnd()) * k : (0.5 + 0.8 * rnd()),
+        alpha: type === 2 ? 0.16 + 0.22 * rnd() : type === 3 ? 0.55 + 0.45 * rnd() : 0.75 + 0.25 * rnd(),
+        tw: 3 + 8 * rnd(), tph: rnd() * 6.283,
+      });
+    }
+  }
+
+  function drawParticles(t, fade) {
+    const c = ctx2d;
+    if (fade <= 0.002) return;
+    c.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      const age = (t - p.tb) / 1000;
+      if (age <= 0 || age >= p.life) continue;
+      const decay = p.tau * (1 - Math.exp(-age / p.tau));
+      const x = p.x0 + p.vx * decay + p.amp * Math.sin(p.fq * 6.283 * age + p.ph);
+      const y = p.y0 + p.vy * decay - p.buoy * age;
+      const envA = smooth(0, 0.07, age) * (1 - smooth(p.life * 0.5, p.life, age));
+      const tw = p.type === 2 ? 1 : 0.5 + 0.5 * Math.sin(p.tw * 6.283 * age + p.tph);
+      const a = p.alpha * envA * (p.type === 2 ? 1 : 0.35 + 0.65 * tw) * fade;
+      if (a < 0.01) continue;
+      const sp = sprites[p.tintI];
+      c.globalAlpha = Math.min(1, a);
+      if (p.type === 0) { const s = p.size * 7 * (0.8 + 0.3 * tw); c.drawImage(sp.glow, x - s / 2, y - s / 2, s, s); }
+      else if (p.type === 1) { const s = p.size * (0.6 + 0.6 * tw); c.drawImage(sp.star, x - s, y - s, s * 2, s * 2); }
+      else if (p.type === 2) { const s = p.size; c.drawImage(sp.bokeh, x - s / 2, y - s / 2, s, s); }
+      else { const s = p.size * 5; c.drawImage(sp.glow, x - s / 2, y - s / 2, s, s); }
+    }
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
+  }
+
+  /* ---------- lighting helpers ---------- */
+  const Lk = (() => { const v = [-0.25, 0.45, 0.86]; const m = Math.hypot(...v); return v.map((x) => x / m); })();
+  const faceShade = (aDeg) => { // how much a face rotated by aDeg about the spine turns away from the key light (two-sided)
+    const a = aDeg * DEG; const b = Math.abs(Math.sin(a) * Lk[0] + Math.cos(a) * Lk[2]);
+    return clamp01((Lk[2] - b) / Lk[2]);
+  };
+
+  /* ---------- homography: element rect (w x h) -> screen quad ---------- */
+  function homography(w, h, Q) {
+    const [x0, y0] = Q[0], [x1, y1] = Q[1], [x2, y2] = Q[2], [x3, y3] = Q[3];
+    const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3;
+    const dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+    const den = dx1 * dy2 - dx2 * dy1 || 1e-9;
+    const gg = (dx3 * dy2 - dx2 * dy3) / den, hh = (dx1 * dy3 - dx3 * dy1) / den;
+    const a = x1 - x0 + gg * x1, b = x3 - x0 + hh * x3, c = x0;
+    const dd = y1 - y0 + gg * y1, e = y3 - y0 + hh * y3, f = y0;
+    return {
+      css: `matrix3d(${a / w},${dd / w},0,${gg / w},${b / h},${e / h},0,${hh / h},0,0,1,0,${c},${f},0,1)`,
+      map(x, y) { const u = x / w, v = y / h, z = gg * u + hh * v + 1; return [(a * u + b * v + c) / z, (dd * u + e * v + f) / z]; },
+    };
+  }
+
+  // While the paper is morphing, its hairline rules are drawn on the canvas in screen space:
+  // a GPU-minified 1px CSS line breaks up into dashes, a canvas line stays clean at any scale.
+  function drawPaperLines(H, alpha, ruleK) {
+    const c = lctx, P = g.paper, R = g.target;
+    c.save();
+    c.globalAlpha = alpha;
+    c.lineWidth = 1;
+    c.strokeStyle = `rgba(92,108,160,${lerp(0.19, 0.26, ruleK).toFixed(3)})`;
+    c.beginPath();
+    for (let y = P.hdr + P.gap - 0.5; y < R.h; y += P.gap) {
+      const a = H.map(P.padx, y), b = H.map(R.w - P.padx, y);
+      c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]);
+    }
+    c.stroke();
+    const a = H.map(P.padx, P.hdr - 0.75), b = H.map(R.w - P.padx, P.hdr - 0.75);
+    const gr = c.createLinearGradient(a[0], a[1], b[0], b[1]);
+    gr.addColorStop(0, 'rgba(240,135,79,.75)'); gr.addColorStop(0.55, 'rgba(240,135,79,.38)'); gr.addColorStop(1, 'rgba(240,135,79,.08)');
+    c.strokeStyle = gr; c.lineWidth = 1.4;
+    c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
+    c.restore();
+  }
+
+  /* ---------- cached style writes: idle elements are never touched (no needless repaints) ---------- */
+  function setO(node, v) {
+    const str = v < 0.004 ? '0' : v > 0.996 ? '1' : v.toFixed(2);
+    if (node._o !== str) { node._o = str; node.style.opacity = str; }
+  }
+  function setT(node, v) { if (node._t !== v) { node._t = v; node.style.transform = v; } }
+  function setV(node, on) { const v = on ? 'visible' : 'hidden'; if (node._v !== v) { node._v = v; node.style.visibility = v; } }
+
+  /* ==========================================================================
+     render(t): the whole visual state at time t
+     ========================================================================== */
+  function render(t) {
+    cur = t;
+    ctx2d.clearRect(0, 0, g.vw, g.vh);
+    lctx.clearRect(0, 0, g.vw, g.vh);
+    if (reduced) return renderReduced(t);
+    const s = frameState(t);
+
+    setT(el.scene, s.sceneStr);
+    setT(el.book, s.bookStr);
+
+    // cover
+    setT(el.cover, `translate3d(0px,0px,${s.coverZ}px) rotateY(${s.theta}deg)`);
+    const th = s.theta * DEG;
+    const outB = Math.max(0, Math.sin(th) * Lk[0] + Math.cos(th) * Lk[2]);
+    setO(el.outShade, clamp01((Lk[2] - outB) / Lk[2]) * 0.75);
+    setT(el.sheen, `translate3d(${lerp(35, 250, eo3(clamp01(t / 900)))}%,0,0)`);
+    const inFacing = clamp01(-Math.sin(th));                     // inner face turned toward the pages
+    setO(el.inLit, Math.max(inFacing * s.light, s.leak * inFacing * 0.3) * 0.85);
+    setO(el.inShade, faceShade(s.theta) * 0.5 + (1 - s.ec) * 0.12);
+
+    // shadow & floor
+    const eo = s.ec;
+    setT(el.shadow, `translate3d(${-g.W * eo}px,0px,-0.6px) scale(${1 + eo},1)`);
+    setO(el.floor, s.light * 0.95 + s.leak * 0.15);
+
+    // pages glow
+    const pageGlow = Math.min(1, s.leak * 0.35 + s.light * 0.85);
+    const litM = pageGlow * 0.7, litA = pageGlow * 0.85;
+    setO(el.blockLit, litM);
+    setO(el.blockLitAdd, litA);
+    setO(el.edgeLit, Math.max(s.leak * 0.35 * (1 - s.ec), 0) + s.light * 0.12);
+
+    // leaves: riffle, dense in the middle (accelerate then decelerate)
+    for (let i = 0; i < leaves.length; i++) {
+      const st = TL.riffleStart + TL.riffleSpan * eioSine(i / (LEAVES - 1));
+      const p = eio2(clamp01((t - st) / TL.leafDur));
+      const zR = g.zTop + 0.25 * (LEAVES - i), zL = g.B + 0.5 * (i + 1);
+      const hz = lerp(zR, zL, smooth(0.1, 0.9, p));
+      const L = leaves[i];
+      setT(L.leaf, `translate3d(0px,${g.ov}px,${hz}px)`);
+      const bend = Math.sin(Math.PI * p) * (58 + 10 * ((i * 7) % 3));   // free edge trails behind
+      const flight = Math.sin(Math.PI * p);
+      let prev = 0;
+      for (let k = 0; k < SEGS; k++) {
+        const A = -180 * p + bend * Math.pow(k / (SEGS - 1), 1.4);
+        const rel = A - prev; prev = A;
+        const sg = L.segs[k];
+        setT(sg.seg, k === 0 ? `rotateY(${rel}deg)` : `translate3d(${g.Wp / SEGS}px,0px,0px) rotateY(${rel}deg)`);
+        setO(sg.shade, faceShade(A) * 0.42);
+        setO(sg.lit, litM * (0.85 + 0.15 * flight));
+        setO(sg.litAdd, litA * (0.8 + 0.6 * flight));
+      }
+    }
+
+    // light (2D overlay anchored on the projected spread)
+    const lx = lerp(g.Wp * 0.5, g.Wp * 0.4, s.ec) * (1 - s.pagesL);
+    const [ox, oy] = project(s.M, lx, g.H / 2, g.zTop);
+    const lightA = Math.max(s.light, s.leak * 0.28 * clamp01(s.ec * 3));
+    setO(el.light, lightA);
+    setT(el.light, `translate3d(${ox}px,${oy}px,0px) scale(${s.zm})`);
+    const rise = eo3(clamp01((t - TL.light[0]) / 700));
+    const tt = t / 1000;
+    for (const b of beams) {
+      const local = eo3(clamp01((t - TL.light[0] - b.delay) / 650));
+      const fl = 0.7 + 0.3 * Math.sin(tt * b.f * 6.283 + b.ph);
+      setO(b.el, b.base * local * fl);
+      const bx = b.bx < 0 ? b.bx * lerp(0.25, 1, s.pagesL) : b.bx * lerp(0.7, 1, s.pagesL);
+      setT(b.el, `translate3d(${bx}px,0px,0px) rotate(${b.ang + Math.sin(tt * 0.9 + b.ph) * 2.5}deg) scale(${0.85 + 0.15 * local},${0.1 + 0.9 * local})`);
+    }
+    setT(el.halo, `scale(${0.55 + 0.45 * rise})`);
+    setO(el.fan, rise * 0.9);
+    setT(el.fan, `rotate(${Math.sin(tt * 0.8) * 3}deg) scale(1,${0.3 + 0.7 * rise})`);
+    setO(el.core, 0.8 + 0.2 * Math.sin(tt * 7.1));
+    setT(el.core, `scale(${lerp(0.55, 1, s.pagesL)},1)`);
+
+    // page lift -> writing paper
+    const u = span(TL.lift, t);
+    let paperH = null;
+    if (t < TL.lift[0]) {
+      setV(el.paper, false);
+      setO(el.dim, 0);
+    } else {
+      const { Q, light: liftLight } = g.lift;
+      const R = g.target;
+      const RR = [[R.x, R.y], [R.x + R.w, R.y], [R.x + R.w, R.y + R.h], [R.x, R.y + R.h]];
+      const eR = eio3(clamp01(u * 1.1)), eL = eio3(clamp01(u * 1.1 - 0.1));
+      const arch = Math.sin(Math.PI * eio3(u)) * g.vh * 0.035;
+      const C = Q.map((qq, idx) => {
+        const e = idx === 1 || idx === 2 ? eR : eL;
+        return [lerp(qq[0], RR[idx][0], e), lerp(qq[1], RR[idx][1], e) - arch];
+      });
+      const done = u >= 1;
+      paperH = done ? null : homography(R.w, R.h, C);
+      setV(el.paper, true);
+      setT(el.paper, done ? 'none' : paperH.css);
+      setO(el.paper, smooth(0, 0.1, u));
+      setO(el.paperRules, done ? 1 : 0); setO(el.paperHdr, done ? 1 : 0);
+      const fadeGlow = 1 - smooth(0, 0.7, u);
+      setO(el.paperGutter, 1 - smooth(0.05, 0.65, u));
+      setO(el.paperLit, liftLight * 0.85 * 0.7 * fadeGlow);
+      setO(el.paperLitAdd, liftLight * 0.85 * 0.85 * fadeGlow);
+      setO(el.dim, smooth(0, 0.85, u) * 0.6);
+    }
+    const txt = smooth(TL.text[0], TL.text[1], t);
+    setO(el.paperHead, txt);
+    setO(el.paperBody, txt);
+
+    // ui
+    setO(el.soundBtn, smooth(0, 220, t) * (1 - smooth(TL.text[0], TL.end, t)) * 0.9);
+    setV(el.soundBtn, t < TL.end);
+    // once the paper covers everything, stop compositing the 3D scene
+    const live = t < TL.end;
+    setV(el.stage, live); setV(el.light, live); setV(el.canvas, live);
+
+    if (paperH) drawPaperLines(paperH, smooth(0, 0.1, u), smooth(0.2, 1, u));
+    drawParticles(t, s.fxOut * (1 - smooth(0.1, 0.6, u)));
+  }
+
+  function renderReduced(t) {
+    const k = smooth(0, TL.reducedEnd, t);
+    setV(el.paper, true);
+    setT(el.paper, 'none');
+    setO(el.paper, k);
+    setO(el.paperGutter, 0); setO(el.paperLit, 0); setO(el.paperLitAdd, 0);
+    setO(el.paperRules, 1); setO(el.paperHdr, 1);
+    setO(el.paperHead, k); setO(el.paperBody, k);
+    setV(el.soundBtn, false);
+  }
+
+  /* ---------- sound preference (persisted, user can turn it off) ---------- */
+  const SOUND_KEY = 'diary.introSound';
+  function soundOn() {
+    if (options.sound === false) return false;
+    try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch (e) { return true; }
+  }
+  function setSound(on) {
+    try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch (e) {}
+    el.soundBtn.setAttribute('aria-pressed', String(on));
+    if (!on && sfx) { sfx.stop(0.15); sfx = null; }
+  }
+  el.soundBtn.setAttribute('aria-pressed', String(soundOn()));
+  const stopEv = (e) => e.stopPropagation();
+  el.soundBtn.addEventListener('pointerdown', stopEv);
+  el.soundBtn.addEventListener('click', (e) => { e.stopPropagation(); setSound(!soundOn()); });
+  el.replayBtn.addEventListener('pointerdown', stopEv);
+  el.replayBtn.addEventListener('click', (e) => { e.stopPropagation(); play(); });
+
+  function startSound() {
+    if (!soundOn() || reduced) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audio = audio || new AC();
+      if (audio.state === 'suspended') audio.resume().catch(() => {});
+      sfx = playIntroSound(audio);
+    } catch (e) { sfx = null; }
+  }
+
+  /* ---------- playback ---------- */
+  function cancel() { if (raf) cancelAnimationFrame(raf); raf = 0; }
+  function finish() {
+    cancel(); playing = false;
+    root.classList.add('is-done');
+    if (options.onDone) options.onDone();
+  }
+  function tick(now) {
+    const t = now - t0;
+    if (t >= END) { render(END); finish(); return; }
+    render(t);
+    raf = requestAnimationFrame(tick);
+  }
+  function play() {
+    cancel(); if (sfx) { sfx.stop(); sfx = null; }
+    root.classList.remove('is-done', 'is-capture');
+    playing = true;
+    render(0);
+    startSound();
+    t0 = performance.now();
+    raf = requestAnimationFrame(tick);
+  }
+  function skip() {
+    if (!playing) return;
+    if (sfx) { sfx.stop(0.2); sfx = null; }
+    render(END); finish();
+  }
+  function seek(ms) {
+    cancel(); playing = false;
+    if (sfx) { sfx.stop(0.05); sfx = null; }
+    root.classList.add('is-capture');
+    root.classList.toggle('is-done', ms >= END);
+    if (document.getAnimations) document.getAnimations().forEach((a) => { try { a.pause(); a.currentTime = ms; } catch (e) {} });
+    render(Math.max(0, Math.min(END, ms)));
+  }
+
+  root.addEventListener('pointerdown', (e) => { if (playing) { e.preventDefault(); skip(); } });
+  window.addEventListener('keydown', (e) => { if (e.key === 'r' && root.classList.contains('is-done') && document.activeElement !== el.paperBody) play(); });
+  let rz = 0;
+  window.addEventListener('resize', () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(() => { layout(); if (!playing) render(cur); }); });
+
+  buildLeaves();
+  layout();
+  render(0);
+  return { play, seek, skip, get duration() { return END; }, get time() { return cur; } };
+}
+
+/* ---------- boot ---------- */
+const params = new URLSearchParams(location.search);
+const rmParam = params.get('rm');
+const intro = createDiaryIntro(document.getElementById('diaryIntro'), {
+  reducedMotion: rmParam == null ? undefined : rmParam === '1',
+  sound: params.get('sound') === '0' ? false : undefined,
+});
+window.diaryIntro = intro;
+window.__seek = (ms) => intro.seek(Number(ms) || 0);
+window.__duration = intro.duration;
+if (params.has('t')) intro.seek(Number(params.get('t')) || 0);
+else intro.play();
+})();
+</script>
+</body>
+</html>

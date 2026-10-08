@@ -215,7 +215,8 @@ export class PlannerStore {
     });
 
     if (this.remote) {
-      void this.pull().then(() => this.flush());
+      // 일정 등의 밀린 변경은 일정 받기만 기다린다 — 일기는 엔진이 켜질 때 스스로 받고 올린다(IndexedDB 가 느려도 안 막히게)
+      void this.pullTables().then(() => this.flushOutbox());
       this.subscribeRealtime();
       this.pullTimer = window.setInterval(() => void this.pull(), 60_000);
     }

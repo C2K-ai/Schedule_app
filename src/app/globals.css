@@ -448,3 +448,403 @@ select {
     animation: none;
   }
 }
+
+/* ───────── ☰ 메뉴의 DREAM(일기) — 은은한 무지개 글자. 밝은 테마는 진하게, 어두운 테마는 밝게 ───────── */
+.dream-rainbow {
+  /* 같은 무지개를 두 번 이어 붙여서, 반만 보이게 깔고 천천히 밀면 끊김 없이 돈다 */
+  background-image: linear-gradient(
+    90deg,
+    #7c3aed,
+    #2563eb,
+    #0e7490,
+    #15803d,
+    #b45309,
+    #c2410c,
+    #be185d,
+    #7c3aed,
+    #2563eb,
+    #0e7490,
+    #15803d,
+    #b45309,
+    #c2410c,
+    #be185d,
+    #7c3aed
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: dream-rainbow 18s linear infinite;
+}
+:is([data-theme="dark"], [data-palette="dusk"]) .dream-rainbow {
+  background-image: linear-gradient(
+    90deg,
+    #c4b5fd,
+    #93c5fd,
+    #67e8f9,
+    #86efac,
+    #fde68a,
+    #fdba74,
+    #f9a8d4,
+    #c4b5fd,
+    #93c5fd,
+    #67e8f9,
+    #86efac,
+    #fde68a,
+    #fdba74,
+    #f9a8d4,
+    #c4b5fd
+  );
+}
+@keyframes dream-rainbow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+/* ───────── 일기 — 크림색 줄 공책(여는 애니메이션의 마지막 장면과 같은 종이). 테마와 상관없이 늘 종이 ───────── */
+.diary-paper {
+  --paper-1: #fbf6ea;
+  --paper-2: #f1e5cd;
+  --ink: #3b2d1f;
+  --ink-mid: #7d6a50;
+  --ink-soft: #a8977c;
+  --rule: rgba(128, 98, 60, 0.26);
+  --hrule: rgba(184, 138, 62, 0.75);
+  --gold: #c4943f;
+  --gold-text: #b8893c;
+  --skin: rgba(120, 90, 50, 0.07);
+  --skin-line: rgba(120, 90, 50, 0.18);
+  --rust: #a2412b;
+  /* 줄 간격 = 글 줄 높이 — 쓴 글이 줄 위에 앉는다 */
+  --gap: 32px;
+  --diary-serif: "Cormorant Garamond", "Playfair Display", Didot, "Bodoni 72", "Libre Baskerville", Georgia, "Times New Roman", serif;
+  color-scheme: light;
+  color: var(--ink);
+  background:
+    radial-gradient(130% 90% at 35% 20%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(175deg, var(--paper-1), var(--paper-2));
+}
+@media (min-width: 700px) {
+  .diary-paper {
+    --gap: 36px;
+  }
+}
+/* 종이 가장자리가 살짝 바랜 느낌 */
+.diary-paper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 12vmin rgba(150, 110, 55, 0.14);
+}
+.diary-paper ::selection {
+  background: rgba(196, 148, 63, 0.3);
+  color: var(--ink);
+}
+.diary-paper :focus-visible {
+  outline-color: var(--gold);
+}
+
+/* 쓰는 칸 — 단 너비(폰 7% 여백, 넓으면 가운데 860px) + 아주 넓으면 오른쪽 여백에 '지난 일기' */
+.diary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0 7vw;
+}
+.diary-col {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+@media (min-width: 1400px) {
+  .diary-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 860px) minmax(0, 1fr);
+    padding: 0;
+  }
+  .diary-col {
+    grid-column: 2;
+  }
+  .diary-margin {
+    grid-column: 3;
+  }
+}
+
+.diary-eyebrow {
+  font-family: var(--diary-serif);
+  font-size: 12px;
+  letter-spacing: 0.32em;
+  color: var(--gold-text);
+  text-transform: uppercase;
+}
+.diary-date {
+  font-size: 23px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.diary-date span {
+  font-weight: 500;
+  color: #8a7558;
+  margin-left: 2px;
+}
+@media (min-width: 700px) {
+  .diary-date {
+    font-size: 27px;
+  }
+  .diary-eyebrow {
+    font-size: 13px;
+  }
+}
+.diary-hrule {
+  height: 1.5px;
+  background: linear-gradient(to right, var(--hrule), rgba(184, 138, 62, 0.35) 70%, rgba(184, 138, 62, 0));
+}
+
+/* 줄 공책 칸 — 줄은 칸과 같이 움직이고, 글은 줄 바로 위에 앉는다(여는 장면의 종이와 같은 값) */
+.diary-lines {
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow: hidden;
+  padding: calc(var(--gap) * 0.14) 0 0;
+  font-family: inherit;
+  font-size: 16.5px;
+  font-weight: 400;
+  line-height: var(--gap);
+  color: var(--ink);
+  caret-color: #d0773a;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--gap) - 1px),
+    var(--rule) calc(var(--gap) - 1px),
+    var(--rule) var(--gap)
+  );
+  background-attachment: local;
+}
+.diary-lines::placeholder {
+  color: var(--ink-soft);
+  opacity: 0.85;
+}
+.diary-lines:focus-visible {
+  outline: 0;
+}
+@media (min-width: 700px) {
+  .diary-lines {
+    font-size: 18px;
+  }
+}
+/* 한 줄 높이에 맞춘 줄(기분 줄·그날 기록) */
+.diary-line {
+  min-height: var(--gap);
+  border-bottom: 1px solid var(--rule);
+}
+
+/* 종이 위 단추·칸·카드 */
+.diary-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--skin-line);
+  background: color-mix(in oklab, var(--paper-1) 82%, transparent);
+  color: #8a6f4c;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s, color 0.15s;
+}
+.diary-icon:hover {
+  background: #f4ead6;
+  color: var(--ink);
+}
+.diary-nav {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  color: #8a6f4c;
+  transition: background 0.15s, color 0.15s;
+}
+.diary-nav:hover:not(:disabled) {
+  background: var(--skin);
+  color: var(--ink);
+}
+.diary-nav:disabled {
+  opacity: 0.3;
+}
+.diary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--skin-line);
+  background: var(--skin);
+  color: #6f5a3e;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.diary-btn:hover:not(:disabled) {
+  background: rgba(120, 90, 50, 0.13);
+  color: var(--ink);
+}
+.diary-btn.is-small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+/* 오른쪽 위 떠 있는 단추 줄(목록) — 동그란 단추와 같은 높이, 글 위에 떠도 읽히게 */
+.diary-btn.is-bar {
+  height: 38px;
+  background: color-mix(in oklab, var(--paper-1) 82%, transparent);
+  backdrop-filter: blur(6px);
+}
+.diary-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper-1);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px -8px rgba(59, 45, 31, 0.6);
+  transition: filter 0.15s;
+}
+.diary-primary:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+.diary-primary.is-danger {
+  background: var(--rust);
+}
+.diary-primary.is-small {
+  height: 36px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+.diary-primary:disabled,
+.diary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.diary-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 90, 50, 0.22);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.diary-input::placeholder {
+  color: var(--ink-soft);
+}
+.diary-input:focus {
+  border-color: var(--gold);
+  background: rgba(255, 255, 255, 0.85);
+}
+/* 찾기 칸 — 왼쪽에 돋보기 */
+.diary-input.is-search {
+  height: 40px;
+  padding-left: 36px;
+  padding-right: 36px;
+  font-size: 14px;
+}
+.diary-card {
+  border-radius: 20px;
+  border: 1px solid rgba(120, 90, 50, 0.16);
+  background: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 10px 30px -18px rgba(90, 60, 25, 0.35);
+}
+.diary-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  text-align: left;
+  transition: background 0.15s;
+}
+.diary-row:hover {
+  background: var(--skin);
+}
+/* 두 줄(날짜·기분 / 첫 줄) — 좁은 여백 칸에서도 글이 보이게 */
+.diary-row.is-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 8px 12px;
+}
+.diary-row.is-on {
+  background: rgba(196, 148, 63, 0.16);
+}
+
+/* 지난 일기 서랍(폰·좁은 화면) */
+.diary-panel-in {
+  animation: diary-panel-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes diary-panel-in {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* 일기 여닫기 임시 연출(DiaryIntro) — 어둠이 걷히거나 내려앉는다 */
+.diary-veil-out {
+  animation: diary-veil-out 0.35s ease-out both;
+}
+@keyframes diary-veil-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.diary-veil-in {
+  animation: diary-veil-in 0.35s ease-in both;
+}
+@keyframes diary-veil-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dream-rainbow,
+  .diary-panel-in {
+    animation: none;
+  }
+}

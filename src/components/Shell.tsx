@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookHeart,
   Brain,
   BriefcaseBusiness,
   HardDrive,
@@ -40,6 +41,7 @@ import { BriefingEngine } from "./Briefing";
 import { CalendarTab } from "./CalendarTab";
 import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
+import { DiarySheet } from "./DiarySheet";
 import { EnforcementModal, OverdueSiren, PostponeDialog, RescheduleDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
 import { AutoFullscreen, TopBar } from "./Header";
@@ -92,13 +94,16 @@ function readTab(): Tab {
 function MenuItem({
   icon,
   label,
+  ariaLabel,
   n,
   active,
   onClick,
   dot,
 }: {
   icon?: ReactNode;
-  label: string;
+  label: ReactNode;
+  /** 글자 대신 그림 같은 라벨일 때 읽어 줄 이름 */
+  ariaLabel?: string;
   n?: number;
   active?: boolean;
   onClick: () => void;
@@ -107,6 +112,8 @@ function MenuItem({
   return (
     <button
       onClick={onClick}
+      aria-label={ariaLabel}
+      title={ariaLabel}
       className={cx(
         "flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold transition",
         active ? "bg-accent/15 text-accent-text" : "text-fg hover:bg-surface-2",
@@ -134,11 +141,13 @@ function MenuPanel({
   onFilter,
   onCategories,
   onCareer,
+  onDiary,
 }: {
   filter: TaskFilter;
   onFilter: (f: TaskFilter) => void;
   onCategories: () => void;
   onCareer: () => void;
+  onDiary: () => void;
 }) {
   const p = usePlanner();
   const isAdmin = useIsAdmin(p.session.userId);
@@ -177,6 +186,13 @@ function MenuPanel({
       <MenuItem icon={<Plus size={17} />} label="새로 만들기" onClick={onCategories} />
 
       <MenuHeading>기록</MenuHeading>
+      {/* 일기 — 이름은 무지개빛 DREAM */}
+      <MenuItem
+        icon={<BookHeart size={17} />}
+        label={<span className="dream-rainbow text-[14px] font-extrabold tracking-[0.22em]">DREAM</span>}
+        ariaLabel="DREAM 일기"
+        onClick={onDiary}
+      />
       <MenuItem icon={<Repeat size={17} />} label="습관" onClick={() => p.openSheet("habits")} />
       <MenuItem icon={<BriefcaseBusiness size={17} />} label="커리어 기록" onClick={onCareer} />
       <MenuItem icon={<HardDrive size={17} />} label="드라이브" onClick={() => p.openSheet("drive")} />
@@ -277,7 +293,15 @@ export function Shell() {
   const addNew = () => {
     p.openEditor({ start: new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN), categoryId: filter.kind === "category" ? filter.id : undefined });
   };
-  const menu = <MenuPanel filter={filter} onFilter={pickFilter} onCategories={() => setCatEdit(true)} onCareer={() => (setCareer(true), setDrawer(false))} />;
+  const menu = (
+    <MenuPanel
+      filter={filter}
+      onFilter={pickFilter}
+      onCategories={() => setCatEdit(true)}
+      onCareer={() => (setCareer(true), setDrawer(false))}
+      onDiary={() => (p.openSheet("diary"), setDrawer(false))}
+    />
+  );
 
   return (
     <>
@@ -446,6 +470,8 @@ export function Shell() {
       <SettingsSheet />
       <AdminSheet />
       <DriveSheet />
+      {/* 일기 — 화면 가득 덮는 종이(다른 창보다 위) */}
+      <DiarySheet />
       <VoiceAdd />
       <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.activityEditor || p.reschedule || p.postpone)} />
       <AlarmOverlay />

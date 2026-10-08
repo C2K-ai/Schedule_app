@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Diary Intro</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0920; overflow: hidden; }
+  body { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+
+  /* ───────── Diary intro ─────────
+     Every moving part is driven by render(t) in the script (transform / opacity only),
+     so the whole animation is a pure function of time and can be seeked exactly. */
+  .diary-intro {
+    /* palette — swap these for the app theme tokens */
+    --di-sky-top: #2a1f5c;
+    --di-sky-mid: #161137;
+    --di-sky-low: #0b0920;
+    --di-accent: #ffa36c;
+    --di-accent-ink: #e0864f;
+    --di-leather-hi: #2e3480;
+    --di-leather: #1d2058;
+    --di-leather-lo: #101138;
+    --di-leather-edge: #0a0b26;
+    --di-gold-lo: #8a672b;
+    --di-gold: #d6b167;
+    --di-gold-hi: #fbe9b4;
+    --di-paper: #f7efdf;
+    --di-rule: rgba(96, 108, 152, 0.26);
+    --di-ink: #2b2542;
+    --di-ink-soft: rgba(43, 37, 66, 0.46);
+    --di-endpaper: #1a1946;
+    --di-shadow-rgb: 10, 7, 30;
+    --di-light-rgb: 255, 204, 128;
+
+    position: fixed; inset: 0; overflow: hidden;
+    background: var(--di-sky-low);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "WenQuanYi Zen Hei", system-ui, sans-serif;
+    contain: strict;
+    cursor: pointer;
+  }
+  .diary-intro.is-done { cursor: text; }
+
+  /* ── backdrop ── */
+  .di-sky {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 70% at 50% -6%, var(--di-sky-top) 0%, var(--di-sky-mid) 48%, var(--di-sky-low) 84%);
+  }
+  .di-stars {
+    position: absolute; inset: 0; opacity: .5;
+    background-image:
+      radial-gradient(1px 1px at 23px 41px, #fff 50%, transparent 51%),
+      radial-gradient(1px 1px at 131px 97px, #e9e3ff 50%, transparent 51%),
+      radial-gradient(1.4px 1.4px at 77px 151px, #fff 50%, transparent 51%),
+      radial-gradient(1px 1px at 197px 13px, #fff 50%, transparent 51%),
+      radial-gradient(1.2px 1.2px at 251px 203px, #ffe9d2 50%, transparent 51%);
+    background-size: 173px 211px, 241px 157px, 307px 263px, 211px 293px, 331px 239px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0,0,0,.6) 45%, transparent 75%);
+            mask-image: linear-gradient(to bottom, #000 0%, rgba(0,0,0,.6) 45%, transparent 75%);
+  }
+
+  /* ── 3D stage ── */
+  .di-stage { position: absolute; inset: 0; overflow: hidden; }
+  .di-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-style: preserve-3d; transform-origin: 0 0; }
+  .w3 { position: absolute; left: 0; top: 0; transform-origin: 0 0; box-sizing: border-box; }
+  .p3 { transform-style: preserve-3d; }
+
+  .di-floor {
+    width: calc(var(--W) * 4.6); height: calc(var(--H) * 3.2);
+    background: radial-gradient(closest-side, rgba(122, 108, 214, .40), rgba(90, 76, 176, .17) 50%, rgba(84, 70, 170, 0) 100%);
+  }
+  .di-floor-warm {
+    width: calc(var(--W) * 4.2); height: calc(var(--H) * 2.6); opacity: 0;
+    background: radial-gradient(closest-side, rgba(var(--di-light-rgb), .42), rgba(var(--di-light-rgb), .13) 42%, rgba(var(--di-light-rgb), 0) 100%);
+  }
+  .di-cshadow {
+    width: var(--W); height: var(--H); border-radius: 6px;
+    background: rgba(var(--di-shadow-rgb), .82);
+    box-shadow: 0 0 calc(var(--W) * .075) calc(var(--W) * .03) rgba(var(--di-shadow-rgb), .62);
+  }
+
+  /* boards & page blocks */
+  .di-board {
+    width: var(--W); height: var(--H); border-radius: 2px 7px 7px 2px;
+    background: linear-gradient(160deg, var(--di-leather) 0%, var(--di-leather-lo) 70%);
+  }
+  .di-spine { width: calc(var(--o) * 2 + 2px); height: var(--H); background: var(--di-leather-lo); }
+  .di-overlay > i.d { background: rgba(var(--di-shadow-rgb), 1); }
+  .di-board-edge {
+    width: var(--W); height: var(--b); border-radius: 0 0 3px 0;
+    background: linear-gradient(to bottom, #1a1c4c, var(--di-leather-edge));
+  }
+  .di-pages-edge {
+    width: var(--PW); height: var(--tp);
+    background:
+      linear-gradient(to bottom, rgba(255,255,255,.0), rgba(60, 40, 30, .22)),
+      repeating-linear-gradient(to bottom, #f3e9d4 0 1.1px, #cdbd9d 1.1px 1.9px);
+  }
+
+  /* paper with rules (rule geometry is matched to the final writing sheet) */
+  .di-paper {
+    background-color: var(--di-paper);
+    background-image:
+      linear-gradient(var(--di-paper), var(--di-paper)),
+      linear-gradient(to bottom, transparent calc(100% - 1px), var(--di-rule) calc(100% - 1px));
+    background-size: 100% var(--cut), 100% var(--gap);
+    background-position: 0 0, 0 var(--off);
+    background-repeat: no-repeat, repeat-y;
+  }
+  .di-page { width: var(--PW); height: var(--PH); }
+  .di-overlay { width: var(--PW); height: var(--PH); pointer-events: none; }
+  .di-overlay > i { position: absolute; inset: 0; opacity: 0; }
+  .di-ovr-r > .g { background: linear-gradient(to right, rgba(var(--di-shadow-rgb), .42) 0%, rgba(var(--di-shadow-rgb), .14) 5%, rgba(var(--di-shadow-rgb), .04) 14%, rgba(var(--di-shadow-rgb), 0) 24%, rgba(var(--di-shadow-rgb), 0) 94%, rgba(var(--di-shadow-rgb), .07) 100%); opacity: 1; }
+  .di-ovr-l > .g { background: linear-gradient(to left,  rgba(var(--di-shadow-rgb), .42) 0%, rgba(var(--di-shadow-rgb), .14) 5%, rgba(var(--di-shadow-rgb), .04) 14%, rgba(var(--di-shadow-rgb), 0) 24%, rgba(var(--di-shadow-rgb), 0) 94%, rgba(var(--di-shadow-rgb), .07) 100%); opacity: 1; }
+  .di-ovr-r > .c { background: linear-gradient(to right, rgba(var(--di-shadow-rgb), .55), rgba(var(--di-shadow-rgb), .22) 38%, rgba(var(--di-shadow-rgb), 0) 80%); }
+  .di-ovr-l > .c { background: linear-gradient(to left,  rgba(var(--di-shadow-rgb), .55), rgba(var(--di-shadow-rgb), .22) 38%, rgba(var(--di-shadow-rgb), 0) 80%); }
+  .di-ovr-r > .w { background: radial-gradient(70% 62% at 0% 46%, rgba(255, 246, 222, .9), rgba(var(--di-light-rgb), .42) 34%, rgba(var(--di-light-rgb), 0) 100%); }
+  .di-ovr-l > .w { background: radial-gradient(70% 62% at 100% 46%, rgba(255, 246, 222, .9), rgba(var(--di-light-rgb), .42) 34%, rgba(var(--di-light-rgb), 0) 100%); }
+  .di-lift-shadow {
+    width: var(--PW); height: var(--PH); opacity: 0;
+    background: rgba(var(--di-shadow-rgb), .5);
+    box-shadow: 0 0 calc(var(--PW) * .06) calc(var(--PW) * .02) rgba(var(--di-shadow-rgb), .45);
+  }
+
+  /* riffling leaves: chains of thin strips that bend into a curl */
+  .di-strip { position: absolute; top: 0; left: var(--sw); width: var(--sw); height: var(--PH); transform-style: preserve-3d; transform-origin: 0 0; }
+  .di-leaf { width: var(--sw); height: var(--PH); visibility: hidden; }
+  .di-sface {
+    position: absolute; left: 0; top: 0; width: calc(var(--sw) + var(--ov)); height: var(--PH);
+    background-color: var(--di-paper);
+    background-image:
+      linear-gradient(to right, rgba(var(--di-shadow-rgb), var(--sl, 0)), rgba(var(--di-shadow-rgb), var(--sr, 0))),
+      linear-gradient(to right, rgba(var(--di-light-rgb), var(--wl, 0)), rgba(var(--di-light-rgb), var(--wr, 0))),
+      linear-gradient(var(--di-paper), var(--di-paper)),
+      linear-gradient(to bottom, transparent calc(100% - 1px), var(--di-rule) calc(100% - 1px));
+    background-size: 100% 100%, 100% 100%, 100% var(--cut), 100% var(--gap);
+    background-position: 0 0, 0 0, 0 0, 0 var(--off);
+    background-repeat: no-repeat, no-repeat, no-repeat, repeat-y;
+  }
+  .di-sface.is-tip { width: var(--sw); box-shadow: inset -1px 0 0 rgba(150, 128, 96, .45); }
+
+  /* cover */
+  .di-cover { width: var(--W); height: var(--H); transform-style: preserve-3d; }
+  .di-cface {
+    position: absolute; left: 0; top: 0; width: var(--W); height: var(--H);
+    border-radius: 2px 7px 7px 2px; overflow: hidden;
+    backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    transform-origin: 50% 50%;
+  }
+  .di-cface > * { position: absolute; inset: 0; }
+  .di-cover-front { background: var(--di-leather); box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); isolation: isolate; }
+  .di-leather {
+    background:
+      radial-gradient(90% 70% at 28% 22%, rgba(120, 130, 255, .16), rgba(120, 130, 255, 0) 60%),
+      radial-gradient(120% 90% at 80% 100%, rgba(0, 0, 0, .35), rgba(0, 0, 0, 0) 60%),
+      linear-gradient(155deg, var(--di-leather-hi) 0%, var(--di-leather) 42%, var(--di-leather-lo) 100%);
+  }
+  .di-grain { background-image: var(--grain); background-size: 180px 180px; mix-blend-mode: overlay; opacity: .55; }
+  .di-mottle { background-image: var(--mottle); background-size: 100% 100%; mix-blend-mode: soft-light; opacity: .7; }
+  .di-hinge {
+    left: calc(var(--W) * .045) !important; right: auto !important; width: calc(var(--W) * .03);
+    background: linear-gradient(to right, rgba(0,0,0,0), rgba(0,0,0,.42) 38%, rgba(255,255,255,.07) 62%, rgba(255,255,255,0));
+  }
+  .di-edgevig { box-shadow: inset 0 0 calc(var(--W) * .05) rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08); border-radius: inherit; }
+  .di-art {
+    -webkit-mask-image: var(--art); mask-image: var(--art);
+    -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  }
+  .di-gold-deboss { background: rgba(0, 0, 0, .7); transform: translate(-.6px, -.9px); }
+  .di-gold-lip { background: rgba(255, 255, 255, .16); transform: translate(.5px, .9px); }
+  .di-gold {
+    background:
+      linear-gradient(118deg, var(--di-gold-lo) 0%, var(--di-gold-hi) 17%, var(--di-gold) 31%, var(--di-gold-lo) 46%, var(--di-gold-hi) 61%, var(--di-gold) 77%, var(--di-gold-lo) 100%);
+  }
+  .di-sheen-band {
+    left: 0 !important; top: -20% !important; width: 26%; height: 140%; right: auto !important; bottom: auto !important;
+    background: linear-gradient(90deg, rgba(255, 248, 225, 0) 0%, rgba(255, 246, 220, .55) 35%, rgba(255, 252, 238, 1) 50%, rgba(255, 246, 220, .55) 65%, rgba(255, 248, 225, 0) 100%);
+    transform: translateX(-200%) rotate(16deg);
+  }
+  .di-gloss-band {
+    left: 0 !important; top: -30% !important; width: 70%; height: 160%; right: auto !important; bottom: auto !important;
+    background: linear-gradient(90deg, rgba(190, 200, 255, 0) 0%, rgba(190, 200, 255, .11) 50%, rgba(190, 200, 255, 0) 100%);
+    transform: translateX(-200%) rotate(16deg);
+  }
+  .di-cover-back {
+    background:
+      radial-gradient(circle at 50% 50%, rgba(214, 177, 103, .22) 0 .8px, transparent 1.4px) 0 0 / 22px 22px,
+      radial-gradient(circle at 50% 50%, rgba(214, 177, 103, .12) 0 .6px, transparent 1.2px) 11px 11px / 22px 22px,
+      linear-gradient(160deg, #23215a, var(--di-endpaper) 60%, #121133);
+    box-shadow: inset 0 0 0 calc(var(--o) * 1.15) var(--di-leather-lo), inset 0 0 calc(var(--W) * .06) rgba(0,0,0,.5);
+  }
+  .di-cshade { background: rgba(var(--di-shadow-rgb), 1); opacity: 0; }
+  .di-cover-edge-b { width: var(--W); height: var(--b); background: linear-gradient(to bottom, #252866, var(--di-leather-edge)); border-radius: 0 0 4px 0; }
+  .di-cover-edge-r { width: var(--b); height: var(--H); background: linear-gradient(to right, #2a2d6d, var(--di-leather-edge)); }
+
+  /* ── writing sheet (screen space) ── */
+  .di-dim { position: absolute; inset: 0; background: var(--di-sky-low); opacity: 0; pointer-events: none; }
+  .di-sheet {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    overflow: hidden; transform-origin: 0 0; visibility: hidden; will-change: transform, opacity;
+  }
+  .di-sheet-inner { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; will-change: transform; }
+  .di-sheet-paper {
+    position: absolute; inset: 0;
+    background-color: var(--di-paper);
+    background-image:
+      linear-gradient(var(--di-paper), var(--di-paper)),
+      linear-gradient(to bottom, transparent calc(100% - 1px), var(--di-rule) calc(100% - 1px));
+    background-size: 100% var(--line-top), 100% var(--line-gap);
+    background-position: 0 0, 0 var(--sh-off);
+    background-repeat: no-repeat, repeat-y;
+  }
+  .di-sheet-tone {
+    position: absolute; inset: 0; opacity: 0;
+    background:
+      radial-gradient(140% 100% at 50% 35%, rgba(255,255,255,0) 55%, rgba(150, 110, 60, .10) 100%),
+      linear-gradient(to bottom, rgba(255, 250, 238, .5), rgba(255, 250, 238, 0) calc(var(--line-top) * .9));
+  }
+  .di-sheet-head {
+    position: absolute; left: var(--margin-x); right: var(--margin-x); top: 0; height: var(--line-top);
+    display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: calc(var(--line-gap) * .28);
+    box-sizing: border-box; opacity: 0;
+  }
+  .di-over {
+    font: 600 10.5px/1 "Cormorant Garamond", "Didot", "Bodoni 72", Georgia, "Liberation Serif", serif;
+    letter-spacing: .32em; color: #a8823f; margin-bottom: 8px;
+  }
+  .di-date {
+    font-family: "Nanum Myeongjo", "Noto Serif KR", "AppleMyungjo", "Apple SD Gothic Neo", "Noto Sans KR", "WenQuanYi Zen Hei", serif;
+    font-weight: 700; font-size: var(--date-size); line-height: 1.15; color: var(--di-ink); letter-spacing: -.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .di-dateline {
+    position: absolute; left: var(--margin-x); top: var(--line-top); height: 1.5px; width: var(--dateline-w);
+    background: linear-gradient(to right, var(--di-accent-ink), rgba(224, 134, 79, 0));
+    transform-origin: 0 50%; transform: scaleX(0);
+  }
+  .di-caret {
+    position: absolute; left: var(--margin-x); width: 2px; border-radius: 1px;
+    top: calc(var(--line-top) + var(--line-gap) * .32); height: calc(var(--line-gap) * .56);
+    background: var(--di-accent-ink); opacity: 0;
+  }
+  .is-done .di-caret { animation: di-blink 1.06s steps(1, end) infinite; }
+  @keyframes di-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+
+  .di-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  /* sound toggle */
+  .di-sound {
+    position: absolute; top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right));
+    width: 36px; height: 36px; border-radius: 50%; padding: 0; display: grid; place-items: center;
+    background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .12); color: rgba(240, 236, 255, .72);
+    cursor: pointer; transition: background .3s, border-color .3s, color .3s;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .di-sound svg { width: 18px; height: 18px; display: block; }
+  .di-sound .on { display: block; } .di-sound .off { display: none; }
+  .di-sound[aria-pressed="false"] .on { display: none; } .di-sound[aria-pressed="false"] .off { display: block; }
+  .di-sound.is-paper { background: transparent; border-color: rgba(43, 37, 66, .12); color: var(--di-ink-soft); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .di-sound:focus-visible { outline: 2px solid var(--di-accent); outline-offset: 2px; }
+  .di-probe { position: absolute; visibility: hidden; padding-top: env(safe-area-inset-top); }
+</style>
+</head>
+<body>
+<div class="diary-intro" id="diary-intro" role="img" aria-label="일기장이 열리는 애니메이션 (탭하면 건너뜀)">
+  <div class="di-sky"></div>
+  <div class="di-stars"></div>
+  <canvas class="di-fx di-fx-back"></canvas>
+  <div class="di-stage">
+    <div class="di-world">
+      <div class="w3 di-floor"></div>
+      <div class="w3 di-floor-warm"></div>
+      <div class="w3 di-cshadow" data-k="shadowR"></div>
+      <div class="w3 di-cshadow" data-k="shadowL" style="opacity:0"></div>
+      <div class="w3 di-spine" style="visibility:hidden"></div>
+      <div class="w3 di-board"></div>
+      <div class="w3 di-board-edge"></div>
+      <div class="w3 di-paper di-page" data-k="rtop"></div>
+      <div class="w3 di-pages-edge" data-k="redge"></div>
+      <div class="w3 di-paper di-page" data-k="ltop" style="visibility:hidden"></div>
+      <div class="w3 di-pages-edge" data-k="ledge" style="visibility:hidden"></div>
+      <div class="w3 di-lift-shadow"></div>
+      <div class="w3 di-paper di-page" data-k="lift"></div>
+      <div class="w3 di-overlay di-ovr-r"><i class="g"></i><i class="c"></i><i class="w"></i></div>
+      <div class="w3 di-overlay di-ovr-l" style="visibility:hidden"><i class="g"></i><i class="c"></i><i class="w"></i><i class="d"></i></div>
+      <!-- leaves are inserted here -->
+      <div class="w3 di-cover">
+        <div class="di-cface di-cover-front" data-k="cfront">
+          <div class="di-leather"></div>
+          <div class="di-mottle"></div>
+          <div class="di-grain"></div>
+          <div class="di-hinge"></div>
+          <div class="di-art di-gold-deboss"></div>
+          <div class="di-art di-gold-lip"></div>
+          <div class="di-art di-gold"></div>
+          <div class="di-edgevig"></div>
+        </div>
+        <div class="di-cface" data-k="cgloss"><div class="di-gloss-band"></div></div>
+        <div class="di-cface di-art" data-k="csheen"><div class="di-sheen-band"></div></div>
+        <div class="di-cface di-cshade" data-k="cfshade"></div>
+        <div class="di-cface di-cover-back" data-k="cback"></div>
+        <div class="di-cface di-cshade" data-k="cbshade"></div>
+        <div class="w3 di-cover-edge-b"></div>
+        <div class="w3 di-cover-edge-r"></div>
+      </div>
+    </div>
+  </div>
+  <div class="di-dim"></div>
+  <div class="di-sheet">
+    <div class="di-sheet-inner">
+      <div class="di-sheet-paper"></div>
+      <div class="di-sheet-tone"></div>
+      <div class="di-sheet-head">
+        <div class="di-over">DIARY</div>
+        <div class="di-date"></div>
+      </div>
+      <div class="di-dateline"></div>
+      <div class="di-caret"></div>
+    </div>
+  </div>
+  <canvas class="di-fx di-fx-front"></canvas>
+  <button class="di-sound" type="button" aria-pressed="true" aria-label="효과음 끄기" title="효과음">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity=".18"/>
+      <g class="on"><path d="M15.5 9a4.2 4.2 0 0 1 0 6"/><path d="M18 6.6a7.6 7.6 0 0 1 0 10.8"/></g>
+      <g class="off"><path d="M16 9.5l5 5M21 9.5l-5 5"/></g>
+    </svg>
+  </button>
+  <div class="di-probe"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ═════════════ timing (ms) — the whole choreography lives here ═════════════ */
+  const T = {
+    sheen:   [90, 620],     // gold-foil glint sweeps the title
+    cover:   [360, 1000],   // cover swings open around the spine (lands = thump)
+    pan:     [380, 1120],   // camera slides so the spread is centred
+    riffle:  { start: 740, span: 470, dur: 340, leaves: 8 },   // 촤라락
+    glowIn:  [800, 1180],
+    glowOut: [1560, 2240],
+    fxSpawn: [780, 1720],   // sparkles are born in this window
+    fxOut:   [1700, 2260],
+    lift:    [1480, 1960],  // right page rises to face the viewer
+    sheet:   [1925, 2365],  // page grows into the full writing sheet (camera is at 99.98% here → seamless)
+    head:    [2120, 2430],  // date + caret fade in
+    end:     2430,
+    reducedEnd: 420,
+  };
+  const STRIPS = 10;        // strips per riffling leaf (curl resolution)
+  const LEAF_CURL = 62;     // max bend (deg) along a leaf
+  const TILT_CLOSED = 42, TILT_OPEN = 38;
+  const PAGE_ASPECT = 0.72;
+  const LIGHT = norm([-0.38, -0.32, 0.87]);   // key light: upper-left, behind
+  const DEG = Math.PI / 180;
+
+  /* ═════════════ helpers ═════════════ */
+  function norm(v) { const l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; }
+  const clamp = (v, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const expLerp = (a, b, t) => Math.exp(lerp(Math.log(a), Math.log(b), t));
+  const seg = (t, a, b) => clamp((t - a) / (b - a));
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+  const E = {
+    inOutCubic: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
+    outCubic: (t) => 1 - Math.pow(1 - t, 3),
+    inOutSine: (t) => -(Math.cos(Math.PI * t) - 1) / 2,
+    outSine: (t) => Math.sin((t * Math.PI) / 2),
+    inOutQuart: (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2),
+    // heavy cover: slow lift, falls with gravity, lands with speed (thump)
+    cover: (t) => t * t * (2.2 - 1.2 * t),
+  };
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* leaf start times: slow → fast → slow (accelerate, then decelerate) */
+  const LEAF_START = Array.from({ length: T.riffle.leaves }, (_, i) => {
+    const u = i / (T.riffle.leaves - 1);
+    return T.riffle.start + T.riffle.span * (u + (0.6 * Math.sin(2 * Math.PI * u)) / (2 * Math.PI));
+  });
+
+  /* ═════════════ DOM ═════════════ */
+  const root = document.getElementById('diary-intro');
+  const q = (s) => root.querySelector(s);
+  const k = (name) => root.querySelector(`[data-k="${name}"]`);
+  const world = q('.di-world');
+  const el = {
+    floor: q('.di-floor'), floorWarm: q('.di-floor-warm'),
+    shadowR: k('shadowR'), shadowL: k('shadowL'),
+    spine: q('.di-spine'), board: q('.di-board'), boardEdge: q('.di-board-edge'),
+    rtop: k('rtop'), redge: k('redge'), ltop: k('ltop'), ledge: k('ledge'),
+    lift: k('lift'), liftShadow: q('.di-lift-shadow'),
+    ovrR: q('.di-ovr-r'), ovrL: q('.di-ovr-l'),
+    cover: q('.di-cover'),
+    cfront: k('cfront'), cgloss: k('cgloss'), csheen: k('csheen'), cfshade: k('cfshade'),
+    cback: k('cback'), cbshade: k('cbshade'),
+    sheenBand: q('.di-sheen-band'), glossBand: q('.di-gloss-band'),
+    coverEdgeB: q('.di-cover-edge-b'), coverEdgeR: q('.di-cover-edge-r'),
+    stage: q('.di-stage'), dim: q('.di-dim'),
+    sheet: q('.di-sheet'), sheetInner: q('.di-sheet-inner'), tone: q('.di-sheet-tone'),
+    head: q('.di-sheet-head'), date: q('.di-date'), dateline: q('.di-dateline'), caret: q('.di-caret'),
+    canvas: q('.di-fx-front'), canvasBack: q('.di-fx-back'), sound: q('.di-sound'), probe: q('.di-probe'),
+  };
+  const ovr = (o) => ({ g: o.querySelector('.g'), c: o.querySelector('.c'), w: o.querySelector('.w'), d: o.querySelector('.d') });
+  const ovrR = ovr(el.ovrR), ovrL = ovr(el.ovrL);
+
+  // build riffling leaves (each = chain of nested strips)
+  const leaves = [];
+  for (let i = 0; i < T.riffle.leaves; i++) {
+    const leaf = document.createElement('div');
+    leaf.className = 'w3 p3 di-leaf';
+    const strips = [];
+    let parent = leaf;
+    for (let s = 0; s < STRIPS; s++) {
+      const strip = s === 0 ? leaf : document.createElement('div');
+      if (s > 0) { strip.className = 'di-strip'; parent.appendChild(strip); }
+      const face = document.createElement('div');
+      face.className = 'di-sface' + (s === STRIPS - 1 ? ' is-tip' : '');
+      strip.insertBefore(face, strip.firstChild);
+      strips.push({ strip, face, sl: -1, sr: -1, wl: -1, wr: -1, rot: NaN });
+      parent = strip;
+    }
+    world.insertBefore(leaf, el.cover);
+    leaves.push({ leaf, strips, vis: false });
+  }
+
+  /* ═════════════ date ═════════════ */
+  const params = new URLSearchParams(location.search);
+  const today = (() => {
+    const p = params.get('date');
+    if (p && /^\d{4}-\d{2}-\d{2}$/.test(p)) { const [y, m, d] = p.split('-').map(Number); return new Date(y, m - 1, d); }
+    return new Date();
+  })();
+  el.date.textContent = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일 (${'일월화수목금토'[today.getDay()]})`;
+
+  /* ═════════════ procedural textures (inline SVG, no files) ═════════════ */
+  const svgUrl = (s) => `url("data:image/svg+xml,${encodeURIComponent(s)}")`;
+  const GRAIN = svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='3' seed='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 1.6 -.55'/></filter><rect width='100%' height='100%' filter='url(#n)'/></svg>`);
+  const MOTTLE = svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' width='300' height='420' preserveAspectRatio='none'><filter id='m'><feTurbulence type='fractalNoise' baseFrequency='.012 .018' numOctaves='3' seed='11'/><feColorMatrix values='0 0 0 0 .55  0 0 0 0 .55  0 0 0 0 .65  0 0 0 .9 -.2'/></filter><rect width='100%' height='100%' filter='url(#m)'/></svg>`);
+  root.style.setProperty('--grain', GRAIN);
+  root.style.setProperty('--mottle', MOTTLE);
+
+  function coverArt(W, H, year) {
+    const f = (n) => n.toFixed(2);
+    const m1 = W * 0.068, m2 = W * 0.088;
+    const cx = W * 0.525;                          // visual centre (right of the hinge groove)
+    const left1 = W * 0.095, left2 = left1 + (m2 - m1);
+    const star = (x, y, r) => `M${f(x)} ${f(y - r)}Q${f(x)} ${f(y)} ${f(x + r)} ${f(y)}Q${f(x)} ${f(y)} ${f(x)} ${f(y + r)}Q${f(x)} ${f(y)} ${f(x - r)} ${f(y)}Q${f(x)} ${f(y)} ${f(x)} ${f(y - r)}Z`;
+    const cr = W * 0.008;
+    const corners = [[left2, m2], [W - m2, m2], [left2, H - m2], [W - m2, H - m2]]
+      .map(([x, y]) => `<path d='${star(x, y, W * 0.028)}'/><circle cx='${f(x)}' cy='${f(y)}' r='${f(cr)}'/>`).join('');
+    const titleSize = W * 0.128, ls = W * 0.03;
+    const yTitle = H * 0.505, yRule = H * 0.548, yYear = H * 0.6;
+    const mr = W * 0.058, my = H * 0.335;
+    const fam = `'Cormorant Garamond','Playfair Display','Didot','Bodoni 72','Bodoni MT','Times New Roman','Liberation Serif',Georgia,serif`;
+    return `<svg xmlns='http://www.w3.org/2000/svg' width='${f(W)}' height='${f(H)}' viewBox='0 0 ${f(W)} ${f(H)}'>
+      <defs><mask id='moon'><rect width='100%' height='100%' fill='#fff'/><circle cx='${f(cx + mr * 0.42)}' cy='${f(my - mr * 0.22)}' r='${f(mr * 0.86)}' fill='#000'/></mask></defs>
+      <g fill='none' stroke='#000'>
+        <rect x='${f(left1)}' y='${f(m1)}' width='${f(W - m1 - left1)}' height='${f(H - 2 * m1)}' rx='${f(W * 0.012)}' stroke-width='${f(W * 0.0055)}'/>
+        <rect x='${f(left2)}' y='${f(m2)}' width='${f(W - m2 - left2)}' height='${f(H - 2 * m2)}' stroke-width='${f(W * 0.0025)}'/>
+        <path d='M${f(cx - W * 0.15)} ${f(yRule)}H${f(cx - W * 0.022)}M${f(cx + W * 0.022)} ${f(yRule)}H${f(cx + W * 0.15)}' stroke-width='${f(W * 0.003)}'/>
+      </g>
+      <g fill='#000'>
+        ${corners}
+        <circle cx='${f(cx)}' cy='${f(my)}' r='${f(mr)}' mask='url(#moon)'/>
+        <path d='${star(cx + mr * 1.05, my - mr * 0.95, W * 0.016)}'/>
+        <path d='${star(cx + mr * 1.55, my - mr * 0.15, W * 0.009)}'/>
+        <path d='${star(cx, yRule, W * 0.014)}'/>
+        <text x='${f(cx + ls / 2)}' y='${f(yTitle)}' text-anchor='middle' font-family="${fam}" font-size='${f(titleSize)}' font-weight='500' letter-spacing='${f(ls)}'>DIARY</text>
+        <text x='${f(cx + W * 0.012)}' y='${f(yYear)}' text-anchor='middle' font-family="${fam}" font-size='${f(W * 0.046)}' letter-spacing='${f(W * 0.024)}'>${year}</text>
+      </g></svg>`;
+  }
+
+  /* ═════════════ layout (all sizes derive from the container) ═════════════ */
+  let G = null;
+  const fx = { ctx: el.canvas.getContext('2d'), bctx: el.canvasBack.getContext('2d'), dpr: 1, sprites: null, particles: [], rays: [] };
+
+  function layout() {
+    const r = root.getBoundingClientRect();
+    const vw = Math.max(1, Math.round(r.width)), vh = Math.max(1, Math.round(r.height));
+    const narrow = vw < 640;
+    const safeTop = parseFloat(getComputedStyle(el.probe).paddingTop) || 0;
+
+    // the right page, once lifted, is exactly this screen rect → 1 local px = 1 screen px at hand-off
+    const PW = 2 * Math.round(Math.min(vw * 0.86, vh * 0.74 * PAGE_ASPECT) / 2);
+    const PH = 2 * Math.round(PW / PAGE_ASPECT / 2);
+    const o = Math.round(PW * 0.026);
+    const W = PW + o, H = PH + 2 * o;
+    const b = Math.max(2.5, PW * 0.011);        // board thickness
+    const tp = PW * 0.062;                     // page block thickness
+    // spread fits the width including perspective growth of the near edge (~11%)
+    const zOpen = Math.min((vw * 0.8) / (2 * W), (vh * 0.45) / (H * Math.cos(TILT_OPEN * DEG)));
+    const zClosed = Math.min((vw * 0.64) / W, (vh * 0.55) / (H * Math.cos(TILT_CLOSED * DEG)), zOpen * 1.45);
+    const P = 3.2 * H * zOpen;                 // perspective distance (consistent look on any screen)
+    const rect = { x: (vw - PW) / 2, y: (vh - PH) / 2, w: PW, h: PH };
+
+    // writing-sheet rules; book pages use the same rules mapped into page space
+    const gap = narrow ? 34 : 38;
+    const lineTop = Math.round((narrow ? 112 : 136) + safeTop);
+    const marginX = narrow ? 24 : Math.max(36, Math.round((vw - 860) / 2));
+    const mod = (a, m) => ((a % m) + m) % m;
+    const vars = {
+      '--W': W + 'px', '--H': H + 'px', '--PW': PW + 'px', '--PH': PH + 'px', '--o': o + 'px',
+      '--b': b + 'px', '--tp': tp + 'px', '--sw': PW / STRIPS + 'px', '--ov': '0.9px',
+      '--gap': gap + 'px', '--off': mod(lineTop - rect.y - gap + 1, gap) + 'px', '--cut': Math.max(0, lineTop - rect.y) + 'px',
+      '--line-gap': gap + 'px', '--line-top': lineTop + 'px', '--sh-off': mod(lineTop - gap + 1, gap) + 'px',
+      '--margin-x': marginX + 'px', '--date-size': (narrow ? 21 : 26) + 'px', '--dateline-w': (narrow ? 132 : 168) + 'px',
+      '--art': svgUrl(coverArt(W, H, today.getFullYear())),
+    };
+    for (const key in vars) root.style.setProperty(key, vars[key]);
+
+    G = { vw, vh, narrow, PW, PH, o, W, H, b, tp, zOpen, zClosed, P, rect, gap, lineTop,
+      cyClosed: vh * (narrow ? 0.5 : 0.53), cyBook: vh * (narrow ? 0.6 : 0.585), liftH: PW * 0.14 };
+    G.zLiftEnd = b + tp * (1 - 0.42) + 0.3 + G.liftH;
+
+    // static placements
+    const t3 = (x, y, z, extra = '') => `translate3d(${x}px, ${y}px, ${z}px) ${extra}`;
+    el.floor.style.transform = t3(-W * 2.3 + W * 0.35, -H * 1.6 + H * 0.08, -0.6);
+    el.floorWarm.style.transform = t3(-W * 2.1, -H * 1.3 + H * 0.05, -0.4);
+    el.shadowR.style.transform = t3(W * 0.018, -H / 2 + H * 0.022, 0.1);
+    el.board.style.transform = t3(0, -H / 2, b);
+    el.spine.style.transform = t3(-o - 1, -H / 2, b - 0.25);
+    el.boardEdge.style.transform = t3(0, H / 2, b, 'rotateX(-90deg)');
+    el.cfront.style.transform = `translateZ(${b}px)`;
+    el.cgloss.style.transform = `translateZ(${b + 0.06}px)`;
+    el.csheen.style.transform = `translateZ(${b + 0.1}px)`;
+    el.cfshade.style.transform = `translateZ(${b + 0.14}px)`;
+    el.cback.style.transform = 'rotateY(180deg)';
+    el.cbshade.style.transform = 'translateZ(-0.1px) rotateY(180deg)';
+    el.coverEdgeB.style.transform = t3(0, H, b, 'rotateX(-90deg)');
+    el.coverEdgeR.style.transform = t3(W, 0, b, 'rotateY(90deg)');
+
+    // canvas + particles
+    fx.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (const cv of [el.canvas, el.canvasBack]) { cv.width = Math.round(vw * fx.dpr); cv.height = Math.round(vh * fx.dpr); }
+    if (!fx.sprites) fx.sprites = makeSprites();
+    buildParticles();
+    leafCacheReset();
+  }
+
+  /* ═════════════ camera ═════════════ */
+  function cameraAt(t) {
+    const pO = E.inOutCubic(seg(t, T.pan[0], T.pan[1]));
+    const pL = E.inOutCubic(seg(t, T.lift[0], T.lift[1]));
+    const drift = E.outSine(seg(t, 0, T.lift[0]));        // slow push-in while the book is on the table
+    let zoom = expLerp(G.zClosed, G.zOpen, pO) * (1 + 0.035 * drift);
+    let fx_ = lerp(G.W * 0.5, 0, pO);
+    let fy = lerp(0, -G.H * 0.03, pO);
+    let fz = 0;
+    let tilt = lerp(TILT_CLOSED, TILT_OPEN, pO);
+    let cy = lerp(G.cyClosed, G.cyBook, pO);   // book sits centred while closed, drops a little to make room for the light
+    zoom = expLerp(zoom, 1, pL);
+    fx_ = lerp(fx_, G.PW / 2, pL);
+    fy = lerp(fy, 0, pL);
+    fz = lerp(fz, G.zLiftEnd, pL);
+    tilt = lerp(tilt, 0, pL);
+    cy = lerp(cy, G.vh / 2, pL);
+    return { zoom, fx: fx_, fy, fz, tilt, cx: G.vw / 2, cy, P: G.P };
+  }
+  const camCSS = (c) =>
+    `translate(${c.cx}px, ${c.cy}px) perspective(${c.P}px) rotateX(${c.tilt}deg) scale3d(${c.zoom}, ${c.zoom}, ${c.zoom}) translate3d(${-c.fx}px, ${-c.fy}px, ${-c.fz}px)`;
+  // same chain in JS, for the canvas light & particles
+  function project(c, x, y, z) {
+    const s = c.zoom, a = c.tilt * DEG;
+    const X = (x - c.fx) * s, Y = (y - c.fy) * s, Z = (z - c.fz) * s;
+    const y2 = Y * Math.cos(a) - Z * Math.sin(a);
+    const z2 = Y * Math.sin(a) + Z * Math.cos(a);
+    const w = 1 - z2 / c.P;
+    return { x: c.cx + X / w, y: c.cy + y2 / w, w, s: s / w };
+  }
+
+  /* ═════════════ lighting ═════════════ */
+  // brightness of a page rotated by θ (deg, rotateY) — lambert on the side facing the viewer
+  function lambert(theta) {
+    const r = theta * DEG;
+    let nx = Math.sin(r), nz = Math.cos(r);
+    if (nz < 0) { nx = -nx; nz = -nz; }
+    return Math.max(0, nx * LIGHT[0] + nz * LIGHT[2]);
+  }
+  const darkOf = (theta) => clamp((LIGHT[2] - lambert(theta)) / LIGHT[2]) * 0.6;
+
+  function glowAt(t) {
+    const up = E.outCubic(seg(t, T.glowIn[0], T.glowIn[1]));
+    const down = 1 - E.inOutSine(seg(t, T.glowOut[0], T.glowOut[1]));
+    return up * down * (1 + 0.05 * Math.sin(t * 0.012));
+  }
+
+  /* ═════════════ frame ═════════════ */
+  const setT = (node, v) => { if (node._t !== v) { node.style.transform = v; node._t = v; } };
+  const setO = (node, v) => { v = Math.round(v * 1000) / 1000; if (node._o !== v) { node.style.opacity = v; node._o = v; } };
+  const setV = (node, v) => { if (node._v !== v) { node.style.visibility = v ? 'visible' : 'hidden'; node._v = v; } };
+  function leafCacheReset() { for (const L of leaves) for (const s of L.strips) { s.sl = s.sr = s.wl = s.wr = -1; s.rot = NaN; } }
+
+  function render(t) {
+    if (!G) return;
+    t = clamp(t, 0, END);
+    if (REDUCED) return renderReduced(t);
+    const cam = cameraAt(t);
+    const g = glowAt(t);
+    world.style.transform = camCSS(cam);
+    const { W, H, PW, PH, b, tp } = G;
+
+    /* cover */
+    const pc = seg(t, T.cover[0], T.cover[1]);
+    const ca = -180 * E.cover(pc);
+    const zh = lerp(b + tp + 0.9, b, smooth(0.42, 1, pc));
+    setT(el.cover, `translate3d(0px, ${-H / 2}px, ${zh}px) rotateY(${ca}deg)`);
+    setO(el.cfshade, clamp((LIGHT[2] - Math.max(0, Math.sin(ca * DEG) * LIGHT[0] + Math.cos(ca * DEG) * LIGHT[2])) / LIGHT[2]) * 0.8);
+    setO(el.cbshade, clamp((LIGHT[2] - Math.max(0, -Math.sin(ca * DEG) * LIGHT[0] - Math.cos(ca * DEG) * LIGHT[2])) / LIGHT[2]) * 0.75);
+    const ps = E.inOutSine(seg(t, T.sheen[0], T.sheen[1]));
+    setT(el.sheenBand, `translateX(${lerp(-120, 420, ps)}%) rotate(16deg)`);
+    setT(el.glossBand, `translateX(${lerp(-150, 170, E.inOutSine(seg(t, T.sheen[0] - 60, T.sheen[1] + 160)))}%) rotate(16deg)`);
+
+    /* leaves */
+    let started = 0, landed = 0;
+    const lq = LEAF_START.map((s0, i) => {
+      const v = seg(t, s0, s0 + T.riffle.dur);
+      started += smooth(0, 0.3, v); landed += smooth(0.8, 1, v);
+      return v;
+    });
+    const N = leaves.length;
+    const TpR = tp * (1 - 0.42 * (started / N));
+    const TpL = tp * 0.42 * (landed / N);
+    const zR = b + TpR, zL = b + TpL;
+    let castR = 0, castL = 0;
+    // the cover casts onto the right page while it stands over it, then onto the left
+    const sc = Math.sin(-ca * DEG);
+    castR += 0.75 * sc * clamp((ca + 125) / 50);
+    castL += 0.6 * sc * clamp((-55 - ca) / 50);
+
+    const pl = seg(t, T.lift[0], T.lift[1]);
+    const dimL = 0.45 * smooth(0.05, 0.75, pl);
+    for (let i = 0; i < N; i++) {
+      const L = leaves[i], qv = lq[i];
+      if (qv <= 0) { if (L.vis) { setV(L.leaf, false); L.vis = false; } continue; }
+      if (!L.vis) { setV(L.leaf, true); L.vis = true; }
+      const e = E.inOutCubic(qv);
+      const c = -LEAF_CURL * Math.sin(2 * Math.PI * qv) * (1 - 0.2 * qv);   // tip leads, then trails
+      let rootA = clamp(-180 * e - c * 0.5, -180, 0);
+      const cEff = clamp(c, -180 - rootA, -rootA);
+      const z = lerp(zR + 0.6, zL + 0.4 * (i + 1), e);
+      setT(L.leaf, `translate3d(0px, ${-PH / 2}px, ${z}px) rotateY(${rootA}deg)`);
+      // bend distribution: more curl toward the free edge
+      let wsum = 0; const w = [];
+      for (let s = 1; s < STRIPS; s++) { const ww = Math.pow(s / STRIPS, 1.25); w.push(ww); wsum += ww; }
+      const ang = [rootA];
+      let acc = rootA;
+      for (let s = 1; s < STRIPS; s++) {
+        const bend = (cEff * w[s - 1]) / wsum;
+        acc += bend; ang.push(acc);
+        const S = L.strips[s];
+        const rb = Math.round(bend * 100) / 100;
+        if (S.rot !== rb) { S.strip.style.transform = `rotateY(${rb}deg)`; S.rot = rb; }
+      }
+      // gouraud shading across strips
+      // shading at strip joints, interpolated across each strip (gouraud) so the curl reads as one smooth surface.
+      // gutter shadow, gutter glow and the lift-time dimming live here too (not in an overlay plane the curling
+      // leaf would cut through).
+      const r2 = (v) => Math.round(v * 100) / 100;
+      const at = (arr, j) => (j <= 0 ? arr[0] : j >= STRIPS ? arr[STRIPS - 1] : (arr[j - 1] + arr[j]) / 2);
+      const jd = [], jw = [];
+      for (let j = 0; j <= STRIPS; j++) {
+        const th = at(ang, j), u = j / STRIPS;
+        const flat = smooth(0.9, 1, Math.abs(Math.cos(th * DEG)));
+        const onLeft = th < -90 ? 1 : 0;
+        jd.push(clamp(darkOf(th) + flat * 0.42 * Math.exp(-u * 22) + onLeft * dimL));
+        jw.push(g * (0.42 * Math.abs(Math.sin(th * DEG)) + flat * 0.6 * (1 - pl) * Math.max(0, 1 - u / 0.7)));
+      }
+      for (let s = 0; s < STRIPS; s++) {
+        const S = L.strips[s];
+        const sl = r2(jd[s]), sr = r2(jd[s + 1]), wl = r2(jw[s]), wr = r2(jw[s + 1]);
+        if (S.sl !== sl) { S.face.style.setProperty('--sl', sl); S.sl = sl; }
+        if (S.sr !== sr) { S.face.style.setProperty('--sr', sr); S.sr = sr; }
+        if (S.wl !== wl) { S.face.style.setProperty('--wl', wl); S.wl = wl; }
+        if (S.wr !== wr) { S.face.style.setProperty('--wr', wr); S.wr = wr; }
+      }
+      const mid = -(rootA + cEff * 0.5);
+      const sm = Math.sin(mid * DEG);
+      castR += 0.42 * sm * clamp((125 - mid) / 50) * (1 - landed / N * 0.3);
+      castL += 0.36 * sm * clamp((mid - 55) / 50);
+    }
+
+    /* page blocks */
+    setT(el.rtop, `translate3d(0px, ${-PH / 2}px, ${zR}px)`);
+    setT(el.redge, `translate3d(0px, ${PH / 2}px, ${zR}px) rotateX(-90deg) scaleY(${(TpR / tp).toFixed(4)})`);
+    const showL = TpL > 0.25;
+    setV(el.ltop, showL); setV(el.ledge, showL);
+    setT(el.ltop, `translate3d(${-PW}px, ${-PH / 2}px, ${zL}px)`);
+    setT(el.ledge, `translate3d(${-PW}px, ${PH / 2}px, ${zL}px) rotateX(-90deg) scaleY(${(Math.max(TpL, 0.01) / tp).toFixed(4)})`);
+
+    /* lift page */
+    const le = E.inOutCubic(pl);
+    const zLift = zR + 0.3 + G.liftH * le;
+    const peel = -10 * Math.sin(Math.PI * Math.pow(seg(pl, 0, 0.85), 0.8));   // free edge lifts first, then the page flattens toward you
+    const liftT = `translate3d(0px, ${-PH / 2}px, ${zLift}px) rotateY(${peel}deg)`;
+    setT(el.lift, liftT);
+    setT(el.ovrR, liftT + ' translateZ(0.12px)');
+    setT(el.liftShadow, `translate3d(${PW * 0.05 * le}px, ${-PH / 2 + PH * 0.035 * le}px, ${zR + 0.15}px)`);
+    setO(el.liftShadow, 0.85 * smooth(0, 0.45, pl));
+    setO(ovrR.g, 1 - smooth(0.05, 0.8, pl));
+    setO(ovrR.c, clamp(castR));
+    setO(ovrR.w, g * 0.6 * (1 - smooth(0, 0.85, pl)));
+    const coverDown = ca < -150;
+    setV(el.ovrL, coverDown);
+    setV(el.spine, ca < -100);
+    setT(el.ovrL, `translate3d(${-PW}px, ${-PH / 2}px, ${zL + 0.15}px)`);   // under the landed leaves (they shade themselves)
+    setO(ovrL.g, smooth(-150, -178, ca));
+    setO(ovrL.c, clamp(castL));
+    setO(ovrL.w, g * 0.6 * (1 - pl));
+    setO(ovrL.d, dimL);
+
+    /* shadows & floor */
+    const spread = clamp(-Math.cos(ca * DEG));
+    setT(el.shadowL, `translate3d(${-W * spread - W * 0.012}px, ${-H / 2 + H * 0.022}px, 0.1px) scaleX(${(spread).toFixed(4)})`);
+    setO(el.shadowL, smooth(0.45, 1, spread) * 0.95);   // only firms up as the cover nears the table
+    setO(el.floorWarm, g * 0.95);
+
+    /* hand-off: right page → full writing sheet */
+    const pS = seg(t, T.sheet[0], T.sheet[1]);
+    if (t < T.sheet[0]) {
+      setV(el.sheet, false);
+      setO(el.dim, 0);
+    } else {
+      setV(el.sheet, true);
+      const e = E.inOutCubic(pS);
+      const R = G.rect;
+      const x = lerp(R.x, 0, e), y = lerp(R.y, 0, e);
+      const sx = lerp(R.w, G.vw, e) / G.vw, sy = lerp(R.h, G.vh, e) / G.vh;
+      setT(el.sheet, `translate(${x}px, ${y}px) scale(${sx}, ${sy})`);
+      setT(el.sheetInner, `scale(${1 / sx}, ${1 / sy}) translate(${-x}px, ${-y}px)`);
+      setO(el.sheet, smooth(0, 1, (t - T.sheet[0]) / 60));   // geometry already matches; short fade hides raster differences
+      setO(el.dim, 0.88 * E.outSine(seg(t, T.sheet[0] + 60, T.sheet[1])));   // dim only once the sheet is opaque
+      setO(el.tone, e);
+    }
+    setV(el.stage, pS < 1);
+    const ph = E.outCubic(seg(t, T.head[0], T.head[1]));
+    setO(el.head, ph);
+    setT(el.head, `translateY(${(1 - ph) * 8}px)`);
+    setT(el.dateline, `scaleX(${E.inOutCubic(seg(t, T.head[0] + 80, T.head[1]))})`);
+    setO(el.caret, t >= T.end - 40 ? 1 : 0);
+    el.sound.classList.toggle('is-paper', pS > 0.55);
+
+    drawFx(t, cam, g);
+  }
+
+  function renderReduced(t) {
+    setV(el.stage, false);
+    setV(el.sheet, true);
+    setT(el.sheet, 'none'); setT(el.sheetInner, 'none');
+    const p = E.inOutSine(seg(t, 0, T.reducedEnd));
+    setO(el.sheet, p); setO(el.tone, 1); setO(el.head, p); setT(el.head, 'none');
+    setT(el.dateline, 'scaleX(1)');
+    setO(el.caret, t >= T.reducedEnd ? 1 : 0);
+    el.sound.classList.toggle('is-paper', p > 0.5);
+    for (const c of [fx.ctx, fx.bctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, el.canvas.width, el.canvas.height); }
+  }
+
+  /* ═════════════ light & sparkles (canvas, deterministic) ═════════════ */
+  function sprite(size, paint) {
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    paint(c.getContext('2d'), size); return c;
+  }
+  function makeSprites() {
+    const radial = (stops) => (x, s) => {
+      const g = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+      for (const [o, col] of stops) g.addColorStop(o, col);
+      x.fillStyle = g; x.fillRect(0, 0, s, s);
+    };
+    const dot = sprite(64, radial([[0, 'rgba(255,253,240,1)'], [0.09, 'rgba(255,226,150,.95)'], [0.24, 'rgba(255,182,80,.36)'], [0.55, 'rgba(255,150,50,.06)'], [1, 'rgba(255,140,40,0)']]));
+    const bokeh = sprite(96, radial([[0, 'rgba(255,196,100,.34)'], [0.6, 'rgba(255,180,80,.26)'], [0.82, 'rgba(255,196,110,.24)'], [0.95, 'rgba(255,170,70,.05)'], [1, 'rgba(255,160,60,0)']]));
+    const soft = sprite(128, radial([[0, 'rgba(255,240,205,1)'], [0.25, 'rgba(255,200,120,.45)'], [0.6, 'rgba(255,160,70,.10)'], [1, 'rgba(255,150,60,0)']]));
+    const glint = sprite(96, (x, s) => {
+      const h = s / 2;
+      for (const [rx, ry] of [[h, 1.5], [1.5, h]]) {
+        x.save(); x.translate(h, h); x.scale(rx / h, ry / h);
+        const g = x.createRadialGradient(0, 0, 0, 0, 0, h);
+        g.addColorStop(0, 'rgba(255,250,228,1)'); g.addColorStop(0.3, 'rgba(255,214,140,.5)'); g.addColorStop(1, 'rgba(255,190,100,0)');
+        x.fillStyle = g; x.beginPath(); x.arc(0, 0, h, 0, Math.PI * 2); x.fill(); x.restore();
+      }
+      const g = x.createRadialGradient(h, h, 0, h, h, h * 0.3);
+      g.addColorStop(0, 'rgba(255,255,245,1)'); g.addColorStop(1, 'rgba(255,214,140,0)');
+      x.fillStyle = g; x.fillRect(0, 0, s, s);
+    });
+    // god-ray beam: gaussian across, fading upward, widening with distance
+    const ray = document.createElement('canvas'); ray.width = 64; ray.height = 512;
+    {
+      const x = ray.getContext('2d'); const img = x.createImageData(64, 512); const d = img.data;
+      for (let yy = 0; yy < 512; yy++) {
+        const v = 1 - yy / 511;                 // 1 at base, 0 at tip
+        const along = Math.pow(v, 1.35);
+        const sig = 0.12 + 0.26 * (1 - v);
+        for (let xx = 0; xx < 64; xx++) {
+          const u = (xx - 31.5) / 32;
+          const win = (1 - u * u) * (1 - u * u);
+          const a = along * smooth(1, 0.9, v) * win * Math.exp(-(u * u) / (2 * sig * sig));
+          const i = (yy * 64 + xx) * 4;
+          d[i] = 255; d[i + 1] = Math.round(176 + 50 * v * v); d[i + 2] = Math.round(84 + 80 * v * v * v); d[i + 3] = Math.round(255 * a);
+        }
+      }
+      x.putImageData(img, 0, 0);
+    }
+    return { dot, bokeh, soft, glint, ray };
+  }
+
+  function buildParticles() {
+    const rnd = mulberry32(20261008);
+    const { W, PH, b, tp, vw, vh } = G;
+    const count = Math.round(clamp((vw * vh) / 1250, 220, 520));
+    const list = [];
+    for (let i = 0; i < count; i++) {
+      const r = rnd();
+      const kind = r < 0.8 ? 0 : r < 0.93 ? 1 : 2;
+      const side = rnd() < 0.5 ? -1 : 1;
+      const born = T.fxSpawn[0] + Math.pow(rnd(), 1.35) * (T.fxSpawn[1] - T.fxSpawn[0]);
+      list.push({
+        kind, born,
+        life: (kind === 1 ? 1100 : 800) + rnd() * 800,
+        x0: side * W * 0.9 * Math.pow(rnd(), 2.0),
+        y0: (rnd() * 2 - 1) * PH * 0.4,
+        z0: b + tp * 0.6,
+        vx: side * (0.02 + rnd() * 0.26) * W,
+        vy: -(0.05 + rnd() * 0.45) * PH,
+        vz: (0.6 + rnd() * 1.2) * PH,
+        az: (0.1 + rnd() * 0.5) * PH,
+        sway: (0.01 + rnd() * 0.05) * W, sf: 1.5 + rnd() * 3, sp: rnd() * 6.28,
+        size: kind === 0 ? 0.8 + Math.pow(rnd(), 1.8) * 2.2 : kind === 1 ? 3 + rnd() * 6 : 4.5 + rnd() * 5,
+        tw: 3 + rnd() * 8, tp: rnd() * 6.28, rot: rnd() * 6.28,
+      });
+    }
+    fx.particles = list;
+    const rays = [];
+    const n = 22;
+    for (let i = 0; i < n; i++) {
+      const wide = rnd() < 0.35;
+      const u = rnd() * 2 - 1;
+      rays.push({
+        y: (rnd() * 2 - 1) * PH * 0.1,
+        ang: Math.sign(u) * Math.pow(Math.abs(u), 1.15) * 60,
+        len: 0.55 + rnd() * 0.45,
+        wid: wide ? 0.32 + rnd() * 0.3 : 0.05 + rnd() * 0.1,
+        a: wide ? 0.09 + rnd() * 0.06 : 0.16 + rnd() * 0.18,
+        ph: rnd() * 6.28, fr: 0.6 + rnd() * 1.4,
+      });
+    }
+    fx.rays = rays;
+  }
+
+  function drawFx(t, cam, g) {
+    const { vw, vh, W, PH, b, tp } = G;
+    for (const c of [fx.ctx, fx.bctx]) { c.setTransform(fx.dpr, 0, 0, fx.dpr, 0, 0); c.clearRect(0, 0, vw, vh); }
+    const fade = 1 - smooth(T.fxOut[0], T.fxOut[1], t);
+    if (g < 0.003 && (t < T.fxSpawn[0] || fade <= 0)) return;
+    const S = fx.sprites;
+    const zSrc = b + tp * 0.7;
+    const src = project(cam, 0, 0, zSrc);
+    const spreadPx = W * cam.zoom;
+
+    /* behind the book: halo + god rays converging on the gutter */
+    if (g > 0.003) {
+      const c = fx.bctx;
+      c.globalCompositeOperation = 'lighter';
+      c.save();
+      c.translate(src.x, src.y - spreadPx * 0.35); c.scale(1.15, 1);
+      const grd = c.createRadialGradient(0, 0, 0, 0, 0, spreadPx * 1.7);
+      grd.addColorStop(0, `rgba(255,214,140,${0.5 * g})`);
+      grd.addColorStop(0.3, `rgba(255,170,90,${0.2 * g})`);
+      grd.addColorStop(0.7, `rgba(200,120,90,${0.05 * g})`);
+      grd.addColorStop(1, 'rgba(160,90,90,0)');
+      c.fillStyle = grd; c.fillRect(-spreadPx * 1.8, -spreadPx * 1.8, spreadPx * 3.6, spreadPx * 3.6);
+      c.restore();
+      c.save();
+      c.translate(src.x, src.y - spreadPx * 0.12); c.scale(1.5, 0.75);
+      const core = c.createRadialGradient(0, 0, 0, 0, 0, spreadPx * 0.75);
+      core.addColorStop(0, `rgba(255,236,180,${0.75 * g})`);
+      core.addColorStop(0.35, `rgba(255,196,110,${0.32 * g})`);
+      core.addColorStop(1, 'rgba(255,160,70,0)');
+      c.fillStyle = core; c.fillRect(-spreadPx, -spreadPx, spreadPx * 2, spreadPx * 2);
+      c.restore();
+      const reach = Math.min(vh * 0.95, spreadPx * 3.3);
+      for (const r of fx.rays) {
+        const o = project(cam, 0, r.y, zSrc);
+        const len = reach * r.len * (0.45 + 0.55 * g);
+        const wid = spreadPx * r.wid;
+        const flick = 0.8 + 0.2 * Math.sin(t * 0.004 * r.fr + r.ph);
+        c.save();
+        c.translate(o.x, o.y);
+        c.rotate((r.ang + 2.5 * Math.sin(t * 0.0016 * r.fr + r.ph)) * DEG);
+        c.globalAlpha = clamp(r.a * g * flick);
+        c.drawImage(S.ray, -wid / 2, -len, wid, len);
+        c.restore();
+      }
+      c.globalAlpha = 1;
+    }
+
+    /* in front: light spilling out of the gutter + sparkles */
+    const c = fx.ctx;
+    c.globalCompositeOperation = 'lighter';
+    if (g > 0.003) {
+      const steps = 9;
+      for (let i = 0; i < steps; i++) {
+        const yy = lerp(-PH * 0.44, PH * 0.44, i / (steps - 1));
+        const p = project(cam, 0, yy, zSrc);
+        const r = spreadPx * 0.2;
+        c.globalAlpha = 0.16 * g;
+        c.drawImage(S.soft, p.x - r, p.y - r * 0.8, r * 2, r * 1.6);
+      }
+      c.globalAlpha = 1;
+      c.save();
+      c.translate(src.x, src.y); c.scale(1.25, 0.72);
+      const grd = c.createRadialGradient(0, 0, 0, 0, 0, spreadPx * 0.75);
+      grd.addColorStop(0, `rgba(255,246,222,${0.42 * g})`);
+      grd.addColorStop(0.3, `rgba(255,206,130,${0.18 * g})`);
+      grd.addColorStop(1, 'rgba(255,160,70,0)');
+      c.fillStyle = grd; c.fillRect(-spreadPx, -spreadPx, spreadPx * 2, spreadPx * 2);
+      c.restore();
+    }
+
+    // sparkles: analytic motion → exact for any t
+    if (fade > 0) {
+      for (const p of fx.particles) {
+        const age = t - p.born;
+        if (age <= 0 || age >= p.life) continue;
+        const u = age / p.life, a = age / 1000;
+        const env = smooth(0, 0.1, u) * (1 - smooth(0.45, 1, u));
+        const x = p.x0 + p.vx * a + p.sway * Math.sin(p.sf * a + p.sp);
+        const y = p.y0 + p.vy * a;
+        const z = p.z0 + p.vz * a + 0.5 * p.az * a * a;
+        const pr = project(cam, x, y, z);
+        if (pr.w < 0.35) continue;
+        const twinkle = p.kind === 1 ? 1 : 0.5 + 0.5 * Math.sin(p.tw * a * 6.28 + p.tp);
+        const alpha = env * twinkle * fade * (p.kind === 1 ? 0.5 : 1);
+        if (alpha < 0.01) continue;
+        const sz = Math.min(p.size * Math.pow(pr.s / G.zOpen, 0.6), p.size * 2.2);
+        c.globalAlpha = alpha;
+        if (p.kind === 0) {
+          const r = sz * 2.8; c.drawImage(S.dot, pr.x - r, pr.y - r, r * 2, r * 2);
+        } else if (p.kind === 1) {
+          c.drawImage(S.bokeh, pr.x - sz, pr.y - sz, sz * 2, sz * 2);
+        } else {
+          c.save(); c.translate(pr.x, pr.y); c.rotate(p.rot + a * 0.8);
+          const r = sz * 1.7; c.drawImage(S.glint, -r, -r, r * 2, r * 2); c.restore();
+        }
+      }
+      c.globalAlpha = 1;
+    }
+    c.globalCompositeOperation = 'source-over';
+  }
+
+  /* ═════════════ sound (WebAudio, procedural — no files) ═════════════ */
+  function playIntroSound(ctx, opts = {}) {
+    const t0 = ctx.currentTime + (opts.delay ?? 0.02);
+    const at = (ms) => t0 + ms / 1000;
+    const master = ctx.createGain();
+    master.gain.value = opts.volume ?? 0.6;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 3; comp.attack.value = 0.003; comp.release.value = 0.25;
+    master.connect(comp); comp.connect(ctx.destination);
+    const nodes = [];
+    const rnd = mulberry32(99);
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 2), ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < ch.length; i++) ch[i] = rnd() * 2 - 1;
+    const noise = (when, dur, offset = 0) => { const s = ctx.createBufferSource(); s.buffer = buf; s.start(when, offset, dur); nodes.push(s); return s; };
+    const filter = (type, f, Q = 0.7) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f; n.Q.value = Q; return n; };
+    const env = (when, peak, atk, dec) => {
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, when);
+      g.gain.exponentialRampToValueAtTime(peak, when + atk);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + atk + dec); return g;
+    };
+    const chain = (...n) => { for (let i = 0; i < n.length - 1; i++) n[i].connect(n[i + 1]); return n[n.length - 1]; };
+
+    // 1 · cover swing: soft leather/air swish
+    {
+      const s = noise(at(T.cover[0]), (T.cover[1] - T.cover[0]) / 1000, 0.3);
+      const bp = filter('bandpass', 500, 0.8);
+      bp.frequency.setValueAtTime(420, at(T.cover[0]));
+      bp.frequency.exponentialRampToValueAtTime(1500, at(T.cover[1]));
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, at(T.cover[0]));
+      g.gain.linearRampToValueAtTime(0.07, at(T.cover[0] + 380));
+      g.gain.linearRampToValueAtTime(0.11, at(T.cover[1] - 60));
+      g.gain.linearRampToValueAtTime(0, at(T.cover[1] + 20));
+      chain(s, bp, g, master);
+    }
+    // 2 · cover thump when it lands
+    {
+      const tl = at(T.cover[1]);
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(118, tl); o.frequency.exponentialRampToValueAtTime(46, tl + 0.17);
+      chain(o, env(tl, 0.75, 0.004, 0.34), master); o.start(tl); o.stop(tl + 0.45); nodes.push(o);
+      chain(noise(tl, 0.14, 0.9), filter('lowpass', 820, 0.6), env(tl, 0.42, 0.002, 0.09), master);
+    }
+    // 3 · paper riffle: filtered noise ticks, accelerating then decelerating (same schedule as the leaves)
+    LEAF_START.forEach((s, i) => {
+      for (const [frac, amp] of [[0.18, 0.16], [0.52, 0.26], [0.86, 0.2]]) {
+        const when = at(s + T.riffle.dur * frac + (rnd() - 0.5) * 14);
+        const bp = filter('bandpass', 2300 + rnd() * 2600, 0.9 + rnd() * 0.6);
+        const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+        const g = env(when, amp * (0.8 + rnd() * 0.4), 0.0025, 0.028 + rnd() * 0.03);
+        const n = noise(when, 0.08, rnd() * 1.8);
+        if (pan) { pan.pan.value = (i / (LEAF_START.length - 1) - 0.5) * 0.5; chain(n, bp, g, pan, master); }
+        else chain(n, bp, g, master);
+      }
+    });
+    {
+      const s0 = at(LEAF_START[0]), s1 = at(LEAF_START[LEAF_START.length - 1] + T.riffle.dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, s0);
+      g.gain.exponentialRampToValueAtTime(0.045, (s0 + s1) / 2);
+      g.gain.exponentialRampToValueAtTime(0.0001, s1);
+      chain(noise(s0, s1 - s0, 0.5), filter('bandpass', 1700, 0.5), g, master);
+    }
+    // 4 · magical shimmer as the light appears: bell partials + airy swell, through a small echo
+    {
+      const ts = at(T.glowIn[0]);
+      const wet = ctx.createGain(); wet.gain.value = 0.55;
+      const dl = ctx.createDelay(1); dl.delayTime.value = 0.13;
+      const fb = ctx.createGain(); fb.gain.value = 0.38;
+      const lp = filter('lowpass', 5200, 0.5);
+      chain(dl, lp, fb, dl); lp.connect(wet); wet.connect(master);
+      const bus = ctx.createGain(); bus.gain.value = 1; bus.connect(master); bus.connect(dl);
+      const notes = [1318.5, 1661.2, 1975.5, 2637.0, 2217.5, 3322.4, 2960.0];
+      notes.forEach((f, i) => {
+        const w = ts + i * 0.065 + (i > 3 ? 0.04 : 0);
+        for (const [mul, amp] of [[1, 0.05], [2.76, 0.012]]) {
+          const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * mul;
+          chain(o, env(w, amp, 0.012, 1.5 - i * 0.08), bus); o.start(w); o.stop(w + 1.7); nodes.push(o);
+        }
+      });
+      const n = noise(ts, 1.9, 0.2);
+      const bp = filter('bandpass', 3000, 0.7);
+      bp.frequency.setValueAtTime(2800, ts); bp.frequency.exponentialRampToValueAtTime(7600, ts + 1.2);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, ts); g.gain.exponentialRampToValueAtTime(0.05, ts + 0.45); g.gain.exponentialRampToValueAtTime(0.0001, ts + 1.85);
+      chain(n, filter('highpass', 2200, 0.5), bp, g, bus);
+    }
+    return {
+      stop(fade = 0.15) {
+        const now = ctx.currentTime;
+        master.gain.cancelScheduledValues(now);
+        master.gain.setValueAtTime(master.gain.value, now);
+        master.gain.linearRampToValueAtTime(0, now + fade);
+        setTimeout(() => { for (const n of nodes) { try { n.stop(); } catch (_) {} } try { master.disconnect(); } catch (_) {} }, fade * 1000 + 60);
+      },
+    };
+  }
+  // a reduced-motion friendly variant: just the soft chime
+  function playChimeOnly(ctx) {
+    const t0 = ctx.currentTime + 0.02, master = ctx.createGain(); master.gain.value = 0.4; master.connect(ctx.destination);
+    [1318.5, 1975.5, 2637.0].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), w = t0 + i * 0.08;
+      o.frequency.value = f; g.gain.setValueAtTime(0.0001, w); g.gain.exponentialRampToValueAtTime(0.04, w + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, w + 1.2);
+      o.connect(g); g.connect(master); o.start(w); o.stop(w + 1.3);
+    });
+    return { stop() { try { master.disconnect(); } catch (_) {} } };
+  }
+
+  /* ═════════════ sound preference (user can turn it off) ═════════════ */
+  const SOUND_KEY = 'diary.introSound';
+  const readSoundPref = () => {
+    if (params.get('sound') === '0') return false;
+    try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch (_) { return true; }
+  };
+  let soundOn = readSoundPref();
+  const paintSoundBtn = () => {
+    el.sound.setAttribute('aria-pressed', String(soundOn));
+    el.sound.setAttribute('aria-label', soundOn ? '효과음 끄기' : '효과음 켜기');
+  };
+  paintSoundBtn();
+  el.sound.addEventListener('pointerdown', (e) => e.stopPropagation());
+  el.sound.addEventListener('click', (e) => {
+    e.stopPropagation();
+    soundOn = !soundOn;
+    try { localStorage.setItem(SOUND_KEY, soundOn ? 'on' : 'off'); } catch (_) {}
+    paintSoundBtn();
+    if (!soundOn) stopSound(0.1);
+  });
+
+  let audioCtx = null, voice = null;
+  function startSound() {
+    if (!soundOn) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+      voice = REDUCED ? playChimeOnly(audioCtx) : playIntroSound(audioCtx);
+    } catch (_) { voice = null; }
+  }
+  function stopSound(fade = 0.12) { if (voice) { voice.stop(fade); voice = null; } }
+
+  /* ═════════════ playback / skip / seek ═════════════ */
+  const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches || params.get('reduced') === '1';
+  const END = REDUCED ? T.reducedEnd : T.end;
+  let raf = 0, playing = false, current = 0;
+
+  function play() {
+    cancelAnimationFrame(raf);
+    root.classList.remove('is-done');
+    playing = true; current = 0;
+    render(0);
+    startSound();
+    let start = -1;
+    const tick = (now) => {
+      if (start < 0) start = now;
+      current = now - start;
+      render(current);
+      if (current >= END) return finish();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+  }
+  function finish() {
+    playing = false; cancelAnimationFrame(raf);
+    current = END; render(END);
+    root.classList.add('is-done');
+    root.dispatchEvent(new CustomEvent('diaryintro:done', { bubbles: true }));
+  }
+  function skip() { if (!playing) return; stopSound(0.12); finish(); }
+
+  root.addEventListener('pointerdown', skip);
+  root.addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') skip(); });
+
+  // seekable time for verification: exact visual state at `ms`
+  window.__seek = (ms) => {
+    cancelAnimationFrame(raf); playing = false; stopSound(0);
+    root.classList.remove('is-done');
+    current = +ms || 0;
+    render(current);
+    for (const a of document.getAnimations()) { try { a.pause(); a.currentTime = current; } catch (_) {} }
+    return current;
+  };
+  window.__duration = END;
+  window.diaryIntro = { play, skip, seek: window.__seek, playIntroSound, TIMING: T };
+  window.playIntroSound = playIntroSound;
+
+  let resizeRaf = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => { layout(); render(current); });
+  });
+
+  layout();
+  const qt = params.get('t');
+  if (qt !== null) window.__seek(Number(qt));
+  else play();
+})();
+</script>
+</body>
+</html>

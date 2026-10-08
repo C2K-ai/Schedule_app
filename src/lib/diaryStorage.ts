@@ -18,6 +18,11 @@ export interface StoredRow {
   dirty: boolean;
   err?: string | null;
   tries?: number;
+  /**
+   * 올려 보냈는데 답을 못 받은 sealed 들(올리기 전에 적어 둔다). 서버에 이 중 하나가 있으면 '내 것이 올라갔음' —
+   * 그 뒤에 더 쓴 글·지운 것을 남의 글과의 충돌로 오해하지 않게. 서버가 받았다고 확인되면 비운다
+   */
+  sent?: string[];
 }
 
 /** 비밀번호 바꾸기 중인 열쇠 — 서버에 올리기 전까지 여기 둔다(중간에 꺼져도 이어서) */
@@ -51,14 +56,17 @@ export interface DiaryStorage {
   updateKeyring(uid: string, fn: (cur: Keyring | null) => Keyring | null): Promise<Keyring | null>;
   rows(uid: string): Promise<StoredRow[]>;
   getRow(uid: string, id: string): Promise<StoredRow | null>;
-  /** 한 번의 읽기·쓰기 트랜잭션. fn 은 반드시 동기(암호화는 미리). null = 안 바꿈. 결과 행을 돌려준다 */
+  /**
+   * 한 번의 읽기·쓰기 트랜잭션. fn 은 반드시 동기(암호화는 미리). null = 안 바꿈. 결과 행을 돌려준다.
+   * 연결이 끊겨 다시 하면 fn 이 한 번 더 불릴 수 있다 — fn 은 부를 때마다 같은 답을 내야 한다
+   */
   updateRow(uid: string, id: string, fn: (cur: StoredRow | null) => StoredRow | null): Promise<StoredRow | null>;
   getMeta(uid: string, name: string): Promise<string | null>;
   putMeta(uid: string, name: string, v: string): Promise<void>;
   wipe(uid: string): Promise<void>;
 }
 
-const copyRow = (r: StoredRow): StoredRow => ({ ...r });
+const copyRow = (r: StoredRow): StoredRow => (r.sent ? { ...r, sent: [...r.sent] } : { ...r });
 const copyRing = (k: Keyring): Keyring => ({ ...k, keys: { ...k.keys }, pending: k.pending ? { ...k.pending } : null });
 
 // ───────────── IndexedDB ─────────────
@@ -71,8 +79,35 @@ const strip = (s: Stored): StoredRow => {
   return row;
 };
 
+/** 연결이 끊겨서 난 실패(다시 열면 되는 것) — 연결 닫힘·서버 연결 끊김(iOS)·강제로 닫혀 중단된 트랜잭션 */
+const connectionLost = (e: unknown) => {
+  const name = (e as { name?: string } | null)?.name;
+  return name === "InvalidStateError" || name === "UnknownError" || name === "AbortError";
+};
+
+/** run() 안에서만 — '연결을 새로 열고 한 번 더' 표시 */
+class Lost {
+  error: unknown;
+  constructor(error: unknown) {
+    this.error = error;
+  }
+}
+
 export function idbDiaryStorage(): DiaryStorage {
   let dbp: Promise<IDBDatabase> | null = null;
+  let current: IDBDatabase | null = null;
+
+  /** 이 연결은 버린다 — 다음 open() 이 새로 연다 */
+  const drop = (db: IDBDatabase) => {
+    if (current !== db) return;
+    current = null;
+    dbp = null;
+    try {
+      db.close();
+    } catch {
+      // 이미 닫힘
+    }
+  };
 
   // 처음 쓸 때 연다(만들 때 열면 SSR·로그아웃 상태에서도 IndexedDB 를 건드린다)
   const open = (): Promise<IDBDatabase> => {
@@ -95,10 +130,10 @@ export function idbDiaryStorage(): DiaryStorage {
       req.onsuccess = () => {
         const db = req.result;
         // 다른 탭이 새 버전으로 올리면 비켜 준다
-        db.onversionchange = () => {
-          db.close();
-          dbp = null;
-        };
+        db.onversionchange = () => drop(db);
+        // 브라우저가 연결을 끊음(저장 공간 압박·iOS 'Connection to Indexed Database server lost'·개발자 도구) → 다음에 새로 연다
+        db.onclose = () => drop(db);
+        if (dbp === p) current = db;
         resolve(db);
       };
       req.onerror = () => reject(req.error ?? new Error("indexedDB open failed"));
@@ -110,21 +145,41 @@ export function idbDiaryStorage(): DiaryStorage {
     return p;
   };
 
-  /** 트랜잭션 하나 — body 안의 콜백은 동기로만. 끝까지 커밋돼야 값을 돌려준다 */
+  /** 트랜잭션 하나 — body 안의 콜백은 동기로만. 끝까지 커밋돼야 값을 돌려준다. 연결이 끊겨 있으면 새로 열어 한 번 더 */
   async function run<T>(
     stores: string[],
     mode: IDBTransactionMode,
     body: (t: IDBTransaction, set: (v: T) => void, fail: (e: unknown) => void) => void,
   ): Promise<T> {
-    const db = await open();
+    for (let attempt = 0; ; attempt++) {
+      const db = await open();
+      try {
+        return await once(db, stores, mode, body);
+      } catch (e) {
+        if (!(e instanceof Lost)) throw e;
+        // 중단된 트랜잭션은 커밋되지 않았다 → 새 연결로 다시 해도 안전(한 번만)
+        drop(db);
+        if (attempt > 0) throw e.error;
+      }
+    }
+  }
+
+  function once<T>(
+    db: IDBDatabase,
+    stores: string[],
+    mode: IDBTransactionMode,
+    body: (t: IDBTransaction, set: (v: T) => void, fail: (e: unknown) => void) => void,
+  ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       let out: T;
       let err: unknown = null;
       let t: IDBTransaction;
+      // 우리 콜백이 던진 것(fail)은 그대로, 연결 문제는 Lost 로
+      const why = (e: unknown) => (err !== null ? err : connectionLost(e) ? new Lost(e) : e);
       try {
         t = db.transaction(stores, mode);
       } catch (e) {
-        reject(e);
+        reject(why(e));
         return;
       }
       const fail = (e: unknown) => {
@@ -136,8 +191,8 @@ export function idbDiaryStorage(): DiaryStorage {
         }
       };
       t.oncomplete = () => resolve(out);
-      t.onerror = () => reject(err ?? t.error);
-      t.onabort = () => reject(err ?? t.error ?? new Error("transaction aborted"));
+      t.onerror = () => reject(why(t.error ?? new Error("transaction error")));
+      t.onabort = () => reject(why(t.error ?? new DOMException("transaction aborted", "AbortError")));
       try {
         body(t, (v) => (out = v), fail);
       } catch (e) {
@@ -222,6 +277,8 @@ export function idbDiaryStorage(): DiaryStorage {
       });
     },
     async wipe(uid) {
+      // IndexedDB 가 아예 없는 브라우저 — 저장된 것도 없다
+      if (typeof indexedDB === "undefined") return;
       await run<void>(["keys", "rows", "meta"], "readwrite", (t, _set, fail) => {
         t.objectStore("keys").delete(uid);
         const rows = t.objectStore("rows");
