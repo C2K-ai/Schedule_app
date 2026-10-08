@@ -5,8 +5,9 @@
 
 ## 0. ⚠️ 지금 진행 중 — 2026-10-08 저녁 갱신 (여기부터 읽기)
 
-**브랜치**: 2026-10-08 저녁 **일기를 main 에 배포함**(여닫기는 0.35초 페이드 임시 화면). `ui-revamp` 와 `main` 이 같다.
-애니메이션 작업은 사용자가 "토큰 덜 드는 것부터, 영상 작업은 나중에"라고 해서 **멈춤**(0-2 참고).
+**브랜치**: 2026-10-08 저녁 **일기를 main 에 배포함**(여닫기는 0.35초 페이드 임시 화면). `ui-revamp` 는 main + 애니메이션 엔진 작업분
+(앱엔 안 붙음) — **애니메이션을 앱에 붙여 확인하기 전엔 ui-revamp 를 main 에 올리지 말 것.**
+애니메이션은 사용자가 다시 시작시켰다가(“애니메이션으로 가자”) 2026-10-08 밤 **“잠깐 스탑”으로 멈춤**(0-2 참고).
 
 ### 0-1. 일기 (☰ 기록 → 무지개색 "DREAM") — 진행 중
 사용자 요구(확정):
@@ -47,11 +48,13 @@
   모두 라이브러리 없는 단일 HTML, `window.__seek(ms)` 로 아무 시각이나 똑같이 그려 확인 가능.
 - 남은 일: polish 마무리(JUDGES graft) → 닫기 장면 추가(뒷표지 DIARY) → `createDiaryIntro(root, {...})` 형태로 정리해 `DiaryIntro.tsx` 에 이식
   (마지막 종이 장면이 DiarySheet 종이와 같아 보이게 — 색·줄 간격 32/36px·제목 위치).
-  **2026-10-08 저녁: 사용자 요청으로 멈춤(나중에 다시).** 하위 에이전트가 만들다 멈춘 엔진 조각이 `src/lib/diaryIntro/`
-  (`math.ts`·`timeline.ts`·`art.ts`·`css.ts`·`sound.ts`, 앱엔 아직 안 붙음 — 아무 데서도 import 안 함, tsc·eslint 통과).
+  **2026-10-08 밤: 사용자 요청으로 잠깐 멈춤.** 엔진은 `src/lib/diaryIntro/`(`math.ts`·`timeline.ts`·`art.ts`·`css.ts`·`sound.ts`·`engine.ts`,
+  앱엔 아직 안 붙음 — 아무 데서도 import 안 함). 멈춘 지점: **펼치기(open) 엔진 완성**, 폰 화면에서 마지막 종이가 DiarySheet 종이와
+  픽셀 단위로 맞는 것까지 확인, 데스크톱 맞춤 확인하던 중. 남은 순서: 데스크톱 맞춤 → `DiaryIntro.tsx` 연결 → 닫기(뒷표지 DIARY)
+  → 효과음(`DIARY_INTRO_SOUND = true`) → `final.html` 미리보기 → 앱 안에서 열고 닫기 확인 → main 배포.
+  사용자는 작업 중 **1분마다 진행 보고**를 원함.
   계획: 프레임워크 없는 TS `createDiaryIntro(root, {mode, reducedMotion, sound, date, onDone}) → {play, seek, skip, duration, destroy}`,
   `DiaryIntro.tsx` 는 dynamic import 로 붙이고 실패하면 지금의 페이드로. 미리보기 `docs/design/diary-intro/final.html`(아직 없음).
-  토큰을 많이 쓰는 작업이니 사용자에게 먼저 묻고 시작.
 
 ### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
 - 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf
