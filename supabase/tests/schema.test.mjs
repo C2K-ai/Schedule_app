@@ -65,11 +65,11 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
-ok(true, "AI 키·공부 타이머·커리어·브리핑·관리자 마이그레이션 실행됨(두 번)");
+ok(true, "AI 키·공부 타이머·커리어·브리핑·관리자·일기 마이그레이션 실행됨(두 번)");
 await db.exec(`set role service_role;`);
 const cfg = (await q(`select public.must_function_config() c`))[0].c;
 await db.exec(`reset role;`);
@@ -600,6 +600,140 @@ await db.exec(`reset role;`);
   ok((await q(`select count(*)::int n from public.notification_jobs j join public.activities a on a.id = j.task_id`))[0].n === 0, "한 일: 알림이 생기지 않음");
   await db.exec(readFileSync(new URL("../migrations/20261010000000_activities.sql", import.meta.url), "utf8"));
   ok((await as(A, `select count(*)::int n from public.activities`))[0].n === 2, "한 일 마이그레이션 다시 돌려도 기록 그대로");
+}
+
+// ── 일기 ──
+{
+  const as = async (uid, sql, params) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql, params);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const throws = async (uid, sql, params) => {
+    try {
+      await as(uid, sql, params);
+      return false;
+    } catch (e) {
+      return String(e.message);
+    }
+  };
+  // 'v1.<kid 22>.<iv 16>.<암호문>' — 앱이 만드는 가장 짧은 모양(747자)
+  const sealed = (tag = "A") => `v1.${"K".repeat(22)}.${"I".repeat(16)}.${tag.repeat(704)}`;
+  const E1 = "eeeeeeee-0000-4000-8000-0000000000d1";
+  const content = async () => (await q(`select sealed, ver, day::text from public.diary_entries where id = $1`, [E1]))[0];
+  // PostgREST upsert 흉내 — 보낸 열만 EXCLUDED 로 덮는다
+  const upsert = (uid, row) =>
+    as(
+      uid,
+      `insert into public.diary_entries (id, day, sealed, created_at, updated_at, deleted_at, base_ver)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       on conflict (id) do update set day = excluded.day, sealed = excluded.sealed, created_at = excluded.created_at,
+         updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, base_ver = excluded.base_ver
+       returning id, ver, synced_at, base_ver, user_id`,
+      [row.id, row.day, row.sealed, row.created_at ?? iso(Date.now()), iso(Date.now()), row.deleted_at ?? null, row.base_ver ?? null],
+    );
+
+  let r = await upsert(A, { id: E1, day: "2026-10-08", sealed: sealed("A") });
+  ok(r.length === 1 && r[0].ver === 1 && r[0].user_id === A, "일기: 첫 저장은 ver 1, 주인은 자동");
+  const created = (await q(`select created_at from public.diary_entries where id = $1`, [E1]))[0].created_at;
+  r = await upsert(A, { id: E1, day: "2026-10-08", sealed: sealed("B"), base_ver: 1, created_at: iso(0) });
+  ok(r.length === 1 && r[0].ver === 2 && r[0].base_ver === null, "일기: 본 판(base_ver)이 맞으면 ver 2, base_ver 는 비움");
+  ok(
+    (await q(`select created_at from public.diary_entries where id = $1`, [E1]))[0].created_at.getTime() === created.getTime(),
+    "일기: 처음 쓴 시각은 못 바꿈",
+  );
+  r = await upsert(A, { id: E1, day: "2026-10-08", sealed: sealed("C"), base_ver: 1 });
+  let c = await content();
+  ok(r.length === 0 && c.sealed === sealed("B") && c.ver === 2, "일기: 옛 판을 보고 쓴 것은 조용히 버려짐(RETURNING 비어 있음)");
+  r = await upsert(A, { id: E1, day: "2026-10-08", sealed: sealed("C") });
+  c = await content();
+  ok(r.length === 0 && c.sealed === sealed("B"), "일기: base_ver 없이 있는 id 에 쓰면 버려짐(새 글 id 충돌)");
+  r = await upsert(A, { id: E1, day: "2026-10-09", sealed: sealed("C"), base_ver: 2 });
+  c = await content();
+  ok(r.length === 0 && c.day === "2026-10-08" && c.ver === 2, "일기: 날짜는 못 옮김");
+  r = await as(A, `insert into public.diary_entries (id, day, sealed, ver) values (gen_random_uuid(), '2026-10-08', $1, 99) returning ver, synced_at`, [sealed("D")]);
+  ok(r[0].ver === 1 && r[0].synced_at, "일기: ver·synced_at 은 서버가 정함");
+  let m = await throws(
+    A,
+    `insert into public.diary_entries (id, day, updated_at) values ($1, '2026-10-08', now()) on conflict (id) do update set updated_at = excluded.updated_at returning id`,
+    [E1],
+  );
+  ok(m && /null/i.test(m), "일기: sealed 없는 옛 앱 쓰기는 NOT NULL 로 막힘");
+  m = await throws(A, `insert into public.diary_entries (id, day, sealed) values (gen_random_uuid(), '2026-10-08', '오늘은 기분이 좋았다') returning id`);
+  ok(m && /diary_entries_sealed_shape/.test(m), "일기: 평문은 CHECK 로 막힘");
+  m = await throws(A, `insert into public.diary_entries (id, day, sealed) values (gen_random_uuid(), '2026-10-08', $1) returning id`, [
+    `v1.${"K".repeat(22)}.${"I".repeat(16)}.${"A".repeat(100)}`,
+  ]);
+  ok(m && /diary_entries_sealed_shape/.test(m), "일기: 너무 짧은 sealed 막힘(채우기 없이 길이가 드러나지 않게)");
+  m = await throws(A, `insert into public.diary_entries (id, day, sealed) values (gen_random_uuid(), '2026-10-08', $1) returning id`, [
+    `v1.${"K".repeat(22)}.${"I".repeat(16)}.${"A".repeat(100000)}`,
+  ]);
+  ok(m && /diary_entries_sealed_shape/.test(m), "일기: 10만 자 넘는 sealed 막힘");
+  const cols = (await q(`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'diary_entries'`)).map((x) => x.column_name);
+  ok(!cols.some((x) => /body|mood|text|content/.test(x)), `일기: 서버엔 본문·기분 열이 없음 (${cols.sort().join(",")})`);
+  ok((await as(B, `select count(*)::int n from public.diary_entries`))[0].n === 0, "RLS: B 는 A 의 일기를 못 봄");
+  ok(
+    await throws(B, `insert into public.diary_entries (id, user_id, day, sealed) values (gen_random_uuid(), '${A}', '2026-10-08', $1) returning id`, [sealed()]),
+    "RLS: 남의 이름으로 일기를 못 씀",
+  );
+  ok((await as(B, `update public.diary_entries set deleted_at = now(), base_ver = ver where id = $1 returning id`, [E1])).length === 0, "RLS: 남의 일기를 못 고침");
+  r = await as(A, `update public.diary_entries set user_id = '${B}', base_ver = ver where id = $1 returning user_id`, [E1]);
+  ok(r.length === 0 || r[0].user_id === A, "일기: 주인은 못 바꿈");
+  ok(await throws(A, `delete from public.diary_entries where id = $1 returning id`, [E1]), "일기: 진짜 삭제는 못 함(지움 표시만)");
+  await db.exec(`set role anon;`);
+  let anonDenied = false;
+  try {
+    await q(`select * from public.diary_entries`);
+  } catch {
+    anonDenied = true;
+  }
+  await db.exec(`reset role;`);
+  ok(anonDenied, "일기: 익명은 못 읽음");
+
+  // 열쇠
+  const W = `${"I".repeat(16)}.${"W".repeat(64)}`;
+  r = await as(A, `insert into public.diary_keys (kid, salt, iterations, wrapped) values ($1, $2, 600000, $3) on conflict (user_id) do nothing returning rev, user_id, ring, needs_rewrap`, [
+    "K".repeat(22),
+    "S".repeat(22),
+    W,
+  ]);
+  ok(r.length === 1 && r[0].rev === 1 && r[0].user_id === A && r[0].ring.length === 0 && r[0].needs_rewrap === false, "일기 열쇠: 처음 올리기");
+  r = await as(A, `insert into public.diary_keys (kid, salt, iterations, wrapped) values ($1, $2, 600000, $3) on conflict (user_id) do nothing returning rev`, [
+    "Z".repeat(22),
+    "S".repeat(22),
+    W,
+  ]);
+  ok(r.length === 0 && (await q(`select kid from public.diary_keys where user_id = $1`, [A]))[0].kid === "K".repeat(22), "일기 열쇠: 두 번째 기기의 올리기는 무시(먼저 만든 열쇠 그대로)");
+  ok(await throws(B, `insert into public.diary_keys (kid, salt, iterations, wrapped) values ($1, $2, 1000, $3) returning rev`, ["K".repeat(22), "S".repeat(22), W]), "일기 열쇠: 반복 횟수 하한(낮춰치기 막기)");
+  ok(await throws(B, `insert into public.diary_keys (kid, salt, iterations, wrapped) values ($1, $2, 600000, 'not-a-wrap') returning rev`, ["K".repeat(22), "S".repeat(22)]), "일기 열쇠: 모양이 틀린 wrapped 막힘");
+  r = await as(A, `update public.diary_keys set kid = $1, needs_rewrap = false where user_id = $2 and rev = 1 returning rev`, ["N".repeat(22), A]);
+  ok(r.length === 1 && r[0].rev === 2, "일기 열쇠: 지금 rev 로 바꾸면 됨(rev 2)");
+  r = await as(A, `update public.diary_keys set kid = $1 where user_id = $2 and rev = 1 returning rev`, ["M".repeat(22), A]);
+  ok(r.length === 0, "일기 열쇠: 옛 rev 로는 못 바꿈(CAS)");
+  r = await as(A, `update public.diary_keys set rev = 99, user_id = '${B}' where user_id = $1 returning rev, user_id`, [A]);
+  ok(r.length === 0 || (r[0].rev === 3 && r[0].user_id === A), "일기 열쇠: rev·주인은 서버가 정함");
+  ok((await as(B, `select count(*)::int n from public.diary_keys`))[0].n === 0, "RLS: B 는 A 의 일기 열쇠를 못 봄");
+  ok((await as(B, `update public.diary_keys set needs_rewrap = true returning user_id`)).length === 0, "RLS: 남의 일기 열쇠를 못 고침");
+  ok(await throws(A, `delete from public.diary_keys returning user_id`), "일기 열쇠: 삭제 못 함");
+
+  const pub = (await q(`select tablename from pg_publication_tables where pubname = 'supabase_realtime' and tablename like 'diary%' order by 1`)).map((x) => x.tablename);
+  ok(pub.join() === "diary_entries,diary_keys", "일기: 실시간 알림에 글·열쇠 둘 다");
+
+  await db.exec(readFileSync(new URL("../migrations/20261011000000_diary.sql", import.meta.url), "utf8"));
+  ok((await q(`select count(*)::int n from public.diary_entries where user_id = $1`, [A]))[0].n === 2, "일기 마이그레이션 다시 돌려도 글 그대로");
+
+  // 계정을 지우면 일기·열쇠도 같이 사라진다(A 는 다른 블록이 쓰므로 D 로)
+  const DD = "dddddddd-0000-4000-8000-000000000004";
+  await as(DD, `insert into public.diary_entries (id, day, sealed) values (gen_random_uuid(), '2026-10-08', $1) returning id`, [sealed("E")]);
+  await as(DD, `insert into public.diary_keys (kid, salt, iterations, wrapped) values ($1, $2, 600000, $3) returning rev`, ["K".repeat(22), "S".repeat(22), W]);
+  const countD = async () =>
+    (await q(`select (select count(*) from public.diary_entries where user_id = $1)::int + (select count(*) from public.diary_keys where user_id = $1)::int n`, [DD]))[0].n;
+  ok((await countD()) === 2, "일기: D 의 글·열쇠 준비");
+  await q(`delete from auth.users where id = $1`, [DD]);
+  ok((await countD()) === 0 && (await q(`select count(*)::int n from public.diary_entries where user_id = $1`, [A]))[0].n === 2, "일기: 계정 삭제 → 그 사람 일기·열쇠만 같이 삭제");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

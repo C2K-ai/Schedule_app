@@ -48,19 +48,19 @@ export async function loadRing(ctx: Ctx): Promise<Keyring> {
   return (await ctx.storage.getKeyring(ctx.uid)) ?? { ...EMPTY, keys: {} };
 }
 
-/** 열쇠 꾸러미 저장 — 이미 있는 열쇠는 절대 빼지 않는다(합치기). 다른 탭에도 알림 */
+/** 열쇠 꾸러미 저장 — 이미 있는 열쇠는 절대 빼지 않는다(한 트랜잭션에서 합치기). 다른 탭에도 알림 */
 export async function saveRing(ctx: Ctx, ring: Keyring) {
-  const cur = await ctx.storage.getKeyring(ctx.uid);
-  await ctx.storage.putKeyring(ctx.uid, { ...ring, keys: { ...(cur?.keys ?? {}), ...ring.keys } });
+  await ctx.storage.updateKeyring(ctx.uid, (cur) => ({ ...ring, keys: { ...(cur?.keys ?? {}), ...ring.keys } }));
   announce(channelName(ctx.uid, ctx.storage), { t: "keys" });
 }
 
 /** 보류 중인 비밀번호 바꾸기만 고친다(열쇠는 그대로) */
 async function setPending(ctx: Ctx, fn: (p: Keyring["pending"]) => Keyring["pending"]): Promise<Keyring["pending"]> {
-  const cur = await loadRing(ctx);
-  const next = fn(cur.pending);
-  await ctx.storage.putKeyring(ctx.uid, { ...cur, pending: next });
-  return next;
+  const next = await ctx.storage.updateKeyring(ctx.uid, (cur) => ({
+    ...(cur ?? { ...EMPTY, keys: {} }),
+    pending: fn(cur?.pending ?? null),
+  }));
+  return next?.pending ?? null;
 }
 
 /** 지금 열쇠로 감싼 예전 열쇠들을 푼다 — 안 풀리는 건 건너뜀 */

@@ -296,6 +296,22 @@ test("8. 지우기 vs 고치기 — 어느 순서든 고친 글이 남는다", a
   assert.equal(z.body, "");
   assert.equal(z.mood, null);
   assert.ok(!diaryOn(C.snap(), D).some((e) => e.id === Z));
+
+  // 다른 기기에서 지워진 글에 늦게 저장하면 — 지운 글은 되살리지 않고 새 글로
+  const W = await write(A, { body: "곧 지워질 글" });
+  await A.eng.flush();
+  await B.eng.pull();
+  assert.equal(A.eng.remove(W), true);
+  await A.eng.settle();
+  await A.eng.flush();
+  await B.eng.pull();
+  assert.ok(entry(B, W).deleted_at);
+  const rw = B.eng.save({ id: W, day: D, body: "B의 늦은 초안", base: { body: "곧 지워질 글" } });
+  assert.ok(rw.ok && rw.id !== W);
+  assert.ok(entry(B, W).deleted_at);
+  assert.equal(entry(B, W).body, "");
+  assert.equal(entry(B, rw.id).body, "B의 늦은 초안");
+  assert.equal(B.eng.save({ id: W, day: D, body: "B의 늦은 초안2", base: { body: "곧 지워질 글" } }).id, rw.id);
 });
 
 test("9. 한 글만 계속 실패해도 다른 글은 올라가고, 그 글은 남는다(5번 뒤엔 자동 재시도 멈춤)", async () => {
@@ -606,6 +622,31 @@ test("17. 같은 기기의 두 탭 — 한 탭에서 로그인하면 다른 탭�
   assert.equal(T1.snap().pending + T2.snap().pending, 0);
   await A.eng.pull();
   assert.deepEqual(bodies(A), ["다른 기기에서 쓴 글", "탭2에서 고침"]);
+});
+
+test("17b. 서버 없는 빌드(기기 모드)에서 두 탭이 동시에 켜져도 열쇠는 하나 — 새로고침해도 열림", async () => {
+  const shared = memoryDiaryStorage();
+  const mk = () => {
+    const eng = new DiaryEngine({ uid: "local", mode: "device", remote: null, storage: shared, onChange: () => {} });
+    eng.start();
+    engines.push(eng);
+    return eng;
+  };
+  const t1 = mk();
+  const t2 = mk();
+  await t1.settle();
+  await t2.settle();
+  const ring = await shared.getKeyring("local");
+  assert.equal(Object.keys(ring.keys).length, 1, "열쇠 하나");
+  assert.deepEqual(t1.snapshot().state, { kind: "ready", weak: false, repair: null });
+  const id = t1.save({ day: D, body: "기기에만 있는 일기" }).id;
+  await t1.settle();
+  await until(() => t2.snapshot().entries[id]?.body === "기기에만 있는 일기", "탭2 에 건너감");
+  assert.equal(t1.snapshot().pending, 0);
+  assert.equal(await t1.wipe(), true, "기기 모드는 올릴 게 없으니 바로 지울 수 있음");
+  const t3 = mk();
+  await t3.settle();
+  assert.deepEqual(t3.snapshot().entries, {});
 });
 
 test("18. 실시간 알림이 순서가 뒤바뀌어 와도 최신 판을 지킨다. sealed 빠진 알림은 직접 받아 온다", async () => {

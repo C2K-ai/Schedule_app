@@ -21,6 +21,9 @@ import { type DiaryStorage, type Keyring, type StoredRow, idbDiaryStorage } from
 import { nowIso, uuid } from "./time";
 
 export type { UnlockResult } from "./diaryKeys";
+// 화면(AuthForm·설정)에서 같이 쓰는 것 — 한곳에서 가져가게
+export { diaryAfterLogin } from "./diaryKeys";
+export { weakPassword } from "./diaryCrypto";
 
 export type DiaryMode = "cloud" | "device" | "off";
 
@@ -109,6 +112,7 @@ interface Mem {
 type RowLike = Pick<StoredRow, "id" | "day" | "sealed" | "created_at" | "updated_at" | "deleted_at">;
 
 const MAX_TRIES = 5;
+const REMOVE_GRACE_MS = 5000;
 const PAGE = 500;
 const iso = (v: unknown): string => {
   const t = typeof v === "string" ? Date.parse(v) : NaN;
@@ -182,8 +186,8 @@ export class DiaryEngine {
   private mine: Record<string, string> = {};
   /** 갈라져 나온 사본 — 같은 편집기의 다음 저장은 그 사본으로 */
   private forkOf: Record<string, string> = {};
-  /** 이 기기에서 지운 글 — 닫히며 늦게 온 저장이 되살리지 않게 */
-  private removedHere = new Set<string>();
+  /** 이 기기에서 지운 글(지운 시각) — 편집기가 닫히며 바로 뒤따라온 저장이 되살리지 않게 */
+  private removedHere = new Map<string, number>();
   private chains = new Map<string, Promise<void>>();
   private busy = new Map<string, number>();
   private bg = new Set<Promise<unknown>>();
@@ -261,15 +265,20 @@ export class DiaryEngine {
         rows = await this.storage.rows(this.uid);
         this.cursor = await this.storage.getMeta(this.uid, "cursor");
         if (this.mode === "device" && !(ring?.current && ring.keys[ring.current])) {
-          // 서버 없는 빌드 — 이 기기 열쇠를 바로 만든다(비밀번호 없음)
+          // 서버 없는 빌드 — 이 기기 열쇠를 바로 만든다(비밀번호 없음). 다른 탭이 먼저 만들었으면 그걸 쓴다
           const kid = newKid();
-          ring = { current: kid, keys: { ...(ring?.keys ?? {}), [kid]: await generateDek() }, weak: false, pending: null };
-          await this.storage.putKeyring(this.uid, ring);
+          const dek = await generateDek();
+          ring = await this.storage.updateKeyring(this.uid, (cur) =>
+            cur?.current && cur.keys[cur.current]
+              ? null
+              : { current: kid, keys: { ...(cur?.keys ?? {}), [kid]: dek }, weak: false, pending: null },
+          );
         }
         if (ring?.pending && !ring.pending.confirmed) {
           // 로그인 비밀번호가 바뀌었는지 모르는 채로 끝난 바꾸기 — 버린다
-          ring = { ...ring, pending: null };
-          await this.storage.putKeyring(this.uid, ring);
+          ring = await this.storage.updateKeyring(this.uid, (cur) =>
+            cur?.pending && !cur.pending.confirmed ? { ...cur, pending: null } : null,
+          );
         }
       } catch (e) {
         console.warn("[diary] 이 기기 저장소를 못 열었어요", e);
@@ -667,7 +676,8 @@ export class DiaryEngine {
   save(i: SaveInput): SaveResult {
     if (this.stateNow().kind !== "ready") return { ok: false, error: "locked" };
     let id = i.id ?? uuid();
-    if (this.removedHere.has(id)) return { ok: true, id };
+    // 지운 직후 늦게 온 저장(편집기 닫힘·blur)은 무시. 그 뒤의 저장은 아래에서 새 글로 간다
+    if (Date.now() - (this.removedHere.get(id) ?? -Infinity) < REMOVE_GRACE_MS) return { ok: true, id };
     let cur: Mem | undefined = this.mem[id];
     if (cur?.locked) return { ok: false, error: "locked" };
     let fork: string | null = null;
@@ -714,7 +724,7 @@ export class DiaryEngine {
     if (!cur || cur.locked || cur.deleted_at) return false;
     const now = nowIso();
     this.mem[id] = { ...cur, body: "", mood: null, deleted_at: now, updated_at: now };
-    this.removedHere.add(id);
+    this.removedHere.set(id, Date.now());
     this.touch(id, "");
     return true;
   }
@@ -804,10 +814,12 @@ export class DiaryEngine {
     const run = async () => {
       try {
         await this.loaded;
-        // 충돌로 사본·판 옮기기가 생기면 같은 호출 안에서 이어서 올린다(최대 10번)
+        // 충돌로 사본·판 옮기기가 생기면 같은 호출 안에서 이어서 올린다(최대 10번).
+        // 이번에 실패한 글은 이 호출 안에서 다시 보내지 않는다(실패 횟수가 한꺼번에 늘지 않게)
+        const failed = new Set<string>();
         for (let round = 0; round < 10 && !this.disposed; round++) {
           this.flushAgain = false;
-          const more = await this.flushOnce();
+          const more = await this.flushOnce(failed);
           if (!more && !this.flushAgain) break;
         }
       } catch (e) {
@@ -821,13 +833,13 @@ export class DiaryEngine {
   }
 
   /** 한 바퀴 올리기. true = 충돌을 풀어서 새로 올릴 게 생김 */
-  private async flushOnce(): Promise<boolean> {
+  private async flushOnce(failed: Set<string>): Promise<boolean> {
     const remote = this.remote;
     if (!remote || this.status !== "live" || this.disposed || offline()) return false;
     // 저장 중인 것부터 끝낸다(열쇠는 필요 없다 — 이미 잠겨 있음)
     await Promise.all([...this.chains.values()]);
     const rows = Object.values(this.stored)
-      .filter((r) => r.dirty && (r.tries ?? 0) < MAX_TRIES)
+      .filter((r) => r.dirty && (r.tries ?? 0) < MAX_TRIES && !failed.has(r.id))
       .sort((a, b) => (a.updated_at < b.updated_at ? -1 : a.updated_at > b.updated_at ? 1 : 0))
       .slice(0, 50);
     if (rows.length === 0) return false;
@@ -857,6 +869,7 @@ export class DiaryEngine {
         // 이 글만 문제 — 표시하고 다음 글로(버리지 않음)
         const msg = errMsg(e);
         lastErr = msg;
+        failed.add(r.id);
         await this.queue(r.id, async () => {
           const row = await this.storage.updateRow(this.uid, r.id, (c) =>
             c?.sealed === r.sealed ? { ...c, err: msg, tries: (c.tries ?? 0) + 1 } : null,
@@ -882,6 +895,7 @@ export class DiaryEngine {
           break;
         }
         lastErr = errMsg(e);
+        failed.add(r.id);
       }
     }
     const remaining = Object.values(this.stored).some((r) => r.dirty && (r.tries ?? 0) < MAX_TRIES);

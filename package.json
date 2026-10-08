@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:db": "node supabase/tests/schema.test.mjs",
+    "test:unit": "node --import ./tests/register.mjs --test \"tests/*.test.mjs\"",
     "icons": "node scripts/gen-icons.mjs",
     "background": "node scripts/gen-background.mjs",
     "vapid": "node scripts/gen-vapid.mjs"

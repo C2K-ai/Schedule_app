@@ -47,6 +47,8 @@ export interface DiaryStorage {
   readonly scope?: string;
   getKeyring(uid: string): Promise<Keyring | null>;
   putKeyring(uid: string, k: Keyring): Promise<void>;
+  /** 열쇠 꾸러미 읽고-고치고-쓰기를 한 트랜잭션으로(두 탭이 동시에 바꿔도 열쇠가 사라지지 않게). fn 은 동기, null = 안 바꿈 */
+  updateKeyring(uid: string, fn: (cur: Keyring | null) => Keyring | null): Promise<Keyring | null>;
   rows(uid: string): Promise<StoredRow[]>;
   getRow(uid: string, id: string): Promise<StoredRow | null>;
   /** 한 번의 읽기·쓰기 트랜잭션. fn 은 반드시 동기(암호화는 미리). null = 안 바꿈. 결과 행을 돌려준다 */
@@ -156,6 +158,26 @@ export function idbDiaryStorage(): DiaryStorage {
         t.objectStore("keys").put(k, uid);
       });
     },
+    async updateKeyring(uid, fn) {
+      return run<Keyring | null>(["keys"], "readwrite", (t, set, fail) => {
+        const store = t.objectStore("keys");
+        const r = store.get(uid);
+        r.onsuccess = () => {
+          try {
+            const cur = (r.result as Keyring | undefined) ?? null;
+            const next = fn(cur);
+            if (next === null) {
+              set(cur);
+              return;
+            }
+            store.put(next, uid);
+            set(next);
+          } catch (e) {
+            fail(e);
+          }
+        };
+      });
+    },
     async rows(uid) {
       return run<StoredRow[]>(["rows"], "readonly", (t, set) => {
         const r = t.objectStore("rows").index("by_uid").getAll(uid);
@@ -242,6 +264,14 @@ export function memoryDiaryStorage(): DiaryStorage {
     async putKeyring(uid, k) {
       await tick();
       keys.set(uid, copyRing(k));
+    },
+    async updateKeyring(uid, fn) {
+      await tick();
+      const cur = keys.get(uid) ?? null;
+      const next = fn(cur ? copyRing(cur) : null);
+      if (next === null) return cur ? copyRing(cur) : null;
+      keys.set(uid, copyRing(next));
+      return copyRing(next);
     },
     async rows(uid) {
       await tick();
