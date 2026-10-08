@@ -5,6 +5,9 @@ import { DEFAULT_SETTINGS } from "./settings";
 import { DAY, nowIso } from "./time";
 import { DEFAULT_CATEGORIES, dayNoteId, defaultCategoryId, localDefaultSlot } from "./ids";
 import type { DB, Profile, Row, SyncStatus, TableName } from "./types";
+import { DiaryEngine, emptyDiarySnap, type DiaryMode, type DiarySnap } from "./diary";
+import { idbDiaryStorage, type DiaryStorage } from "./diaryStorage";
+import { supabaseDiaryRemote } from "./diaryRemote";
 
 /**
  * 로컬 우선(local-first) 저장소.
@@ -15,6 +18,8 @@ import type { DB, Profile, Row, SyncStatus, TableName } from "./types";
  *  충돌:  updated_at 이 더 최신인 쪽이 이긴다(LWW). 서버도 같은 규칙의 트리거로 오래된 쓰기를 버린다.
  *
  * 그래서 비행기 안(오프라인)에서도 그대로 쓰고, 착륙 후 연결되면 밀린 변경이 올라간다.
+ *
+ * 일기는 따로 논다(DiaryEngine) — 기기에서 잠근 채로 IndexedDB·서버에 두고, TABLES·DB·백업 파일엔 넣지 않는다.
  */
 
 export const TABLES: TableName[] = [
@@ -44,6 +49,8 @@ export interface Snapshot {
   status: SyncStatus;
   scope: string;
   userId: string | null;
+  /** 일기(평문은 메모리에만) — db 와 따로 */
+  diary: DiarySnap;
 }
 
 const PREFIX = "must:v1";
@@ -82,11 +89,13 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-function writeJson(key: string, value: unknown) {
+function writeJson(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (e) {
     console.warn("[must] localStorage 저장 실패", e);
+    return false;
   }
 }
 
@@ -114,16 +123,28 @@ export class PlannerStore {
   private lastPull = 0;
   private backoff = 2000;
   private cleanups: (() => void)[] = [];
+  /** 일기 — 로그인(cloud)·서버 없는 빌드(device)·로그아웃(off) */
+  readonly diary: DiaryEngine;
 
   constructor(
     readonly scope: string,
     readonly userId: string | null,
     private remote: SupabaseClient | null,
+    diaryMode: DiaryMode = "off",
+    diaryStorage?: DiaryStorage,
   ) {
+    this.diary = new DiaryEngine({
+      uid: userId ?? "local",
+      mode: diaryMode,
+      remote: remote && userId ? supabaseDiaryRemote(remote, userId) : null,
+      storage: diaryStorage ?? idbDiaryStorage(),
+      onChange: (d) => this.emit({ diary: d }),
+    });
     this.snap = {
       db: emptyDb(),
       scope,
       userId,
+      diary: emptyDiarySnap(diaryMode),
       status: {
         mode: remote ? "cloud" : "local",
         online: typeof navigator === "undefined" ? true : navigator.onLine,
@@ -153,6 +174,7 @@ export class PlannerStore {
 
   // ───────────── 수명 ─────────────
   start() {
+    this.diary.start();
     this.load();
     this.ensureProfile();
     this.ensureDefaultCategories();
@@ -168,12 +190,18 @@ export class PlannerStore {
     const onOnline = () => {
       this.emit({}, { online: true });
       this.backoff = 2000;
+      this.diary.onOnline();
       void this.flush();
       void this.pull();
     };
     const onOffline = () => this.emit({}, { online: false, realtime: this.remote ? "connecting" : "off" });
     const onVisible = () => {
-      if (document.visibilityState === "visible" && Date.now() - this.lastPull > 20_000) void this.pull();
+      // 숨을 때 일기는 바로 올리고, 돌아오면 열쇠·글을 다시 맞춘다
+      if (document.visibilityState === "hidden") this.diary.flushSoon();
+      if (document.visibilityState === "visible") {
+        this.diary.onVisible();
+        if (Date.now() - this.lastPull > 20_000) void this.pull();
+      }
     };
     window.addEventListener("storage", onStorage);
     window.addEventListener("online", onOnline);
@@ -194,6 +222,7 @@ export class PlannerStore {
   }
 
   dispose() {
+    this.diary.dispose();
     this.cleanups.forEach((c) => c());
     this.cleanups = [];
     if (this.flushTimer) window.clearTimeout(this.flushTimer);
@@ -211,7 +240,8 @@ export class PlannerStore {
   }
 
   private persist() {
-    writeJson(k(this.scope, "db"), this.snap.db);
+    if (!writeJson(k(this.scope, "db"), this.snap.db))
+      this.emit({}, { error: "이 기기 저장 공간이 꽉 찼어요 — 지금 바꾼 내용이 저장되지 않았어요" });
   }
 
   private persistOutbox() {
@@ -357,10 +387,15 @@ export class PlannerStore {
   private scheduleFlush(ms: number) {
     if (!this.remote) return;
     if (this.flushTimer) window.clearTimeout(this.flushTimer);
-    this.flushTimer = window.setTimeout(() => void this.flush(), ms);
+    this.flushTimer = window.setTimeout(() => void this.flushOutbox(), ms);
   }
 
+  /** 밀린 변경 올리기 — 일정 등(outbox)과 일기(따로) 둘 다 */
   async flush() {
+    await Promise.all([this.flushOutbox(), this.diary.flush()]);
+  }
+
+  private async flushOutbox() {
     if (!this.remote || this.flushing || this.outbox.length === 0) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
     this.flushing = true;
@@ -473,7 +508,12 @@ export class PlannerStore {
     if (!this.cursor[table] || syncedAt > this.cursor[table]!) this.cursor[table] = syncedAt;
   }
 
+  /** 받기 — 일정 등(TABLES)과 일기(따로) 둘 다 */
   async pull() {
+    await Promise.all([this.pullTables(), this.diary.pull()]);
+  }
+
+  private async pullTables() {
     if (!this.remote || this.pulling) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
     this.pulling = true;
@@ -545,6 +585,7 @@ export class PlannerStore {
       );
     }
     this.emit({}, { realtime: "connecting" });
+    this.diary.attachRealtime(ch);
     ch.subscribe((status) => {
       if (status === "SUBSCRIBED") {
         this.emit({}, { realtime: "live" });
