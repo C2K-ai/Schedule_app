@@ -241,19 +241,28 @@ function NotifyTab() {
       </Section>
 
       {(lockOk || ios) && (
-        <Section title="잠금화면 일정 카드" desc="폰을 켜자마자 잠금화면에서 지금·다음 일정과 오늘 남은 할 일이 보이게 합니다.">
+        <Section title="잠금화면 일정 카드 (선택)" desc="원하면 켜세요. 폰을 켜자마자 잠금화면에서 지금·다음 일정과 오늘 남은 할 일이 보여요. 안드로이드 전용이에요.">
           {lockOk ? (
             <>
               <Switch
                 checked={settings.lockCard}
-                onChange={(lockCard) => set({ lockCard })}
+                onChange={async (lockCard) => {
+                  // 켤 때 알림 권한이 없으면 바로 묻는다 — 권한이 있어야 카드가 뜬다
+                  if (lockCard && perm !== "granted" && perm !== "unsupported") setPerm(await requestNotificationPermission());
+                  set({ lockCard });
+                }}
                 label="잠금화면에 일정 카드 띄우기"
                 desc="소리 없는 알림 한 장으로 띄워 두고, 일정이 시작·끝날 때마다 내용을 바꿉니다. 밀어서 지워도 앱을 한 번 열었다 닫으면 다시 떠요."
               />
-              {perm !== "granted" && (
+              {settings.lockCard && perm !== "granted" && (
                 <p className="mt-2 rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">
-                  위 ‘1. 알림 권한’을 허용해야 카드가 떠요.
+                  {perm === "denied"
+                    ? "알림이 차단돼 있어 카드가 안 떠요. 주소창 왼쪽 자물쇠(또는 폰 설정 → 앱 → 크롬 → 알림)에서 허용으로 바꿔 주세요."
+                    : "위 ‘1. 알림 권한’을 허용해야 카드가 떠요."}
                 </p>
+              )}
+              {settings.lockCard && perm === "granted" && (
+                <p className="mt-2 text-sm text-ok">켜졌어요 — 화면을 껐다 켜서 잠금화면을 확인해 보세요.</p>
               )}
               <p className="mt-2 rounded-xl bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
                 잠금화면에 안 보이면 — 폰 <b className="text-fg">설정 → 알림 → 잠금화면 알림</b>에서 ‘모든 알림 내용 표시’(또는 ‘조용한 알림도

@@ -24,7 +24,8 @@ export const DEFAULT_SETTINGS: Settings = {
   background: "swing",
   pcFullscreen: true,
   launchBriefing: true,
-  lockCard: true,
+  // 잠금화면 카드는 원하는 사람만 켠다(기본 꺼짐)
+  lockCard: false,
   studyGoalMin: 360,
   studyAutoPause: true,
   ddays: [],
