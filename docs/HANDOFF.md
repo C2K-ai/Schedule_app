@@ -48,11 +48,12 @@
 
 ## 4. 서버(Supabase) 현재 상태
 
-- **적용된 마이그레이션**: `20261005000000_init` ~ `20261009000300_member_name` 전부
-  (**`20261008000500_admin_guards` 만 미적용** — 마지막 관리자 보호 트리거·크론 기록 정리. DELETE 문이 있어 MCP 가 승인 창을 띄움.
-  필요하면 대시보드 SQL Editor 에서 실행).
+- **적용된 마이그레이션**: `20261005000000_init` ~ `20261009000300_member_name` 전부.
+  `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
+  "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
+  필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
 - **Edge Functions**(배포 버전): `parse-schedule` v5(Haiku 5.5) · `career-polish` v3(Sonnet 5.5) · `admin` v4 ·
-  `signup` v3(**JWT 검증 끔**) · `send-due-notifications` · `notification-action` · `push-test`(소스 제목은 DREAM 으로 바꿨지만 재배포 안 함).
+  `signup` v3(**JWT 검증 끔**) · `send-due-notifications` · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
   `must_cron_secret`, `must_action_secret`. 키 값은 문서·채팅에 절대 쓰지 말 것.
@@ -91,7 +92,7 @@
 - (사용자) Supabase → Authentication → URL Configuration: Site URL `https://c2k-ai.github.io/Schedule_app/`,
   Redirect URLs `https://c2k-ai.github.io/Schedule_app/**` — 비밀번호 재설정 메일 링크용. 가입은 이제 메일 없이 되므로 급하지 않음.
 - (사용자) Auth 설정의 '유출 비밀번호 보호' 켜기(보안 점검 경고 1건).
-- (선택) `20261008000500_admin_guards` 적용, `push-test` 재배포.
+- (선택) `20261008000500_admin_guards` 의 크론 정리 부분(`do $do$` 블록)을 SQL Editor 에서 실행 — 4절 참고.
 - 아이디어(요청 오면): 드라이브 잠긴 파일의 **이름도 숨기기**, 커리어 프롬프트에 "동사 부풀리기 금지(체크→관리, 왔다→유치)·응시 전 자격은 기술에 넣지 말 것" 추가,
   아이폰 잠금화면 카드(웹앱 한계로 현재 안드로이드만).
 
