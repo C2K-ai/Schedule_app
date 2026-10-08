@@ -2,8 +2,11 @@
  *  - push            : 서버 푸시 → 시스템 알림 + 열린 앱에 전달(앱이 자체 알람 소리를 울림)
  *  - notificationclick: "지금 시작" / "5분 뒤 다시" 버튼 처리 (잠금화면에서도 앱 안 열고 스누즈)
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
+ *  - 잠금화면 카드    : 앱이 넘겨준 시점별 내용(lib/lockCard.ts)으로 '지금/다음 일정' 알림을 조용히 바꿔 단다
  */
-const VERSION = "must-v6";
+const VERSION = "must-v7";
+// 버전이 바뀌어도 지우지 않는 작은 저장소(잠금화면 카드 내용)
+const STATE = "must-state";
 const DEV = new URL(self.location.href).searchParams.get("mode") === "development";
 // 하위 경로 배포(GitHub Pages /Schedule_app) 대응 — sw.js 가 놓인 폴더가 앱의 뿌리
 const BASE = self.location.pathname.replace(/\/sw\.js$/, "");
@@ -36,7 +39,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)));
+      await Promise.all(keys.filter((k) => k !== VERSION && k !== STATE).map((k) => caches.delete(k)));
       await self.clients.claim();
     })(),
   );
@@ -120,6 +123,67 @@ function buildOptions(p) {
   };
 }
 
+// ───────────── 잠금화면 카드 ─────────────
+const LOCK_TAG = "lock-card";
+const LOCK_KEY = `${ROOT}__state/lock-card`;
+
+async function loadLock() {
+  try {
+    const res = await (await caches.open(STATE)).match(LOCK_KEY);
+    return res ? await res.json() : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveLock(steps) {
+  const cache = await caches.open(STATE);
+  await cache.put(LOCK_KEY, new Response(JSON.stringify(steps), { headers: { "content-type": "application/json" } }));
+}
+
+/** 지금 시각에 맞는 카드를 단다 — 같은 내용이 이미 떠 있으면 그대로 둔다(맨 위로 다시 올라오지 않게) */
+async function drawLock(steps) {
+  const now = Date.now();
+  let face = null;
+  for (const s of steps) {
+    if (s.at > now) break;
+    face = s.face;
+  }
+  const open = await self.registration.getNotifications({ tag: LOCK_TAG });
+  if (!face) {
+    open.forEach((n) => n.close());
+    return;
+  }
+  if (open.some((n) => n.title === face.title && n.body === face.body)) return;
+  await self.registration.showNotification(face.title, {
+    body: face.body,
+    tag: LOCK_TAG,
+    silent: true,
+    renotify: false,
+    icon: `${BASE}/icons/icon-192.png`,
+    badge: `${BASE}/icons/badge-96.png`,
+    data: { kind: "lock" },
+    actions: [
+      { action: "open", title: "열기" },
+      { action: "voice", title: "🎙 말로 추가" },
+    ],
+  });
+}
+
+const refreshLock = () => loadLock().then(drawLock).catch(() => undefined);
+
+self.addEventListener("message", (event) => {
+  const d = event.data || {};
+  if (d.type === "must:lock-card" && Array.isArray(d.steps)) {
+    event.waitUntil(saveLock(d.steps).then(() => drawLock(d.steps)).catch(() => undefined));
+  }
+});
+
+// 크롬이 가끔 깨워 줄 때(설치한 앱) — 앱을 안 열어도 카드가 시간에 맞게 바뀐다
+self.addEventListener("periodicsync", (event) => {
+  if (event.tag === LOCK_TAG) event.waitUntil(refreshLock());
+});
+
 self.addEventListener("push", (event) => {
   let p = {};
   try {
@@ -133,6 +197,8 @@ self.addEventListener("push", (event) => {
       // 열려 있는 앱에 넘겨서 자체 알람 소리·전체화면 경고를 울리게 한다
       wins.forEach((w) => w.postMessage({ type: "must:push", payload: p }));
       await self.registration.showNotification(p.title || "DREAM", buildOptions(p));
+      // 푸시가 올 때마다(알림 시각·아침 브리핑) 잠금화면 카드도 지금 시각에 맞게
+      await refreshLock();
       if (typeof p.badgeCount === "number" && self.navigator.setAppBadge) {
         try {
           await self.navigator.setAppBadge(p.badgeCount);

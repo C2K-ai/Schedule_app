@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { liveHabits, liveTasks, materializeHabits } from "@/lib/planner";
+import { syncLockCard } from "@/lib/lockCard";
 import { mergeSettings } from "@/lib/settings";
 import { unsubscribePush } from "@/lib/push";
 import { PlannerStore, type Snapshot } from "@/lib/store";
@@ -238,6 +239,7 @@ function Inner({
     if (!sb) return;
     // 이 기기의 푸시 구독을 먼저 지운다 — 안 그러면 로그아웃한 계정의 알림이 계속 이 기기로 온다
     await unsubscribePush(sb).catch(() => {});
+    await syncLockCard(null).catch(() => {});
     await sb.auth.signOut();
   }, []);
 

@@ -12,6 +12,7 @@ import {
 } from "@/lib/notify";
 import { aiStatus } from "@/lib/ai";
 import { clearRecovery, inRecovery } from "@/lib/authLinks";
+import { lockCardSupported } from "@/lib/lockCard";
 import { OFFSET_CHOICES } from "@/lib/settings";
 import { briefingTime, currentPushSubscription, pushSupported, sendTestPush, setBriefingTime, subscribePush, unsubscribePush } from "@/lib/push";
 import { downloadSound, findSound, playSound, unlockAudio, vibrate, VIBRATIONS } from "@/lib/sound";
@@ -95,6 +96,7 @@ function NotifyTab() {
 
   const ios = isIOS();
   const standalone = isStandalone();
+  const lockOk = lockCardSupported();
   const sb = getSupabase();
 
   return (
@@ -236,6 +238,35 @@ function NotifyTab() {
           </div>
         )}
       </Section>
+
+      {(lockOk || ios) && (
+        <Section title="잠금화면 일정 카드" desc="폰을 켜자마자 잠금화면에서 지금·다음 일정과 오늘 남은 할 일이 보이게 합니다.">
+          {lockOk ? (
+            <>
+              <Switch
+                checked={settings.lockCard}
+                onChange={(lockCard) => set({ lockCard })}
+                label="잠금화면에 일정 카드 띄우기"
+                desc="소리 없는 알림 한 장으로 띄워 두고, 일정이 시작·끝날 때마다 내용을 바꿉니다. 밀어서 지워도 앱을 한 번 열었다 닫으면 다시 떠요."
+              />
+              {perm !== "granted" && (
+                <p className="mt-2 rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">
+                  위 ‘1. 알림 권한’을 허용해야 카드가 떠요.
+                </p>
+              )}
+              <p className="mt-2 rounded-xl bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
+                잠금화면에 안 보이면 — 폰 <b className="text-fg">설정 → 알림 → 잠금화면 알림</b>에서 ‘모든 알림 내용 표시’(또는 ‘조용한 알림도
+                표시’)를 켜 주세요. 앱을 오래 안 열면 사흘 뒤 카드가 저절로 내려가요.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted">
+              아이폰은 웹앱이 알림을 조용히 고쳐 다는 걸 지원하지 않아서(고칠 때마다 울림) 이 기능을 쓸 수 없어요. 대신 일정 시각마다 오는
+              알림이 잠금화면에 뜹니다.
+            </p>
+          )}
+        </Section>
+      )}
 
       <Section title="오늘 브리핑" desc="‘오늘 할 일 n개 · 다음 일정 · 미시작 n건’을 한 줄로 알려 줍니다.">
         <Switch

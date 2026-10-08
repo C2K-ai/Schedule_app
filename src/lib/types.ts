@@ -218,6 +218,8 @@ export interface Settings {
   pcFullscreen: boolean;
   /** 앱이 켜질 때(노트북 부팅 후 자동 실행 포함) 오늘 브리핑 알림 */
   launchBriefing: boolean;
+  /** 폰 잠금화면에 '지금/다음 일정' 카드(소리 없는 알림)를 띄워 둔다 — 안드로이드 */
+  lockCard: boolean;
   /** 하루 공부 목표(분) */
   studyGoalMin: number;
   /** 공부 중 다른 앱·탭으로 가면 자동 일시정지(열품타의 집중 잠금 대신) */

@@ -43,6 +43,7 @@ import { LogSheet } from "./LogSheet";
 import { MeTab } from "./MeTab";
 import { OverdueBanner } from "./NowBar";
 import { usePlanner } from "./PlannerProvider";
+import { LockCardSync } from "./LockCardSync";
 import { ReminderEngine } from "./ReminderEngine";
 import { SettingsSheet } from "./SettingsSheet";
 import { StudyDock, StudyEngine } from "./Study";
@@ -425,6 +426,7 @@ export function Shell() {
       <OverdueSiren />
       <Toasts />
       <ReminderEngine />
+      <LockCardSync />
       <StudyEngine />
       <BriefingEngine />
     </>

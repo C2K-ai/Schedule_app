@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   background: "swing",
   pcFullscreen: true,
   launchBriefing: true,
+  lockCard: true,
   studyGoalMin: 360,
   studyAutoPause: true,
   ddays: [],
