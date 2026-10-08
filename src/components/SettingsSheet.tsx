@@ -12,7 +12,7 @@ import {
 } from "@/lib/notify";
 import { aiStatus } from "@/lib/ai";
 import { clearRecovery, inRecovery } from "@/lib/authLinks";
-import { lockCardSupported } from "@/lib/lockCard";
+import { lockCardSupported, testLockCard } from "@/lib/lockCard";
 import { OFFSET_CHOICES } from "@/lib/settings";
 import { briefingTime, currentPushSubscription, pushSupported, sendTestPush, setBriefingTime, subscribePush, unsubscribePush } from "@/lib/push";
 import { downloadSound, findSound, playSound, unlockAudio, vibrate, VIBRATIONS } from "@/lib/sound";
@@ -84,8 +84,9 @@ function Range({
 }
 
 function NotifyTab() {
-  const { settings, updateSettings, session, ring, toast } = usePlanner();
+  const { settings, updateSettings, session, ring, toast, tasks } = usePlanner();
   const [perm, setPerm] = useState<PermissionState>(() => notificationPermission());
+  const [lockTest, setLockTest] = useState<{ ok: boolean; text: string } | null>(null);
   const [pushOn, setPushOn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [briefing, setBriefing] = useState<string | null>(() => briefingTime());
@@ -262,11 +263,27 @@ function NotifyTab() {
                 </p>
               )}
               {settings.lockCard && perm === "granted" && (
-                <p className="mt-2 text-sm text-ok">켜졌어요 — 화면을 껐다 켜서 잠금화면을 확인해 보세요.</p>
+                <div className="mt-2 space-y-2">
+                  <p className="text-sm text-muted">
+                    잠금화면 알림 목록에 <b className="text-fg">DREAM</b> 카드 한 장이 떠요 — 제목에 ‘다음 13:00 ○○’(또는 ‘▶ 지금 ○○’), 아래에 이어지는 일정·오늘 할 일.
+                    오늘·내일 남은 일정이 없으면 카드도 없어요.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      setLockTest(null);
+                      setLockTest(await testLockCard(tasks));
+                    }}
+                  >
+                    지금 띄워 보기
+                  </Button>
+                  {lockTest && <p className={cx("text-sm", lockTest.ok ? "text-ok" : "text-warn")}>{lockTest.text}</p>}
+                </div>
               )}
               <p className="mt-2 rounded-xl bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
-                잠금화면에 안 보이면 — 폰 <b className="text-fg">설정 → 알림 → 잠금화면 알림</b>에서 ‘모든 알림 내용 표시’(또는 ‘조용한 알림도
-                표시’)를 켜 주세요. 앱을 오래 안 열면 사흘 뒤 카드가 저절로 내려가요.
+                알림창엔 있는데 잠금화면에만 안 보이면 — 폰 <b className="text-fg">설정 → 잠금화면 → 알림</b>(갤럭시) 또는{" "}
+                <b className="text-fg">설정 → 알림 → 잠금화면 알림</b>에서 ‘아이콘만’ 대신 <b className="text-fg">‘자세히’</b>로, ‘조용한 알림 표시’를 켜 주세요.
+                앱을 오래 안 열면 사흘 뒤 카드가 저절로 내려가요.
               </p>
             </>
           ) : (

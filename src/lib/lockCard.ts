@@ -128,3 +128,22 @@ export async function syncLockCard(tasks: Task[] | null) {
     /* 지원 안 함 */
   }
 }
+
+/**
+ * 설정의 '지금 띄워 보기' — 카드를 바로 그리고, 알림창에 실제로 올라갔는지 확인해 이유를 돌려준다.
+ * ok 면 알림창엔 떠 있는 것 → 잠금화면에서만 안 보이면 폰 설정(잠금화면 알림) 문제다.
+ */
+export async function testLockCard(tasks: Task[]): Promise<{ ok: boolean; text: string }> {
+  if (!lockCardSupported()) return { ok: false, text: "이 기기는 잠금화면 카드를 지원하지 않아요(안드로이드 폰 전용)." };
+  if (notificationPermission() !== "granted") return { ok: false, text: "알림 권한이 없어요 — 위 ‘1. 알림 권한’에서 허용해 주세요." };
+  const face = lockFace(tasks, Date.now());
+  if (!face) return { ok: false, text: "오늘·내일 남은 일정이 없어서 띄울 카드가 없어요. 일정을 하나 넣고 다시 눌러 보세요." };
+  const reg = await registerServiceWorker();
+  if (!reg?.active) return { ok: false, text: "앱이 아직 준비 중이에요 — 앱을 한 번 닫았다 열고 다시 눌러 보세요." };
+  await syncLockCard(tasks);
+  await new Promise((r) => setTimeout(r, 900));
+  const shown = await reg.getNotifications({ tag: LOCK_TAG }).catch(() => []);
+  return shown.length
+    ? { ok: true, text: `알림창에 카드를 띄웠어요: “${face.title}”. 위에서 아래로 쓸어내려 보이면 정상이에요. 잠금화면에서만 안 보이면 폰 설정 문제예요(아래 안내).` }
+    : { ok: false, text: "카드를 띄우지 못했어요 — 폰 설정 → 앱 → Chrome → 알림이 켜져 있는지 확인해 주세요." };
+}
