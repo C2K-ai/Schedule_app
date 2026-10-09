@@ -4,7 +4,7 @@
 // 글·기분은 이 기기에서 잠가 저장·동기화한다(lib/diary.ts) — 화면은 store.diary 만 부른다.
 // 받아쓰기(VoiceAdd·lib/speech.ts)는 일부러 붙이지 않는다: 말소리가 구글 서버로 가서 '아무도 못 읽는 일기'가 깨진다.
 
-import { ChevronLeft, ChevronRight, List, Search, Trash2, Volume2, VolumeX, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, Search, Trash2, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { diaryList, diaryLockedCount, diaryOn, type DiaryEntry, type DiaryState, type UnlockResult } from "@/lib/diary";
 import { activitiesOnDay, isSomeday } from "@/lib/planner";
@@ -14,7 +14,7 @@ import { useMedia } from "@/lib/useMedia";
 import { useNow } from "@/lib/useNow";
 import { friendly } from "./AuthForm";
 import { MOODS } from "./CalendarTab";
-import { DIARY_INTRO_SOUND, DiaryIntro } from "./DiaryIntro";
+import { DiaryIntro } from "./DiaryIntro";
 import { usePlanner } from "./PlannerProvider";
 import { cx, useLayer } from "./ui";
 
@@ -877,24 +877,12 @@ function DiaryPage() {
   return (
     <div role="dialog" aria-modal="true" aria-label="일기" className="diary-paper fixed inset-0 z-[60]">
       <div data-diary-scroll className="absolute inset-0 overflow-y-auto overscroll-contain">
-        {/* 오른쪽 위 — 목록·효과음·닫기(스크롤해도 그 자리) */}
+        {/* 오른쪽 위 — 목록·닫기(스크롤해도 그 자리). 효과음은 설정에서만(사용자 요청) */}
         <div className="pointer-events-none sticky top-0 z-10 flex h-0 items-start justify-end">
           <div className="pointer-events-auto flex items-center gap-2 pt-[max(14px,calc(env(safe-area-inset-top)+8px))] pr-[14px]">
             {showList && !sideList && (
               <button type="button" className="diary-btn is-bar" aria-expanded={listOpen} onClick={() => setListOpen(true)}>
                 <List size={16} /> 목록
-              </button>
-            )}
-            {DIARY_INTRO_SOUND && (
-              <button
-                type="button"
-                className="diary-icon"
-                aria-pressed={settings.diarySound}
-                aria-label="일기 효과음"
-                title={settings.diarySound ? "효과음 끄기" : "효과음 켜기"}
-                onClick={() => p.updateSettings({ diarySound: !settings.diarySound })}
-              >
-                {settings.diarySound ? <Volume2 size={17} /> : <VolumeX size={17} />}
               </button>
             )}
             <button type="button" className="diary-icon" aria-label="닫기" title="닫기" onClick={close}>

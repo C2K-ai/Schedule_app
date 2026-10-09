@@ -3,13 +3,12 @@
 > 새 계정·새 세션에서 이 앱을 이어서 고칠 때 **이 파일부터** 읽으세요. 기능별 자세한 기록은 `docs/REVAMP-HANDOFF.md`,
 > 구조는 `docs/ARCHITECTURE.md`, 알림은 `docs/PWA-NOTIFICATIONS.md`, 서버 처음 설정은 `docs/SETUP-SUPABASE.md`.
 
-## 0. ⚠️ 지금 진행 중 — 2026-10-08 저녁 갱신 (여기부터 읽기)
+## 0. ⚠️ 지금 상태 — 2026-10-09 갱신 (여기부터 읽기)
 
-**브랜치**: 2026-10-08 저녁 **일기를 main 에 배포함**(여닫기는 0.35초 페이드 임시 화면). `ui-revamp` 는 main + 애니메이션 엔진 작업분
-(앱엔 안 붙음) — **애니메이션을 앱에 붙여 확인하기 전엔 ui-revamp 를 main 에 올리지 말 것.**
-애니메이션은 사용자가 다시 시작시켰다가(“애니메이션으로 가자”) 2026-10-08 밤 **“잠깐 스탑”으로 멈춤**(0-2 참고).
+**브랜치**: 2026-10-09 **일기 여닫기 책 애니메이션을 앱에 붙여 main 에 배포함**. `ui-revamp` = `main`.
+사용자 요청으로 **심사·워크플로 없이** 붙여서 바로 배포 — 고칠 점은 사용자가 써 보고 말해 주면 그때 고친다.
 
-### 0-1. 일기 (☰ 기록 → 무지개색 "DREAM") — 진행 중
+### 0-1. 일기 (☰ 기록 → 무지개색 "DREAM") — 배포됨
 사용자 요구(확정):
 - '하루 노트'(캘린더, 낙서용)는 **그대로 둔다**. 일기는 완전히 따로.
 - **서버·운영자(그리고 Claude)도 못 읽게** — 기기 안에서 암호화해서 올린다. **일기 전용 비밀번호는 없음**: 로그인 비밀번호로 만든 열쇠가
@@ -25,7 +24,7 @@
 - 마이그레이션 `20261011000000_diary.sql` — **서버에 적용 완료(2026-10-08 저녁)**. 서버에서 직접 확인: 판(ver) 올라감·옛 판 저장은 버려짐·
   평문은 CHECK 로 거부·anon 은 못 읽음.
 - UI(**완성**, 브라우저로 확인함): `src/components/DiarySheet.tsx`(전체 화면 '종이 일기장'),
-  `DiaryIntro.tsx`(지금은 0.35초 페이드 임시 — 아래 애니메이션으로 바꿀 자리, 계약: `DiaryIntro({ mode: "open"|"close", sound, onDone })`),
+  `DiaryIntro.tsx`(책 애니메이션, 0-2),
   Shell(기록 첫 줄 DREAM), PlannerProvider(4번째 인자 diaryMode), AuthForm(`diaryAfterLogin`), SettingsSheet(비밀번호 바꾸기 → `store.diary.changePassword`,
   로그아웃 '이 기기에서 일기도 지우기', 효과음 스위치), AdminSheet 안내문, `supabase/functions/signup/logic.ts`(8자).
   → 2026-10-08 저녁 확인: tsc·eslint·test:unit 49·test:db 157·next build 모두 통과. 브라우저(Playwright) 확인:
@@ -34,27 +33,18 @@
   PostgREST 요청을 연결) 확인: 기기 A 로그인→쓰기→서버엔 암호문만 / 기기 B 같은 비밀번호 로그인→저절로 열림 / 이미 로그인된 기기 C→
   로그인 비밀번호 한 번(틀리면 '비밀번호가 틀렸어요')→열림.
 - signup Edge 함수 **v4 배포 완료**(8자).
-- **배포됨**(애니메이션 없이). 효과음 버튼·설정은 `DiaryIntro.tsx` 의 `DIARY_INTRO_SOUND = false` 로 숨김 — 애니메이션을 넣을 때 true 로.
+- **배포됨**. 여닫기 애니메이션은 0-2.
 
-### 0-2. 일기 열고 닫는 애니메이션 — 진행 중
-- 확정: 덮여 눕혀진 하드커버(표지 **DREAM 2026**, 은은한 **무지개빛 홀로그램 박**) → 표지가 왼쪽 책등 축으로 열림 → 페이지가 촤라락 넘어가며
-  **금빛 빛줄기·반짝이** → 오른쪽 종이가 앞으로 나와 줄 노트 일기장이 됨(약 2.5초, 누르면 건너뜀, 움직임 줄이기면 페이드).
-- **닫기**: 종이가 작아져 오른쪽 페이지로 돌아감 → 표지가 열릴 때와 **반대 방향(왼→오)으로 덮임** → 책이 **뒤집혀 뒷표지가 보이며** 마무리.
-  **뒷표지 글자는 "DIARY"**. 여는 것보다 짧게(1.5초 안쪽), 누르면 건너뜀.
-- **효과음은 기본 꺼짐**, 설정의 '일기 열고 닫을 때 효과음'을 켠 사람만. 애니메이션 위 스피커 버튼은 앱에선 빼기.
-- 파일(`docs/design/diary-intro/`): `winner-layered.html`(심사 우승 원본), `polish-wip.html`(다듬던 중 — 홀로그램 DREAM·그래프트 일부),
-  `preview-artifact.html`(사용자에게 보여 준 미리보기: 누르면 재생·소리 기본 꺼짐), `alt-*.html`(다른 시안, 가져올 부분 참고),
-  `JUDGES.md`(심사 점수·가져올 것 목록), 참고 사진 `ref-*.png/webp`, 장면 모음 `winner-frames-*.png`.
-  모두 라이브러리 없는 단일 HTML, `window.__seek(ms)` 로 아무 시각이나 똑같이 그려 확인 가능.
-- 남은 일: polish 마무리(JUDGES graft) → 닫기 장면 추가(뒷표지 DIARY) → `createDiaryIntro(root, {...})` 형태로 정리해 `DiaryIntro.tsx` 에 이식
-  (마지막 종이 장면이 DiarySheet 종이와 같아 보이게 — 색·줄 간격 32/36px·제목 위치).
-  **2026-10-08 밤: 사용자 요청으로 잠깐 멈춤.** 엔진은 `src/lib/diaryIntro/`(`math.ts`·`timeline.ts`·`art.ts`·`css.ts`·`sound.ts`·`engine.ts`,
-  앱엔 아직 안 붙음 — 아무 데서도 import 안 함). 멈춘 지점: **펼치기(open) 엔진 완성**, 폰 화면에서 마지막 종이가 DiarySheet 종이와
-  픽셀 단위로 맞는 것까지 확인, 데스크톱 맞춤 확인하던 중. 남은 순서: 데스크톱 맞춤 → `DiaryIntro.tsx` 연결 → 닫기(뒷표지 DIARY)
-  → 효과음(`DIARY_INTRO_SOUND = true`) → `final.html` 미리보기 → 앱 안에서 열고 닫기 확인 → main 배포.
-  사용자는 작업 중 **1분마다 진행 보고**를 원함.
-  계획: 프레임워크 없는 TS `createDiaryIntro(root, {mode, reducedMotion, sound, date, onDone}) → {play, seek, skip, duration, destroy}`,
-  `DiaryIntro.tsx` 는 dynamic import 로 붙이고 실패하면 지금의 페이드로. 미리보기 `docs/design/diary-intro/final.html`(아직 없음).
+### 0-2. 일기 열고 닫는 애니메이션 — **앱에 붙여 배포함(2026-10-09)**
+- 펼치기: 덮여 눕혀진 하드커버(표지 **DREAM 2026**, 홀로그램 박) → 표지가 왼쪽 책등 축으로 열림 → 촤라락 + 금빛 빛줄기·반짝이
+  → 오른쪽 종이가 앞으로 나와 일기장(약 2.5초). 덮기: 종이가 작아짐 → 반대 방향(왼→오)으로 덮임 → 뒤집혀 **뒷표지 "DIARY"**(약 1.5초).
+  누르면 건너뜀, '움직임 줄이기'면 0.32초 페이드.
+- 엔진: `src/lib/diaryIntro/`(`math`·`timeline`·`art`·`css`·`sound`·`engine`), `createDiaryIntro(root, {mode, reducedMotion, sound, date, onDone})`.
+  `DiaryIntro.tsx` 가 dynamic import 로 붙임 — 못 불러오면 예전 0.35초 페이드로.
+- **효과음은 기본 꺼짐**, 설정의 '일기 열고 닫을 때 효과음'에서만 켬(`DIARY_INTRO_SOUND = true` 라 스위치 보임). 일기 화면의 스피커 버튼은 뺌.
+- 확인: Playwright 로 폰·PC 각각 열기→일기 화면, 닫기→뒷표지 DIARY→앱 복귀, 런타임 오류 없음. tsc·eslint 깨끗.
+- 아직 안 한 것(사용자가 원하면): `docs/design/diary-intro/POLISH-REVIEW.md` 의 다듬을 점(표지가 옆으로 설 때 얇아지는 순간, PC 위쪽 잘림 등).
+  디자인 시안·심사 기록은 `docs/design/diary-intro/` 에 그대로 있음.
 
 ### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
 - 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf

@@ -859,7 +859,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   }
 
   function renderOpen(g: Geo, t: number): void {
-    const { W, H, PW, PH, Tb, Tp } = g;
+    const { PW, PH, Tb, Tp } = g;
     const pO = inOutCubic(span(t, OPEN.pan));
     const pl = span(t, OPEN.lift);
     const cam = camera(g, pO, inOutCubic(pl), outSine(ramp(t, 0, OPEN.lift[0])), 1);
@@ -989,7 +989,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   }
 
   function renderClose(g: Geo, t: number): void {
-    const { W, H, PW, PH, Tb, Tp } = g;
+    const { W, PW, PH, Tb, Tp } = g;
     const ul = span(t, CLOSE.unlift);
     const le = 1 - outCubic(ul); // 1 = 들려서 화면에 1:1, 0 = 페이지 위에 내려앉음
     const pO = 1 - inOutCubic(span(t, CLOSE.pan));
