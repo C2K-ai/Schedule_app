@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Play, Repeat, TriangleAlert } from "lucide-react";
+import { Check, CircleHelp, Play, Repeat, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskState, type TaskState } from "@/lib/planner";
 import { addMinutes, dayKey, fmtTime, MIN, minutesOfDay, sameDay, snapMinutes, startOfDay, WEEKDAYS } from "@/lib/time";
@@ -96,6 +96,7 @@ const STATE_STYLE: Record<TaskState, string> = {
   upcoming: "",
   soon: "ring-2 ring-accent",
   late: "ring-2 ring-warn",
+  unchecked: "ring-1 ring-warn/70",
   overdue: "overdue-pulse ring-2 ring-danger",
   in_progress: "ring-2 ring-[var(--c)] shadow-[0_0_24px_-6px_var(--c)]",
   done: "opacity-55",
@@ -438,6 +439,7 @@ export function Timeline({
                         {st === "done" && <Check size={13} className="shrink-0 text-ok" />}
                         {st === "in_progress" && <Play size={12} className="shrink-0" style={{ color }} />}
                         {st === "overdue" && <TriangleAlert size={13} className="shrink-0 text-danger" />}
+                        {st === "unchecked" && <CircleHelp size={13} className="shrink-0 text-warn" aria-label="했나요?" />}
                         {t.habit_id && <Repeat size={11} className="shrink-0 text-muted" />}
                         <span
                           className={cx(

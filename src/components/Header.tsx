@@ -4,7 +4,7 @@ import { Cloud, CloudOff, Download, Image as ImageIcon, Maximize, Mic, Minimize,
 import { useEffect, useState, type ReactNode } from "react";
 import { isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
-import { currentTask, dayStats, enforcementQueue, nextTask, tasksOnDay } from "@/lib/planner";
+import { checkinQueue, currentTask, dayStats, enforcementQueue, nextTask, tasksOnDay } from "@/lib/planner";
 import { fmtCountdown, fmtDate, fmtTime, startOfDay } from "@/lib/time";
 import { COLOR_HEX } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
@@ -160,6 +160,7 @@ function MiniStatus() {
   const today = tasksOnDay(tasks, startOfDay(new Date(now)));
   const s = dayStats(today, now, settings.graceMin);
   const overdue = enforcementQueue(tasks, now, settings.graceMin).length;
+  const unchecked = checkinQueue(tasks, now).length;
   const late = cur && cur.status === "planned";
   return (
     <div className="fade-up mx-auto flex h-10 max-w-[1200px] items-center gap-3 border-t border-line px-4 text-[13px] md:px-8">
@@ -180,6 +181,9 @@ function MiniStatus() {
       )}
       {overdue > 0 && (
         <span className="shrink-0 rounded-md bg-danger px-1.5 py-px text-[11px] font-bold text-white">미시작 {overdue}</span>
+      )}
+      {unchecked > 0 && (
+        <span className="shrink-0 rounded-md bg-warn/20 px-1.5 py-px text-[11px] font-bold text-warn">했나요? {unchecked}</span>
       )}
       <span className="shrink-0 font-mono font-bold tabular-nums">{s.rate}%</span>
     </div>

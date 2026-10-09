@@ -43,7 +43,7 @@ import { CalendarTab } from "./CalendarTab";
 import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
 import { DiarySheet } from "./DiarySheet";
-import { EnforcementModal, OverdueSiren, PostponeDialog, RescheduleDialog } from "./Enforcement";
+import { CheckinModal, EnforcementModal, OverdueSiren, PostponeDialog, RescheduleDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
 import { AutoFullscreen, TopBar } from "./Header";
 import { HabitsSheet } from "./HabitsSheet";
@@ -476,6 +476,7 @@ export function Shell() {
       <DiarySheet />
       <VoiceAdd />
       <EnforcementModal suppressed={Boolean(p.alarm || p.editor || p.activityEditor || p.reschedule || p.postpone)} />
+      <CheckinModal suppressed={Boolean(p.alarm || p.editor || p.activityEditor || p.reschedule || p.postpone || p.sheet)} />
       <AlarmOverlay />
       <WallpaperView />
       <OverdueSiren />

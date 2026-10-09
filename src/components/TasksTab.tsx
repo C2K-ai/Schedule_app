@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactNode, type RefObject } from "react";
 import { isIOS, isStandalone } from "@/lib/notify";
 import {
   completeTask,
+  confirmDone,
   createTask,
   groupTasks,
   isTimed,
@@ -127,11 +128,19 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
         onClick={() => {
           if (done) return reopenTask(store, t.id);
           if (closed) return openReschedule(t.id);
+          // 끝난 뒤에 체크 = 그 시간에 한 것
+          if (st === "unchecked") return confirmDone(store, t.id);
           completeTask(store, t.id);
         }}
         className={cx(
           "grid size-6 shrink-0 place-items-center rounded-full border-2 transition",
-          done ? "border-ok bg-ok text-white" : st === "overdue" ? "border-danger" : "border-line-strong hover:border-accent",
+          done
+            ? "border-ok bg-ok text-white"
+            : st === "overdue"
+              ? "border-danger"
+              : st === "unchecked"
+                ? "border-warn hover:bg-warn/15"
+                : "border-line-strong hover:border-accent",
         )}
       >
         {done && <Check size={14} strokeWidth={3} />}
@@ -151,6 +160,7 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
           )}
           {!timed && showDate && t.schedule === "day" && <span>{dateLabel(t.starts_at, new Date(now))}</span>}
           {st === "overdue" && <span className="font-bold text-danger">미시작</span>}
+          {st === "unchecked" && <span className="font-bold text-warn">했나요? · 했으면 체크</span>}
           {closed && !done && <span>{t.status === "missed" ? "놓침" : "건너뜀"} · 눌러서 다시 잡기</span>}
           {st === "in_progress" && <span className="font-bold text-accent-text">진행 중</span>}
           {cat && (

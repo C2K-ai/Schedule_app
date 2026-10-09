@@ -2,15 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { setAppBadge, showSystemNotification, registerServiceWorker } from "@/lib/notify";
-import {
-  activeFocus,
-  completeTask,
-  enforcementQueue,
-  finishFocus,
-  focusRemaining,
-  startFocus,
-  startTask,
-} from "@/lib/planner";
+import { activeFocus, checkinQueue, completeTask, enforcementQueue, finishFocus, focusRemaining, startFocus, startTask } from "@/lib/planner";
 import { refreshPushSubscription } from "@/lib/push";
 import {
   addSnooze,
@@ -89,6 +81,8 @@ export function ReminderEngine() {
   const fire = useCallback(
     (kind: AlarmKind, seq: number, task: Task | null, key: string, text?: { title: string; body: string }) => {
       const { settings: s, ring, toast, store: st, snap } = latest.current;
+      // 끝난 일정은 '미시작' 경고로 울리지 않는다 — 앱을 열면 '했나요?'로 묻는다
+      if (kind === "overdue" && task && Date.now() >= Date.parse(task.ends_at)) return;
       const desc = text ?? (task ? describeTrigger({ kind, seq, task }) : { title: "DREAM", body: "" });
       const soundId = soundForKind(kind, task, s);
       const sound = findSound(soundId, s.customSounds);
@@ -202,7 +196,8 @@ export function ReminderEngine() {
 
       // 탭 제목 깜빡임 + 앱 아이콘 배지
       const overdue = enforcementQueue(all, now, s.graceMin).length;
-      setAppBadge(overdue);
+      // 아이콘 배지: 미시작 + '했나요?' 물어볼 일정
+      setAppBadge(overdue + checkinQueue(all, now).length);
       if (overdue > 0 && document.visibilityState !== "visible") {
         titleFlip = !titleFlip;
         document.title = titleFlip ? `⚠ 미시작 ${overdue}건 — DREAM` : "DREAM — 지금 처리하세요";

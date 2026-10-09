@@ -128,6 +128,7 @@ export type TaskState =
   | "skipped"
   | "missed"
   | "in_progress"
+  | "unchecked" // 끝 시각이 지났는데 체크를 안 함 → 실패로 치지 않고 '했나요?' 물어본다
   | "overdue" // 유예 시간도 지났는데 시작 안 함 → 빨간 경고
   | "late" // 시작 시각은 지났지만 유예 시간 안
   | "soon" // 10분 안에 시작
@@ -139,6 +140,7 @@ export function taskState(t: Task, now: number, graceMin: number): TaskState {
   if (t.status === "missed") return "missed";
   if (t.status === "in_progress") return "in_progress";
   if (!isTimed(t)) return "upcoming"; // 날짜만·날짜 없음은 시각 경고 대상이 아니다
+  if (now >= Date.parse(t.ends_at)) return "unchecked";
   const start = Date.parse(t.starts_at);
   if (now >= start + graceMin * MIN) return "overdue";
   if (now >= start) return "late";
@@ -154,6 +156,8 @@ export interface DayStats {
   inProgress: number;
   remaining: number;
   overdue: number;
+  /** 끝났는데 아직 했는지 답하지 않은 일정 */
+  unchecked: number;
   rate: number;
   focusMin: number;
 }
@@ -163,7 +167,8 @@ export function dayStats(tasks: Task[], now: number, graceMin: number, focus: Fo
     skipped = 0,
     missed = 0,
     inProgress = 0,
-    overdue = 0;
+    overdue = 0,
+    unchecked = 0;
   for (const t of tasks) {
     const s = taskState(t, now, graceMin);
     if (s === "done") done++;
@@ -171,6 +176,7 @@ export function dayStats(tasks: Task[], now: number, graceMin: number, focus: Fo
     else if (s === "missed") missed++;
     else if (s === "in_progress") inProgress++;
     else if (s === "overdue") overdue++;
+    else if (s === "unchecked") unchecked++;
   }
   const total = tasks.length;
   const focusMin = focus
@@ -183,6 +189,7 @@ export function dayStats(tasks: Task[], now: number, graceMin: number, focus: Fo
     missed,
     inProgress,
     overdue,
+    unchecked,
     remaining: total - done - skipped - missed,
     // 건너뛴 것도 '안 한 것' — 분모에서 빼주지 않는다
     rate: total ? Math.round((done / total) * 100) : 0,
@@ -208,6 +215,7 @@ export function nextTask(tasks: Task[], now: number): Task | null {
 }
 
 /** 강제 대상: 강제 모드 + 아직 planned + 유예 시간 초과 (최근 7일) */
+/** 강제 모드 미시작 경고 — 일정 시간 안(유예 뒤 ~ 끝 전)에만. 끝난 뒤엔 실패로 치지 않고 checkinQueue 가 '했나요?' 묻는다 */
 export function enforcementQueue(tasks: Task[], now: number, graceMin: number): Task[] {
   return tasks.filter(
     (t) =>
@@ -215,8 +223,21 @@ export function enforcementQueue(tasks: Task[], now: number, graceMin: number): 
       t.strict &&
       t.status === "planned" &&
       now >= Date.parse(t.starts_at) + graceMin * MIN &&
-      now - Date.parse(t.starts_at) < 7 * DAY,
+      now < Date.parse(t.ends_at),
   );
+}
+
+/** 끝났는데 체크를 안 한 일정(최근 7일) — 앱을 열면 '했나요?' 하나씩 묻는다. 오래된 것부터 */
+export function checkinQueue(tasks: Task[], now: number): Task[] {
+  return tasks
+    .filter(
+      (t) =>
+        isTimed(t) &&
+        t.status === "planned" &&
+        now >= Date.parse(t.ends_at) &&
+        now - Date.parse(t.ends_at) < 7 * DAY,
+    )
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 }
 
 export function isExpired(t: Task, now: number) {
@@ -417,6 +438,19 @@ export function completeTask(store: PlannerStore, id: string) {
     completed_at: nowIso(),
   });
   log(store, "completed", next);
+}
+
+/** '했나요?'에 '했어요' — 체크를 잊은 것뿐이니 그 일정 시간에 한 것으로 기록한다(완료 시각 = 끝 시각) */
+export function confirmDone(store: PlannerStore, id: string) {
+  const t = store.db.tasks[id];
+  if (!t || t.status === "done") return;
+  const end = Math.min(Date.parse(t.ends_at), Date.now());
+  const next = store.patch("tasks", id, {
+    status: "done",
+    started_at: t.started_at ?? t.starts_at,
+    completed_at: new Date(Number.isFinite(end) ? end : Date.now()).toISOString(),
+  });
+  log(store, "completed", next, { reason: "나중에 확인: 했어요" });
 }
 
 export function reopenTask(store: PlannerStore, id: string) {

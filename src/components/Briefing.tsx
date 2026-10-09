@@ -3,7 +3,7 @@
 import { Sunrise, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { showSystemNotification } from "@/lib/notify";
-import { enforcementQueue, isTimed, tasksOnDay } from "@/lib/planner";
+import { checkinQueue, enforcementQueue, isTimed, tasksOnDay } from "@/lib/planner";
 import { fmtTime, startOfDay } from "@/lib/time";
 import type { Task } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
@@ -24,10 +24,12 @@ export function buildBriefing(tasks: Task[], now: number, graceMin: number): Bri
   const open = today.filter((t) => t.status === "planned" || t.status === "in_progress");
   const first = open.filter((t) => isTimed(t) && Date.parse(t.starts_at) >= now - graceMin * 60_000).sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0] ?? null;
   const overdue = enforcementQueue(tasks, now, graceMin).length;
+  const unchecked = checkinQueue(tasks, now).length;
   const parts = [
     open.length ? `오늘 할 일 ${open.length}개` : "오늘 남은 할 일 없음",
     first ? `다음 ${fmtTime(first.starts_at)} ${first.title}` : null,
     overdue ? `미시작 ${overdue}건` : null,
+    unchecked ? `했는지 확인할 일정 ${unchecked}건` : null,
   ].filter(Boolean);
   const hour = new Date(now).getHours();
   const hello = hour < 11 ? "좋은 아침이에요" : hour < 17 ? "오늘 브리핑" : "저녁 브리핑";

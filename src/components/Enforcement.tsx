@@ -1,8 +1,10 @@
 "use client";
 
-import { CalendarClock, Play, SkipForward, Trash, TriangleAlert, VolumeX } from "lucide-react";
+import { CalendarClock, Check, CircleHelp, Play, SkipForward, Trash, TriangleAlert, VolumeX, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  checkinQueue,
+  confirmDone,
   deleteTask,
   enforcementQueue,
   isExpired,
@@ -69,9 +71,11 @@ export function ReasonForm({
         rows={3}
         className={cx(inputCls, "resize-none", !ok && len > 0 && "border-warn")}
       />
-      <p className={cx("mt-1.5 text-right font-mono text-xs tabular-nums", ok ? "text-ok" : "text-muted")}>
-        {len}/{minLength}자 {ok ? "✓" : "이상"}
-      </p>
+      {minLength > 0 && (
+        <p className={cx("mt-1.5 text-right font-mono text-xs tabular-nums", ok ? "text-ok" : "text-muted")}>
+          {len}/{minLength}자 {ok ? "✓" : "이상"}
+        </p>
+      )}
     </div>
   );
 }
@@ -332,6 +336,225 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
             >
               {expiredOnes.length}개 모두 놓침으로 기록
             </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/**
+ * 끝났는데 체크를 안 한 일정 — 실패로 치지 않고 '했나요?' 하나씩 묻는다.
+ * 했어요 → 그 시간에 한 것으로 완료. 못 했어요 → 다시 잡기 또는 놓침 기록(강제 모드 일정만 사유 필요).
+ * 강제 모드가 아닌 일정은 '나중에'로 이번엔 넘길 수 있다(앱을 다시 열면 또 묻는다).
+ */
+export function CheckinModal({ suppressed }: { suppressed: boolean }) {
+  const { tasks, settings } = usePlanner();
+  const now = useNow(15_000);
+  const [later, setLater] = useState<string[]>([]);
+  const blocking = useMemo(() => enforcementQueue(tasks, now, settings.graceMin).length > 0, [tasks, now, settings.graceMin]);
+  const queue = useMemo(() => checkinQueue(tasks, now).filter((t) => !later.includes(t.id)), [tasks, now, later]);
+  if (!queue.length || suppressed || blocking) return null;
+  return (
+    <CheckinCard
+      key={queue[0].id}
+      task={queue[0]}
+      queue={queue}
+      now={now}
+      onLater={queue[0].strict ? null : () => setLater((l) => [...l, queue[0].id])}
+    />
+  );
+}
+
+type CheckStep = "ask" | "not" | "postpone" | "missed" | "allDone" | "allMissed";
+
+function CheckinCard({ task, queue, now, onLater }: { task: Task; queue: Task[]; now: number; onLater: (() => void) | null }) {
+  const { store, settings, stopOverdue } = usePlanner();
+  const [step, setStep] = useState<CheckStep>("ask");
+  const [reason, setReason] = useState("");
+  const [shake, setShake] = useState(0);
+  const [newStart, setNewStart] = useState<Date>(() => nextSlot(now));
+  // 강제 모드 일정만 사유가 꼭 필요(설정 글자 수), 아니면 적어도 되고 안 적어도 된다
+  const need = task.strict ? settings.reasonMinLength : 0;
+  const needAll = queue.some((t) => t.strict) ? settings.reasonMinLength : 0;
+  const ago = now - Date.parse(task.ends_at);
+  const d = new Date(task.starts_at);
+  const sameDay = d.toDateString() === new Date(now).toDateString();
+  const yesterday = d.toDateString() === addDays(new Date(now), -1).toDateString();
+  const dayLabel = sameDay ? "오늘" : yesterday ? "어제" : `${d.getMonth() + 1}/${d.getDate()}`;
+  const quiet = () => {
+    stopOverdue();
+    stopAllSounds();
+  };
+  const guard = (min: number, fn: () => void) => {
+    if (reason.trim().length < min) return setShake((n) => n + 1);
+    fn();
+    quiet();
+  };
+
+  return (
+    <Modal open size="md">
+      <div className="flex items-start gap-3 pt-1">
+        <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent-text">
+          <CircleHelp size={26} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold tracking-widest text-accent-text">
+            이 일정 했나요? {queue.length > 1 && `· 1 / ${queue.length}`}
+          </p>
+          <h2 className="mt-1 text-xl font-bold tracking-tight break-words md:text-2xl">{task.title}</h2>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
+            <span className="size-2 rounded-full" style={{ background: COLOR_HEX[task.color] }} />
+            <span className="font-mono tabular-nums">
+              {dayLabel} {fmtTime(task.starts_at)} – {fmtTime(task.ends_at)}
+            </span>
+            <span>· 끝난 지 {fmtSpan(ago)}</span>
+          </p>
+        </div>
+        {onLater && step === "ask" && (
+          <button
+            onClick={onLater}
+            aria-label="나중에"
+            className="-mt-1 -mr-2 grid size-10 shrink-0 place-items-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg"
+          >
+            <X size={20} />
+          </button>
+        )}
+      </div>
+
+      {step === "ask" && (
+        <div className="mt-5 grid gap-2">
+          <p className="text-sm text-muted">체크를 안 해서 물어봐요. 했다면 그 시간에 한 걸로 기록할게요.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => {
+                confirmDone(store, task.id);
+                quiet();
+              }}
+            >
+              <Check size={18} strokeWidth={3} /> 했어요
+            </Button>
+            <Button variant="outline" size="lg" onClick={() => setStep("not")}>
+              <X size={18} /> 못 했어요
+            </Button>
+          </div>
+          {onLater && (
+            <button onClick={onLater} className="mt-1 text-center text-xs font-semibold text-muted hover:text-fg">
+              나중에 대답할게요
+            </button>
+          )}
+          {queue.length >= 2 && (
+            <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 border-t border-line pt-3 text-xs font-semibold text-muted">
+              <button onClick={() => setStep("allDone")} className="underline hover:text-fg">
+                {queue.length}개 모두 했어요
+              </button>
+              <button onClick={() => setStep("allMissed")} className="underline hover:text-fg">
+                {queue.length}개 모두 못 했어요
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === "not" && (
+        <div className="mt-5 grid gap-2">
+          <p className="text-sm text-muted">괜찮아요. 다시 할 시간을 잡을까요, 이번엔 못 한 걸로 남길까요?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="primary" size="lg" onClick={() => setStep("postpone")}>
+              <CalendarClock size={18} /> 다시 잡기
+            </Button>
+            <Button variant="dangerSoft" size="lg" onClick={() => setStep("missed")}>
+              <SkipForward size={18} /> 못 한 걸로
+            </Button>
+          </div>
+          <Button variant="ghost" onClick={() => setStep("ask")}>
+            뒤로
+          </Button>
+        </div>
+      )}
+
+      {step === "postpone" && (
+        <div className="mt-5 space-y-4">
+          <div>
+            <p className="mb-2 text-sm font-semibold">언제 다시 할까요?</p>
+            <TimeChoices base={task} value={newStart} now={now} onChange={setNewStart} />
+          </div>
+          <div>
+            <p className="mb-2 text-sm font-semibold">못 한 이유 {need === 0 && <span className="font-normal text-muted">(적어도 되고 안 적어도 돼요)</span>}</p>
+            <ReasonForm value={reason} onChange={setReason} minLength={need} shake={shake} placeholder="왜 못 했나요? 적어 두면 나중에 패턴이 보여요." />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setStep("not")}>
+              뒤로
+            </Button>
+            <Button
+              variant="primary"
+              className="flex-1"
+              disabled={newStart.getTime() <= now}
+              onClick={() => guard(need, () => postponeTask(store, task.id, newStart, reason.trim() || "못 했어요"))}
+            >
+              {fmtTime(newStart)}로 다시 잡기
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {step === "missed" && (
+        <div className="mt-5 space-y-4">
+          <p className="text-sm text-muted">이 일정을 ‘놓침’으로 기록해요. 나중에 목록에서 눌러 다시 잡을 수도 있어요.</p>
+          <ReasonForm value={reason} onChange={setReason} minLength={need} shake={shake} placeholder="왜 못 했나요? 적어 두면 나중에 패턴이 보여요." />
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setStep("not")}>
+              뒤로
+            </Button>
+            <Button variant="danger" className="flex-1" onClick={() => guard(need, () => markMissed(store, task.id, reason.trim() || "못 했어요"))}>
+              못 한 걸로 기록
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {(step === "allDone" || step === "allMissed") && (
+        <div className="mt-5 space-y-4">
+          <ul className="max-h-48 space-y-1 overflow-y-auto rounded-xl bg-surface-2 p-3 text-sm">
+            {queue.map((t) => (
+              <li key={t.id} className="flex gap-2">
+                <span className="shrink-0 font-mono text-muted tabular-nums">
+                  {new Date(t.starts_at).getMonth() + 1}/{new Date(t.starts_at).getDate()} {fmtTime(t.starts_at)}
+                </span>
+                <span className="truncate">{t.title}</span>
+              </li>
+            ))}
+          </ul>
+          {step === "allMissed" && (
+            <ReasonForm value={reason} onChange={setReason} minLength={needAll} shake={shake} placeholder="왜 못 했나요? 적어 두면 나중에 패턴이 보여요." />
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setStep("ask")}>
+              뒤로
+            </Button>
+            {step === "allDone" ? (
+              <Button
+                variant="primary"
+                className="flex-1"
+                onClick={() => {
+                  queue.forEach((t) => confirmDone(store, t.id));
+                  quiet();
+                }}
+              >
+                <Check size={16} strokeWidth={3} /> {queue.length}개 모두 했어요
+              </Button>
+            ) : (
+              <Button
+                variant="danger"
+                className="flex-1"
+                onClick={() => guard(needAll, () => queue.forEach((t) => markMissed(store, t.id, reason.trim() || "못 했어요")))}
+              >
+                {queue.length}개 모두 못 한 걸로 기록
+              </Button>
+            )}
           </div>
         </div>
       )}
