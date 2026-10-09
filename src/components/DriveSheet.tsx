@@ -12,6 +12,7 @@ import {
   HardDrive,
   Lock,
   LogIn,
+  NotebookPen,
   Pencil,
   Search,
   Star,
@@ -30,6 +31,7 @@ import {
   MAX_FILE,
   openLocked,
   removeFile,
+  STUDY_FOLDER,
   updateFile,
   uploadFile,
   type DriveFile,
@@ -40,6 +42,7 @@ import { getSupabase } from "@/lib/supabase";
 import { uuid } from "@/lib/time";
 import { MIN_PASSWORD, WrongPassword } from "@/lib/vault";
 import { usePlanner } from "./PlannerProvider";
+import { NoteEditor, useStudyNotes } from "./StudyNotes";
 import { Button, Chip, cx, Empty, IconButton, inputCls, Modal, Switch } from "./ui";
 
 const KIND_ICON: Record<FileKind, { icon: typeof FileIcon; tint: string }> = {
@@ -53,13 +56,16 @@ const KIND_ICON: Record<FileKind, { icon: typeof FileIcon; tint: string }> = {
   other: { icon: FileIcon, tint: "bg-surface-3 text-muted" },
 };
 
-type Filter = "all" | "starred" | "image" | "doc";
+type Filter = "all" | "study" | "starred" | "image" | "doc";
 const FILTERS: { value: Filter; label: string }[] = [
   { value: "all", label: "전체" },
+  { value: "study", label: "📒 Study" },
   { value: "starred", label: "★ 중요" },
   { value: "image", label: "사진" },
   { value: "doc", label: "문서" },
 ];
+/** 공부 노트(Study 폴더의 글 파일) — 누르면 노트 쓰기 창으로 연다 */
+const isNote = (f: DriveFile) => f.folder === STUDY_FOLDER && !f.locked && (f.mime.startsWith("text/") || /\.(txt|md)$/i.test(f.filename));
 
 interface Upload {
   key: string;
@@ -85,7 +91,9 @@ export function DriveSheet() {
 }
 
 function DriveBody() {
-  const { openSheet, session, toast } = usePlanner();
+  const { openSheet, session, toast, sheetTab } = usePlanner();
+  const notes = useStudyNotes();
+  const [noteId, setNoteId] = useState<string | null>(null);
   const sb = getSupabase();
   const close = () => openSheet(null);
   const signedIn = Boolean(sb && session.userId);
@@ -94,7 +102,7 @@ function DriveBody() {
   const [usage, setUsage] = useState<DriveUsage | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(sheetTab === "study" ? "study" : "all");
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [drag, setDrag] = useState(false);
   const [preview, setPreview] = useState<{ f: DriveFile; url: string; local?: boolean } | null>(null);
@@ -109,6 +117,7 @@ function DriveBody() {
   const [unlocking, setUnlocking] = useState<{ f: DriveFile; mode: "open" | "download" } | null>(null);
   const lockReady = !lockOn || (pw.length >= MIN_PASSWORD && pw === pw2);
 
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     if (!sb || !signedIn) return;
     let alive = true;
@@ -122,7 +131,7 @@ function DriveBody() {
     return () => {
       alive = false;
     };
-  }, [sb, signedIn]);
+  }, [sb, signedIn, reload]);
 
   const refreshUsage = () => sb && void driveUsage(sb).then(setUsage, () => {});
 
@@ -130,6 +139,7 @@ function DriveBody() {
     const s = q.trim().toLowerCase();
     return (files ?? []).filter((f) => {
       if (s && !f.filename.toLowerCase().includes(s)) return false;
+      if (filter === "study") return f.folder === STUDY_FOLDER;
       if (filter === "starred") return f.starred;
       if (filter === "image") return fileKind(f) === "image";
       if (filter === "doc") return ["pdf", "doc", "sheet"].includes(fileKind(f));
@@ -154,7 +164,7 @@ function DriveBody() {
         continue;
       }
       try {
-        const f = await uploadFile(sb, file, (p) => set({ progress: p }), undefined, password);
+        const f = await uploadFile(sb, file, (p) => set({ progress: p }), undefined, password, filter === "study" ? STUDY_FOLDER : undefined);
         if (password) sessionPw.current = password;
         setFiles((l) => [f, ...(l ?? [])]);
         setUploads((l) => l.filter((u) => u.key !== key));
@@ -218,8 +228,20 @@ function DriveBody() {
     setPreview(null);
   };
 
+  const openNote = (f: DriveFile) => {
+    if (!notes.store) return;
+    setNoteId(notes.store.adopt({ id: f.id, name: f.filename, at: f.updated_at }).id);
+  };
+  const newNote = () => notes.store && setNoteId(notes.store.create().id);
+  const closeNote = () => {
+    setNoteId(null);
+    // 노트를 올린 뒤 목록·사용량을 새로
+    void notes.store?.flush().then(() => setReload((r) => r + 1));
+  };
+
   const open = async (f: DriveFile) => {
     if (!sb) return;
+    if (isNote(f)) return openNote(f);
     if (f.locked) return openLockedFile(f, "open");
     if (fileKind(f) === "image") {
       try {
@@ -324,8 +346,13 @@ function DriveBody() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="primary" disabled={!lockReady} onClick={() => input.current?.click()}>
-                {lockOn ? <Lock size={16} /> : <Upload size={16} />} {lockOn ? "잠가서 올리기" : "파일 올리기"}
+              {filter === "study" && (
+                <Button variant="primary" onClick={newNote} disabled={!notes.store}>
+                  <NotebookPen size={16} /> 새 노트
+                </Button>
+              )}
+              <Button variant={filter === "study" ? "soft" : "primary"} disabled={!lockReady} onClick={() => input.current?.click()}>
+                {lockOn ? <Lock size={16} /> : <Upload size={16} />} {lockOn ? "잠가서 올리기" : filter === "study" ? "Study 에 파일 올리기" : "파일 올리기"}
               </Button>
               <input
                 ref={input}
@@ -391,7 +418,7 @@ function DriveBody() {
               )}
             </div>
 
-            {(files?.length ?? 0) > 0 && (
+            {((files?.length ?? 0) > 0 || filter === "study") && (
               <div className="flex flex-wrap gap-1.5">
                 {FILTERS.map((f) => (
                   <Chip key={f.value} active={filter === f.value} onClick={() => setFilter(f.value)}>
@@ -432,6 +459,12 @@ function DriveBody() {
 
             {!files ? (
               !err && <p className="py-10 text-center text-sm text-muted">불러오는 중…</p>
+            ) : filter === "study" && list.length === 0 && !q.trim() ? (
+              <Empty
+                icon={<NotebookPen size={22} />}
+                title="Study 폴더가 비어 있어요"
+                desc="‘새 노트’로 오늘 공부한 내용을 적으면 여기 저장돼요. 타이머 화면의 공부 노트 + 버튼도 같은 곳에 저장해요."
+              />
             ) : files.length === 0 ? (
               <Empty
                 icon={<HardDrive size={22} />}
@@ -478,6 +511,8 @@ function DriveBody() {
           </div>
         </Modal>
       )}
+
+      {noteId && notes.store && <NoteEditor store={notes.store} id={noteId} signedIn={notes.signedIn} onClose={closeNote} />}
 
       {unlocking && (
         <UnlockDialog
@@ -551,8 +586,9 @@ function FileRow({
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold">{f.filename}</span>
           <span className="block truncate text-xs text-muted">
+            {f.folder && `${f.folder} · `}
             {f.locked && "잠김 · "}
-            {fmtBytes(f.size)} · {fmtShort(f.created_at)}
+            {fmtBytes(f.size)} · {fmtShort(f.folder === STUDY_FOLDER ? f.updated_at : f.created_at)}
           </span>
         </span>
       </button>

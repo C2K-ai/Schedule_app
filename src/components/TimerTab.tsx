@@ -1,12 +1,14 @@
 "use client";
 
 import {
+  BookA,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   Maximize2,
   Minimize2,
+  NotebookPen,
   Pencil,
   Play,
   Plus,
@@ -33,9 +35,11 @@ import {
 import { addDays, DAY, dayKey, fmtDate, fmtTime, MIN, parseDayKey, startOfDay, uuid } from "@/lib/time";
 import { COLOR_HEX, COLOR_KEYS, type StudySession, type Subject } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
+import { DictionarySheet } from "./DictionarySheet";
 import { ListManager } from "./ListManager";
 import { usePlanner } from "./PlannerProvider";
 import { fmtHM, fmtHMS } from "./Study";
+import { NoteEditor, StudyNotesCard, useStudyNotes } from "./StudyNotes";
 import { Button, Card, cx, IconButton, inputCls, Modal } from "./ui";
 
 const SUGGESTED = ["국어", "수학", "영어", "독일어", "코딩", "독서"];
@@ -48,6 +52,9 @@ function ddayLabel(date: string, today: Date) {
 /** 공부하는 동안 화면을 꽉 채우는 시계 — 화면 꺼짐도 막는다 */
 function BigClock({ onClose }: { onClose: () => void }) {
   const { snap, store, settings } = usePlanner();
+  const notes = useStudyNotes();
+  const [dict, setDict] = useState(false);
+  const [noteId, setNoteId] = useState<string | null>(null);
   const now = useNow(1000);
   const active = activeStudy(snap.db);
   const sessions = useMemo(() => liveStudy(snap.db), [snap.db]);
@@ -82,6 +89,24 @@ function BigClock({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-[#07061a] px-6 text-white">
+      <div className="absolute top-[max(16px,env(safe-area-inset-top))] left-4 flex gap-1">
+        <button
+          onClick={() => setDict(true)}
+          aria-label="사전"
+          title="사전"
+          className="grid size-11 place-items-center rounded-xl text-white/60 hover:bg-white/10 hover:text-white"
+        >
+          <BookA size={22} />
+        </button>
+        <button
+          onClick={() => notes.store && setNoteId(notes.store.create().id)}
+          aria-label="공부 노트 쓰기"
+          title="공부 노트 쓰기"
+          className="grid size-11 place-items-center rounded-xl text-white/60 hover:bg-white/10 hover:text-white"
+        >
+          <NotebookPen size={21} />
+        </button>
+      </div>
       <button
         onClick={onClose}
         aria-label="작게 보기"
@@ -120,6 +145,12 @@ function BigClock({ onClose }: { onClose: () => void }) {
           앱을 1분 넘게 벗어나면 자동으로 멈춥니다
         </p>
       )}
+      <div className="text-fg">
+        <DictionarySheet open={dict} onClose={() => setDict(false)} />
+        {noteId && notes.store && (
+          <NoteEditor store={notes.store} id={noteId} signedIn={notes.signedIn} onClose={() => setNoteId(null)} />
+        )}
+      </div>
     </div>
   );
 }
@@ -250,7 +281,7 @@ function ManualAdd({ day, subjects, onClose }: { day: Date; subjects: Subject[];
 }
 
 export function TimerTab() {
-  const { snap, store, settings, updateSettings } = usePlanner();
+  const { snap, store, settings, updateSettings, openSheet } = usePlanner();
   const now = useNow(1000);
   const subjects = useMemo(() => liveSubjects(snap.db), [snap.db]);
   const subjectMap = useMemo(() => new Map(Object.values(snap.db.subjects).map((s) => [s.id, s])), [snap.db.subjects]);
@@ -264,6 +295,7 @@ export function TimerTab() {
   const [dd, setDd] = useState({ title: "", date: dayKey(addDays(new Date(), 30)) });
   const [offset, setOffset] = useState(0);
   const [plannerOpen, setPlannerOpen] = useState(false);
+  const [dict, setDict] = useState(false);
 
   const todayStart = studyDayStart(new Date(now), settings.dayStartHour);
   const from = todayStart.getTime();
@@ -324,7 +356,10 @@ export function TimerTab() {
           >
             + D-Day
           </button>
-          <IconButton label="크게 보기" onClick={() => setBig(true)} className="ml-auto -mr-2 size-9">
+          <IconButton label="사전" onClick={() => setDict(true)} className="ml-auto size-9">
+            <BookA size={18} />
+          </IconButton>
+          <IconButton label="크게 보기" onClick={() => setBig(true)} className="-mr-2 size-9">
             <Maximize2 size={17} />
           </IconButton>
         </div>
@@ -460,6 +495,10 @@ export function TimerTab() {
         </div>
         {bySubject.get("") ? <p className="px-3 pb-2 text-xs text-muted">과목 없이 잰 시간 {fmtHM(bySubject.get("")!)}</p> : null}
       </Card>
+
+      {/* 공부 노트 — 드라이브 Study 폴더 */}
+      <StudyNotesCard onOpenDrive={() => openSheet("drive", "study")} />
+      <DictionarySheet open={dict} onClose={() => setDict(false)} />
 
       {/* 10분 플래너 — 평소엔 접어 둔다 */}
       {!plannerOpen ? (

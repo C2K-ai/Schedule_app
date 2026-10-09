@@ -5,9 +5,31 @@
 
 ## 0. ⚠️ 지금 상태 — 2026-10-09 갱신 (여기부터 읽기)
 
-**브랜치**: 2026-10-09 **일기 여닫기 책 애니메이션을 앱에 붙여 main 에 배포함**(f782fda). 그 뒤 `ui-revamp` 는 이 문서만 더 고침.
+**브랜치**: 2026-10-09 **일기 여닫기 책 애니메이션을 앱에 붙여 main 에 배포함**(f782fda). 그다음 **사전·공부 노트**를 만들어 배포함(아래 0-A).
 
-### 0-0. 🔧 지금 하는 일 — 애니메이션 심사·다듬기 (2026-10-09 낮 시작)
+### 0-A. ✅ 타이머 사전 + 공부 노트(드라이브 Study 폴더) — 2026-10-09 배포
+사용자 요청: "열품타처럼 타이머 화면에서 바로 여는 사전(영어·국어)" + "공부한 내용을 노트북 등으로 드라이브에 바로 기록, Study 폴더, + 버튼 → 메모장".
+- **'드라이브'는 구글 드라이브가 아니라 DREAM 서버(Supabase) 보관함**이다. 사용자가 "DREAM 드라이브만"을 골랐고 **"구글 드라이브 연결은 아직 빼라"**고 함
+  (구글 연결 코드는 만들다 지움 — 다시 하려면 Google Cloud OAuth 클라이언트 ID(사용자가 만들어야 함) + GIS 토큰 + drive.file 권한).
+- **사전**: `src/components/DictionarySheet.tsx` — 네이버 사전을 iframe 으로(`https://{en|ko}.dict.naver.com/#/mini/search?query=…`).
+  네이버 사전은 X-Frame-Options·CSP frame-ancestors 가 없어 앱 안에 뜬다(서버에서 pg_net 으로 헤더 확인함, 이 컨테이너에선 네이버가 막혀 화면은 못 봄).
+  영어사전/국어사전 탭, 최근 찾은 말 8개(localStorage), 오프라인이면 안내, '새 창에서 열기'. 사용자가 **오프라인 사전은 안 해도 된다**고 함.
+  버튼: 타이머 탭 첫 카드 오른쪽 위(책 아이콘), 크게 보기 시계 왼쪽 위.
+- **공부 노트**: `src/lib/studyNotes.ts`(NotesStore — 이 기기 먼저 저장 → 로그인했으면 드라이브 Study 폴더와 맞춤, 오프라인 OK, 두 기기 동시 수정은 둘 다 남김
+  '(이 기기)'), `src/components/StudyNotes.tsx`(드라이브 연결·`useStudyNotes`·타이머 탭 '공부 노트' 카드(+ 버튼)·`NoteEditor`),
+  드라이브 화면에 '📒 Study' 칸(새 노트·Study 에 올리기·노트 파일은 누르면 메모장으로). 노트 = Study 폴더의 `제목.txt`.
+- 서버: `20261012000000_drive_folder.sql` **적용 완료** — `drive_files.folder` + `must_drive_resize(id, size)`(같은 파일 덮어쓸 때 용량 확인, 크기 직접 수정은 여전히 막힘).
+- 확인: test:unit 62(노트 13 새로)·test:db 167(드라이브 폴더 10 새로)·tsc·eslint·next build, Playwright(가짜 Supabase)로 폰 쓰기→오프라인→다시 연결 시
+  같은 파일 덮어씀, 노트북에서 폰 노트 열기·Ctrl+S, 드라이브 Study 칸, 크게 보기 시계 — 스크립트는 스크래치 `notes/e2e.mjs`.
+
+### 0-0. ⏸ 애니메이션 심사·다듬기 — 사용자가 사전·노트를 먼저 하라고 해서 멈춤 (2026-10-09 낮 시작)
+멈춘 지점(측정): 헤드리스 크롬은 화면 합성을 CPU 로 해서 CPU 안 늦춰도 30fps 언저리 — **프레임 수로는 폰 상태를 못 잼**.
+대신 추적(Tracing)으로 메인 스레드 비용을 봄: CPU 4배 늦춤에서 ① 캔버스 2장을 매 프레임 넘기는 비용(ProduceCanvasResource)이 제일 큼,
+② 넘어가는 장 띠의 스타일 쓰기(프레임당 ~500개) 스타일 재계산, ③ 시작 때 긴 작업 ~440ms(가죽 무늬·빛 조각 만들기·첫 배치) + 시계가 첫 장면 전에
+시작해서 앞부분이 건너뛰어짐. 캔버스를 숨겨도 헤드리스 fps 는 거의 그대로(합성 병목) → 실제 폰 GPU 에서 끊김 원인은 레이어·채우기 쪽일 가능성.
+고칠 계획(그대로 유효): 앞 캔버스 1.5배→1배·mix-blend 없애기, 빛 조각 수 줄이고 느리면 자동으로 줄이기, 띠 수 10→6(폰), 투명도 바뀌는 막에
+will-change, 엔진·무늬 미리 받기/만들어 두기, 첫 장면 그린 뒤 시계 시작 + 한 프레임 최대 진행 시간 제한. 측정 스크립트: 스크래치 `perf/measure.mjs`·`perf/trace.mjs`
+(배포판은 basePath 없이 빌드해 `out/` 를 루트로 서빙해야 함 — 안 그러면 /_next 가 404).
 사용자가 배포판을 폰에서 써 보고 말한 아쉬운 점(이게 1순위):
 1. **닫기(X) 애니메이션이 너무 짧게 느껴짐** — 지금 CLOSE 1.46초, 끝나면 앱으로 바로 툭 돌아감.
 2. **"버퍼링 같은 게 심함"** — 시작 전 멈칫(엔진 청크 받기·만들기)인지, 중간 프레임 끊김(캔버스·블렌드·3D 노드 900개)인지 재는 중.
@@ -125,7 +147,9 @@
 | 설정 | `SettingsSheet.tsx`, `lib/settings.ts`(기본값), `lib/types.ts`(Settings 타입) |
 | 로그인·가입 신청·승인 대기 | `AuthForm.tsx`, `AccessGate.tsx`, `lib/authLinks.ts`, Edge `signup` |
 | 관리자 화면 | `AdminSheet.tsx`, `lib/admin.ts`, Edge `admin` |
-| 드라이브(+비밀번호 잠금) | `DriveSheet.tsx`, `lib/drive.ts`, `lib/vault.ts` |
+| 드라이브(+비밀번호 잠금, Study 폴더) | `DriveSheet.tsx`, `lib/drive.ts`, `lib/vault.ts` |
+| 공부 노트(Study 폴더, 오프라인 먼저) | `StudyNotes.tsx`, `lib/studyNotes.ts`, 표 `drive_files.folder`·RPC `must_drive_resize` |
+| 사전(영어·국어, 네이버 iframe) | `DictionarySheet.tsx`(타이머 탭·크게 보기 시계에서 엶) |
 | PWA 설치·업데이트 | `app/manifest.ts`, `public/sw.js`(VERSION 올리면 설치된 앱이 다음 실행 때 새로 받음) |
 
 ## 4. 서버(Supabase) 현재 상태

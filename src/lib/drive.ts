@@ -9,6 +9,8 @@ import { lockBytes, OVERHEAD, unlockBytes } from "./vault";
 
 export const DRIVE_BUCKET = "drive";
 export const MAX_FILE = 50 * 1024 * 1024;
+/** 공부 노트가 들어가는 폴더 */
+export const STUDY_FOLDER = "Study";
 
 export interface DriveFile {
   id: string;
@@ -20,6 +22,8 @@ export interface DriveFile {
   ready: boolean;
   /** 비밀번호로 잠가서(브라우저에서 암호화해) 올린 파일 */
   locked: boolean;
+  /** 폴더 이름(없으면 맨 위) — 지금은 'Study'(공부 노트)만 */
+  folder?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -67,6 +71,7 @@ export function driveError(e: unknown): string {
   const m = String((e as { message?: string })?.message ?? e);
   if (m.includes("drive_quota")) return "드라이브 용량이 모자라요. 안 쓰는 파일을 지우거나 운영자에게 늘려 달라고 하세요.";
   if (m.includes("drive_pending")) return "운영자가 가입을 승인한 뒤에 쓸 수 있어요.";
+  if (m.includes("drive_missing")) return "드라이브에서 지워진 파일이에요.";
   if (m.includes("size") && m.includes("check")) return "파일 하나는 50MB 까지 올릴 수 있어요.";
   if (m.includes("Payload too large") || m.includes("413") || m.includes("exceeded the maximum")) return "파일 하나는 50MB 까지 올릴 수 있어요.";
   if (m.includes("Failed to fetch") || m.includes("network")) return "인터넷 연결을 확인해 주세요.";
@@ -90,20 +95,21 @@ export async function driveUsage(sb: SupabaseClient): Promise<DriveUsage> {
   return { used: Number(u.used), files: Number(u.files), quota: Number(u.quota), max_file: Number(u.max_file) };
 }
 
-/** 올리기 — 진행률(0~1)을 알려 준다. password 가 있으면 이 기기에서 암호화해서 올린다. 끝나면 새 파일 */
+/** 올리기 — 진행률(0~1)을 알려 준다. password 가 있으면 이 기기에서 암호화해서 올린다. folder 는 넣을 폴더. 끝나면 새 파일 */
 export async function uploadFile(
   sb: SupabaseClient,
   file: File,
   onProgress?: (p: number) => void,
   signal?: AbortSignal,
   password?: string,
+  folder?: string,
 ): Promise<DriveFile> {
   if (file.size + (password ? OVERHEAD : 0) > MAX_FILE) throw new Error("파일 하나는 50MB 까지 올릴 수 있어요.");
   const mime = (file.type || "application/octet-stream").slice(0, 255);
   const body: Blob = password ? new Blob([(await lockBytes(await file.arrayBuffer(), password)) as BlobPart]) : file;
   const { data, error } = await sb
     .from("drive_files")
-    .insert({ filename: cleanName(file.name), size: body.size, mime, locked: Boolean(password) })
+    .insert({ filename: cleanName(file.name), size: body.size, mime, locked: Boolean(password), ...(folder ? { folder } : {}) })
     .select("*")
     .single();
   if (error) throw new Error(driveError(error));
@@ -151,7 +157,7 @@ export async function removeFile(sb: SupabaseClient, f: DriveFile) {
   if (e2) throw new Error(driveError(e2));
 }
 
-export async function updateFile(sb: SupabaseClient, f: DriveFile, patch: Partial<Pick<DriveFile, "filename" | "starred">>) {
+export async function updateFile(sb: SupabaseClient, f: DriveFile, patch: Partial<Pick<DriveFile, "filename" | "starred" | "folder">>) {
   const body = { ...patch, ...(patch.filename !== undefined ? { filename: cleanName(patch.filename) } : {}), updated_at: new Date().toISOString() };
   const { data, error } = await sb.from("drive_files").update(body).eq("id", f.id).select("*").single();
   if (error) throw new Error(driveError(error));
@@ -171,4 +177,41 @@ export async function openLocked(sb: SupabaseClient, f: DriveFile, password: str
   if (!res.ok) throw new Error(driveError(`${res.status} ${await res.text().catch(() => "")}`));
   const plain = await unlockBytes(await res.arrayBuffer(), password);
   return new Blob([plain], { type: f.mime });
+}
+
+/**
+ * 같은 파일을 새 내용으로 덮어쓴다(공부 노트 고쳐 쓰기) — 크기를 먼저 바꿔(서버가 용량 확인) 같은 자리에 다시 올린다.
+ * 올리다 실패하면 크기를 되돌린다. 끝나면 바뀐 줄
+ */
+export async function replaceFile(sb: SupabaseClient, f: DriveFile, body: Blob, filename?: string): Promise<DriveFile> {
+  if (body.size > MAX_FILE) throw new Error("파일 하나는 50MB 까지 올릴 수 있어요.");
+  const { error } = await sb.rpc("must_drive_resize", { p_id: f.id, p_size: body.size });
+  if (error) throw new Error(driveError(error));
+  const { error: e2 } = await sb.storage
+    .from(DRIVE_BUCKET)
+    .upload(path(f), body, { upsert: true, contentType: f.mime || "application/octet-stream", cacheControl: "60" });
+  if (e2) {
+    await sb.rpc("must_drive_resize", { p_id: f.id, p_size: f.size }).then(
+      () => {},
+      () => {},
+    );
+    throw new Error(driveError(e2));
+  }
+  const patch: Record<string, string> = { updated_at: new Date().toISOString() };
+  if (filename !== undefined && cleanName(filename) !== f.filename) patch.filename = cleanName(filename);
+  const { data, error: e3 } = await sb.from("drive_files").update(patch).eq("id", f.id).select("*").single();
+  if (e3) throw new Error(driveError(e3));
+  return data as DriveFile;
+}
+
+/** 글 파일 내용 읽기(공부 노트) — 캐시를 거치지 않고 늘 지금 내용 */
+export async function readText(sb: SupabaseClient, f: DriveFile): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(await fileUrl(sb, f), { cache: "no-store" });
+  } catch (e) {
+    throw new Error(driveError(e));
+  }
+  if (!res.ok) throw new Error(driveError(`${res.status} ${await res.text().catch(() => "")}`));
+  return res.text();
 }

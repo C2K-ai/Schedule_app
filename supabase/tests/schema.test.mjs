@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -562,6 +562,40 @@ await db.exec(`reset role;`);
   ok((await as(B, `delete from public.drive_files where id = '${f1.id}' returning id`)).length === 1, "드라이브: 내 파일 지우기");
   await db.exec(readFileSync(new URL("../migrations/20261009000100_drive.sql", import.meta.url), "utf8"));
   ok((await q(`select count(*)::int n from pg_policies where policyname in ('own drive files', 'drive own folder')`))[0].n === 2, "드라이브 마이그레이션 다시 돌려도 정책 그대로");
+  // 처음 드라이브 파일을 다시 돌리면 열 권한이 처음 상태로 돌아가므로, 뒤 마이그레이션도 차례대로 다시
+  for (const f of ["20261009000200_drive_lock.sql", "20261012000000_drive_folder.sql"]) await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
+
+  // ── 폴더(Study 공부 노트)·같은 파일 고쳐 쓰기 ──
+  const nt = (await as(B, `insert into public.drive_files (filename, size, mime, folder) values ('10월 9일 공부 노트.txt', 20, 'text/plain', 'Study') returning id, folder`))[0];
+  ok(nt?.folder === "Study", "드라이브: Study 폴더에 노트 만들기");
+  ok(await fails(B, `insert into public.drive_files (filename, size, folder) values ('x.txt', 1, '') returning id`), "드라이브: 빈 폴더 이름은 막힘");
+  const rz = (await as(B, `select public.must_drive_resize('${nt.id}', 4096) v`))[0].v;
+  const rzRow = (await as(B, `select size from public.drive_files where id = '${nt.id}'`))[0];
+  ok(Number(rz.size) === 4096 && Number(rzRow.size) === 4096, "드라이브: 노트를 고쳐 쓰면 크기가 바뀜");
+  ok(await fails(A, `select public.must_drive_resize('${nt.id}', 10)`), "드라이브: 남의 파일 크기는 못 바꿈");
+  ok(await fails(B, `select public.must_drive_resize('${nt.id}', 52428801)`), "드라이브: 50MB 넘게는 못 바꿈");
+  await db.exec(`update public.must_app_settings set drive_quota_mb = 1`);
+  let rzMsg = "";
+  try {
+    await as(B, `select public.must_drive_resize('${nt.id}', 200000)`);
+  } catch (e) {
+    rzMsg = String(e.message);
+  }
+  ok(rzMsg.includes("drive_quota"), "드라이브: 고쳐 쓸 때도 용량 확인");
+  ok(Number((await as(B, `select public.must_drive_resize('${nt.id}', 10) v`))[0].v.size) === 10, "드라이브: 줄이는 건 용량을 넘어도 됨");
+  await db.exec(`update public.must_app_settings set drive_quota_mb = 150`);
+  ok(await fails(B, `update public.drive_files set size = 1 where id = '${nt.id}' returning id`), "드라이브: 크기를 직접 고치기는 여전히 막힘");
+  ok((await as(B, `update public.drive_files set folder = null where id = '${nt.id}' returning folder`))[0].folder === null, "드라이브: 폴더 옮기기 됨");
+  let anonCan = true;
+  await db.exec(`set role anon`);
+  try {
+    await q(`select public.must_drive_resize('${nt.id}', 1)`);
+  } catch {
+    anonCan = false;
+  } finally {
+    await db.exec(`reset role`);
+  }
+  ok(!anonCan, "드라이브: 로그인 안 하면 크기 바꾸기 못 부름");
 }
 
 // ── 한 일 기록 ──
