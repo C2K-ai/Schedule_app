@@ -16,9 +16,18 @@ export interface NoteBackend {
   list(): Promise<RemoteNote[]>;
   read(id: string): Promise<string>;
   create(name: string, text: string): Promise<RemoteNote>;
-  update(id: string, name: string, text: string): Promise<RemoteNote>;
+  /** base = 이 기기가 알던 그 판의 시각 — 서버 판이 다르면 NoteConflict */
+  update(id: string, name: string, text: string, base: string): Promise<RemoteNote>;
   /** 이미 없으면 조용히 끝 */
   remove(id: string): Promise<void>;
+}
+
+/** 덮어쓰려는데 다른 기기가 그새 고침 */
+export class NoteConflict extends Error {
+  constructor(message = "다른 기기에서 먼저 고쳤어요.") {
+    super(message);
+    this.name = "NoteConflict";
+  }
 }
 
 export interface StudyNote {
@@ -58,6 +67,8 @@ export interface NotesSnapshot {
   message: string | null;
   /** 아직 못 올린 노트 수 */
   pending: number;
+  /** 이 기기에 저장하지 못함(저장 공간이 꽉 참 등) */
+  saveFailed: boolean;
 }
 
 export interface NotesStorage {
@@ -73,6 +84,8 @@ export interface NotesOptions {
   delay?: number;
   /** 오류 → 사람이 읽는 말 */
   explain?: (e: unknown) => string;
+  /** 여러 탭이 같은 노트를 동시에 올리지 않게 — 앱에선 navigator.locks */
+  lock?: (fn: () => Promise<void>) => Promise<void>;
 }
 
 /** 기본 제목 — '10월 9일 공부 노트' */
@@ -87,7 +100,9 @@ export function noteFileName(title: string): string {
 /** 파일 이름 → 노트 제목 */
 export const titleOf = (name: string): string => name.replace(/\.(txt|md)$/i, "").trim() || "제목 없는 노트";
 
-const isBlank = (n: StudyNote) => !(n.body ?? "").trim();
+/** 아무것도 안 쓴 새 노트 — 내용이 비었고 제목도 처음 그대로(또는 빈칸) */
+export const isUntouched = (n: Pick<StudyNote, "body" | "title" | "created_at">): boolean =>
+  !(n.body ?? "").trim() && (!n.title.trim() || n.title === defaultTitle(new Date(n.created_at)));
 const time = (s: string) => {
   const t = Date.parse(s);
   return Number.isFinite(t) ? t : 0;
@@ -119,12 +134,16 @@ export class NotesStore {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running: Promise<void> | null = null;
   private again = false;
+  private saveFailed = false;
+  /** 이 탭에서 치운 노트 — 다른 탭 저장본을 합칠 때 되살리지 않게 */
+  private gone = new Set<string>();
   private snap: NotesSnapshot;
   private readonly isOnline: () => boolean;
   private readonly now: () => Date;
   private readonly uuid: () => string;
   private readonly delay: number;
   private readonly explain: (e: unknown) => string;
+  private readonly lock: (fn: () => Promise<void>) => Promise<void>;
 
   constructor(
     private readonly storage: NotesStorage,
@@ -135,6 +154,7 @@ export class NotesStore {
     this.uuid = opts.uuid ?? (() => crypto.randomUUID());
     this.delay = opts.delay ?? 2500;
     this.explain = opts.explain ?? ((e) => String((e as { message?: string })?.message ?? e));
+    this.lock = opts.lock ?? ((fn) => fn());
     let loaded: StudyNote[] = [];
     try {
       loaded = sane(storage.load());
@@ -157,15 +177,18 @@ export class NotesStore {
       notes: this.notes.filter((n) => !n.deleted).sort((a, b) => time(b.updated_at) - time(a.updated_at)),
       status: this.status,
       message: this.message,
-      pending: this.notes.filter((n) => n.dirty && !(n.deleted && !n.remote) && !(isBlank(n) && !n.remote && !n.deleted)).length,
+      pending: this.notes.filter((n) => n.dirty && n.body !== null && !(n.deleted && !n.remote) && !(isUntouched(n) && !n.remote && !n.deleted)).length,
+      saveFailed: this.saveFailed,
     };
   }
   private emit(persist = true): void {
     if (persist) {
       try {
         this.storage.save(this.notes);
+        this.saveFailed = false;
       } catch {
-        /* 저장 공간이 꽉 차도 화면은 그대로 */
+        // 저장 공간이 꽉 참 등 — 화면에 알린다(드라이브에 올라가면 안전)
+        this.saveFailed = true;
       }
     }
     this.snap = this.makeSnap();
@@ -184,6 +207,65 @@ export class NotesStore {
   /** 드라이브 파일 id 로 노트 찾기(드라이브 화면에서 열 때) */
   byRemote(remoteId: string): StudyNote | undefined {
     return this.notes.find((n) => n.remote?.id === remoteId && !n.deleted);
+  }
+
+  /**
+   * 로그인 전에(이 기기에만) 쓴 노트를 이 계정으로 옮긴다 — 다음 맞추기에 드라이브로 올라간다.
+   * 옮긴 수를 돌려준다
+   */
+  /** 다른 계정으로 옮길 만한(로그인 전에 쓴) 노트가 있는지 */
+  hasImportable(): boolean {
+    return this.notes.some((n) => !n.deleted && n.body !== null && !n.remote && !isUntouched(n));
+  }
+
+  importFrom(other: NotesStore): number {
+    if (other === this) return 0;
+    const take = other.notes.filter((n) => !n.deleted && n.body !== null && !n.remote && !isUntouched(n));
+    if (!take.length) return 0;
+    for (const n of take) {
+      const id = this.notes.some((x) => x.id === n.id) ? this.uuid() : n.id;
+      this.notes.push({ ...n, id, remote: null, dirty: true, rev: n.rev + 1 });
+      other.drop(n);
+    }
+    other.emit();
+    this.emit();
+    this.schedule(0);
+    return take.length;
+  }
+
+  /**
+   * 다른 탭이 저장한 노트를 합친다(storage 이벤트) — 같은 노트면 더 많이 고친(rev) 쪽, 같으면 더 많이 올린 쪽.
+   * 이 탭에서 치운 노트는 되살리지 않고, 이 탭에만 있는 새 노트·안 올린 고침은 남긴다
+   */
+  absorb(raw: unknown): void {
+    const incoming = sane(raw);
+    const inIds = new Set(incoming.map((n) => n.id));
+    const byId = new Map(this.notes.map((n) => [n.id, n]));
+    let changed = false;
+    for (const inc of incoming) {
+      if (this.gone.has(inc.id)) continue;
+      const cur = byId.get(inc.id);
+      if (!cur) {
+        this.notes.push(inc);
+        changed = true;
+        continue;
+      }
+      const newer =
+        inc.rev > cur.rev ||
+        (inc.rev === cur.rev &&
+          ((!inc.dirty && cur.dirty) || (!!inc.remote && (!cur.remote || time(inc.remote.at) > time(cur.remote.at))) || (!!inc.deleted && !cur.deleted)));
+      if (!newer) continue;
+      // 같은 판이면 이미 받아 둔 내용은 살린다
+      const keepBody = inc.body === null && cur.body !== null && inc.remote && cur.remote && inc.remote.id === cur.remote.id && time(inc.remote.at) === time(cur.remote.at);
+      Object.assign(cur, inc, keepBody ? { body: cur.body } : {});
+      if (!inc.deleted) delete cur.deleted;
+      changed = true;
+    }
+    // 다른 탭에서 사라진 노트: 이미 올려서 깨끗한 것만 치운다(드라이브에서 지워졌거나 그 탭이 지움)
+    const before = this.notes.length;
+    // (이 탭이 저장에 실패한 동안은 저장본이 낡았을 수 있으니 치우지 않는다)
+    if (!this.saveFailed) this.notes = this.notes.filter((n) => inIds.has(n.id) || !n.remote || n.dirty);
+    if (changed || this.notes.length !== before) this.emit();
   }
 
   /** 서버 연결(로그인) — null 이면 이 기기에만 */
@@ -236,16 +318,21 @@ export class NotesStore {
       n.deleted = true;
       n.dirty = true;
       n.rev++;
-    } else this.notes = this.notes.filter((x) => x !== n);
+    } else this.drop(n);
     this.emit();
     this.schedule(0);
+  }
+
+  private drop(n: StudyNote): void {
+    this.notes = this.notes.filter((x) => x !== n);
+    this.gone.add(n.id);
   }
 
   /** 아무것도 안 쓴 새 노트는 닫을 때 치운다 */
   discardIfEmpty(id: string): void {
     const n = this.get(id);
-    if (n && !n.remote && isBlank(n)) {
-      this.notes = this.notes.filter((x) => x !== n);
+    if (n && !n.remote && isUntouched(n)) {
+      this.drop(n);
       this.emit();
     }
   }
@@ -271,7 +358,19 @@ export class NotesStore {
   /** 드라이브 화면에서 고른 파일을 노트로(없으면 목록에 넣고) */
   adopt(r: RemoteNote): StudyNote {
     const have = this.byRemote(r.id);
-    if (have) return have;
+    if (have) {
+      if (have.remote && time(have.remote.at) !== time(r.at)) {
+        if (!have.dirty) {
+          // 드라이브 목록이 더 새 판 → 다시 받는다
+          have.title = titleOf(r.name);
+          have.body = null;
+          have.updated_at = r.at;
+          have.remote = { id: r.id, at: r.at };
+          this.emit();
+        } else this.schedule(0); // 둘 다 고침 → 맞추기에서 둘 다 남긴다
+      }
+      return have;
+    }
     const n: StudyNote = {
       id: this.uuid(),
       title: titleOf(r.name),
@@ -310,7 +409,15 @@ export class NotesStore {
       try {
         do {
           this.again = false;
-          await this.syncOnce();
+          await this.lock(async () => {
+            // 다른 탭이 그새 올린 게 있으면 먼저 합친다(같은 노트를 두 번 만들지 않게)
+            try {
+              this.absorb(this.storage.load());
+            } catch {
+              /* 못 읽으면 이 탭 것으로 */
+            }
+            await this.syncOnce();
+          });
         } while (this.again);
       } finally {
         this.running = null;
@@ -381,8 +488,17 @@ export class NotesStore {
         n.body = null;
         n.updated_at = r.at;
         n.remote = { id: r.id, at: r.at };
-      } else if (n.dirty) {
-        // 둘 다 고침 → 둘 다 남긴다: 이 기기 것은 새 노트로, 서버 것은 그 자리에
+      } else if (n.dirty && n.body !== null) {
+        // 둘 다 고침 — 내용이 같으면(올리다 끊긴 우리 판 등) 그냥 맞춘다
+        const theirs = await b.read(r.id).catch(() => null);
+        if (this.backend !== b) return;
+        if (theirs !== null && theirs === n.body) {
+          n.remote = { id: r.id, at: r.at };
+          if (noteFileName(n.title) === r.name) n.dirty = false;
+          changed = true;
+          continue;
+        }
+        // 정말 둘 다 고침 → 둘 다 남긴다: 이 기기 것은 새 노트로, 서버 것은 그 자리에
         n.remote = null;
         if (!n.title.endsWith("(이 기기)")) n.title = `${n.title} (이 기기)`.slice(0, 120);
         this.notes.push({
@@ -425,23 +541,35 @@ export class NotesStore {
       if (!n.dirty) continue;
       if (n.deleted) {
         if (n.remote) await b.remove(n.remote.id);
-        this.notes = this.notes.filter((x) => x !== n);
+        this.drop(n);
         this.emit();
         continue;
       }
-      if (n.body === null) continue;
-      if (!n.remote && isBlank(n)) continue; // 빈 새 노트는 안 올린다
+      if (n.body === null) {
+        // 내용을 안 받은 노트는 올릴 게 없다(편집 창은 받기 전엔 제목도 못 고침)
+        n.dirty = false;
+        this.emit();
+        continue;
+      }
+      if (!n.remote && isUntouched(n)) continue; // 아무것도 안 쓴 새 노트는 안 올린다
       const rev = n.rev;
       const name = noteFileName(n.title);
       const text = n.body;
       let r: RemoteNote;
       if (n.remote) {
         try {
-          r = await b.update(n.remote.id, name, text);
+          r = await b.update(n.remote.id, name, text, n.remote.at);
         } catch (e) {
-          // 서버에서 그새 지워졌으면 새로 만든다
-          if (!/지워진|missing|not found|404/i.test(String((e as { message?: string })?.message ?? e))) throw e;
-          r = await b.create(name, text);
+          if (e instanceof NoteConflict || (e as Error)?.name === "NoteConflict") {
+            // 그새 다른 기기가 고침 → 이 기기 판은 새 노트로 올리고, 서버 판은 다음 맞추기에 따로 받는다
+            n.remote = null;
+            if (!n.title.endsWith("(이 기기)")) n.title = `${n.title} (이 기기)`.slice(0, 120);
+            this.again = true;
+            r = await b.create(noteFileName(n.title), text);
+          } else if (/지워진|missing|not found|404/i.test(String((e as { message?: string })?.message ?? e))) {
+            // 서버에서 그새 지워졌으면 새로 만든다
+            r = await b.create(name, text);
+          } else throw e;
         }
       } else r = await b.create(name, text);
       if (!this.notes.includes(n)) {

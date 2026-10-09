@@ -33,6 +33,7 @@ import { COLOR_HEX } from "@/lib/types";
 import { ActivityEditor } from "./ActivityEditor";
 import { AdminSheet } from "./AdminSheet";
 import { DriveSheet } from "./DriveSheet";
+import { StudyNotesSync } from "./StudyNotes";
 import { PalettePicker } from "./PalettePicker";
 import { AlarmOverlay } from "./AlarmOverlay";
 import { BackgroundPicker } from "./BackgroundPicker";
@@ -470,6 +471,7 @@ export function Shell() {
       <SettingsSheet />
       <AdminSheet />
       <DriveSheet />
+      <StudyNotesSync />
       {/* 일기 — 화면 가득 덮는 종이(다른 창보다 위) */}
       <DiarySheet />
       <VoiceAdd />

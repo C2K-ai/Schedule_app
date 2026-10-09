@@ -4,7 +4,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Cloud, CloudOff, FolderOpen, Loader2, NotebookPen, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
+  DriveConflict,
   driveError,
+  isNoteFile,
   readText,
   removeFile,
   replaceFile,
@@ -12,7 +14,16 @@ import {
   uploadFile,
   type DriveFile,
 } from "@/lib/drive";
-import { localNotesStorage, NotesStore, type NoteBackend, type NotesSnapshot, type RemoteNote, type StudyNote } from "@/lib/studyNotes";
+import {
+  isUntouched,
+  localNotesStorage,
+  NoteConflict,
+  NotesStore,
+  type NoteBackend,
+  type NotesSnapshot,
+  type RemoteNote,
+  type StudyNote,
+} from "@/lib/studyNotes";
 import { getSupabase } from "@/lib/supabase";
 import { uuid } from "@/lib/time";
 import { useOnline } from "./DictionarySheet";
@@ -37,27 +48,47 @@ function driveBackend(sb: SupabaseClient): NoteBackend {
     rows.set(id, data as DriveFile);
     return data as DriveFile;
   };
+  /** 노트(글 파일)만 — 사진·PDF 를 메모장으로 열거나 덮어쓰지 않게 */
+  const noteRow = async (id: string): Promise<DriveFile> => {
+    const f = await row(id);
+    if (!isNoteFile(f)) throw new Error("글 파일이 아니라 노트로 열 수 없어요.");
+    return f;
+  };
   return {
     async list() {
-      const { data, error } = await sb
-        .from("drive_files")
-        .select("*")
-        .eq("folder", STUDY_FOLDER)
-        .eq("ready", true)
-        .eq("locked", false)
-        .order("updated_at", { ascending: false })
-        .limit(500);
-      if (error) throw new Error(driveError(error));
-      return (data as DriveFile[]).map(remember);
+      // Study 폴더 전체를 1000개씩 끝까지(잘린 목록으로 '서버에서 지워짐'을 잘못 판단하지 않게) — 노트(글 파일)만
+      const out: DriveFile[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await sb
+          .from("drive_files")
+          .select("*")
+          .eq("folder", STUDY_FOLDER)
+          .eq("ready", true)
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, from + 999);
+        if (error) throw new Error(driveError(error));
+        out.push(...((data ?? []) as DriveFile[]));
+        if ((data ?? []).length < 1000) break;
+      }
+      return out.filter(isNoteFile).map(remember);
     },
     async read(id) {
-      return readText(sb, await row(id));
+      return readText(sb, await noteRow(id));
     },
     async create(name, text) {
       return remember(await uploadFile(sb, new File([text], name, { type: NOTE_MIME }), undefined, undefined, undefined, STUDY_FOLDER));
     },
-    async update(id, name, text) {
-      return remember(await replaceFile(sb, await row(id), new Blob([text], { type: NOTE_MIME }), name));
+    async update(id, name, text, base) {
+      try {
+        return remember(await replaceFile(sb, await noteRow(id), new Blob([text], { type: NOTE_MIME }), name, base));
+      } catch (e) {
+        if (e instanceof DriveConflict) {
+          rows.delete(id); // 다음 목록에서 새 판을 받는다
+          throw new NoteConflict();
+        }
+        throw e;
+      }
     },
     async remove(id) {
       let f: DriveFile;
@@ -78,22 +109,29 @@ const backends = new Map<string, NoteBackend>();
 function storeFor(scope: string): NotesStore {
   let s = stores.get(scope);
   if (!s) {
-    s = new NotesStore(localNotesStorage(`must:study-notes:${scope}`), {
+    const key = `must:study-notes:${scope}`;
+    const locks = typeof navigator !== "undefined" && "locks" in navigator ? navigator.locks : undefined;
+    s = new NotesStore(localNotesStorage(key), {
       isOnline: () => navigator.onLine,
       uuid,
       explain: driveError,
+      // 탭 여러 개가 같은 노트를 동시에 올리지 않게(지원 안 하는 브라우저는 그냥)
+      lock: locks ? async (fn) => void (await locks.request(key, fn)) : undefined,
     });
     stores.set(scope, s);
   }
   return s;
 }
 
-const EMPTY: NotesSnapshot = { notes: [], status: "local", message: null, pending: 0 };
+const EMPTY: NotesSnapshot = { notes: [], status: "local", message: null, pending: 0, saveFailed: false };
 const noop = () => () => {};
 
-/** 공부 노트 저장소 — 로그인했으면 드라이브 Study 폴더와 맞춘다 */
-export function useStudyNotes(): { store: NotesStore | null; snap: NotesSnapshot; signedIn: boolean } {
-  const { session } = usePlanner();
+/**
+ * 공부 노트 저장소 — 로그인했으면 드라이브 Study 폴더와 맞춘다.
+ * passive = 늘 떠 있는 뒤쪽 맞추기(StudyNotesSync) — 노트를 한 번도 안 쓴 사람은 서버에 묻지 않는다
+ */
+export function useStudyNotes(passive = false): { store: NotesStore | null; snap: NotesSnapshot; signedIn: boolean } {
+  const { session, toast } = usePlanner();
   const sb = getSupabase();
   const uid = session.ready ? session.userId : null;
   const store = session.ready ? storeFor(uid ?? "local") : null;
@@ -106,28 +144,52 @@ export function useStudyNotes(): { store: NotesStore | null; snap: NotesSnapshot
       store.setBackend(null);
       return;
     }
+    const local = storeFor("local");
+    if (passive && store.getSnapshot().notes.length === 0 && !local.hasImportable()) return;
     let b = backends.get(uid);
     if (!b) {
       b = driveBackend(sb);
       backends.set(uid, b);
     }
+    // 로그인 전에 이 기기에서 쓴 노트는 이 계정으로 옮겨 드라이브에 올린다
+    const moved = store.importFrom(local);
+    if (moved > 0) toast({ text: `로그인 전에 쓴 공부 노트 ${moved}개를 드라이브 Study 폴더로 옮겨요.` });
     store.setBackend(b);
-  }, [store, sb, uid]);
+  }, [store, sb, uid, toast, passive]);
 
-  // 인터넷이 돌아오면 바로, 앱을 내리면 남은 걸 바로 올린다
+  // 인터넷이 돌아오거나 앱으로 돌아오면 맞추고, 앱을 내리면 남은 걸 바로 올린다. 다른 탭이 저장하면 합친다
+  const key = `must:study-notes:${uid ?? "local"}`;
   useEffect(() => {
     if (!store) return;
     const on = () => store.schedule(0);
-    const hide = () => document.visibilityState === "hidden" && void store.flush();
+    const vis = () => (document.visibilityState === "hidden" ? void store.flush() : store.schedule(0));
+    const other = (e: StorageEvent) => {
+      if (e.key !== key || e.newValue === null) return;
+      try {
+        store.absorb(JSON.parse(e.newValue));
+      } catch {
+        /* 망가진 값은 무시 */
+      }
+    };
     window.addEventListener("online", on);
-    document.addEventListener("visibilitychange", hide);
+    window.addEventListener("focus", on);
+    window.addEventListener("storage", other);
+    document.addEventListener("visibilitychange", vis);
     return () => {
       window.removeEventListener("online", on);
-      document.removeEventListener("visibilitychange", hide);
+      window.removeEventListener("focus", on);
+      window.removeEventListener("storage", other);
+      document.removeEventListener("visibilitychange", vis);
     };
-  }, [store]);
+  }, [store, key]);
 
   return { store, snap, signedIn };
+}
+
+/** 어느 화면에 있든 — 인터넷이 돌아오거나 로그인하면 못 올린 노트를 올린다(화면엔 아무것도 안 그림) */
+export function StudyNotesSync() {
+  useStudyNotes(true);
+  return null;
 }
 
 /* ─────────── 표시 도우미 ─────────── */
@@ -147,8 +209,13 @@ const preview = (n: StudyNote) =>
 
 /** 저장 상태 한 줄 */
 function statusText(snap: NotesSnapshot, signedIn: boolean, note?: StudyNote): { text: string; tone: "ok" | "muted" | "warn" | "danger" } {
-  // 빈 새 노트는 올리지 않으니 '올리는 중'으로 안 본다
-  const dirty = note ? note.dirty && Boolean((note.body ?? "").trim()) : snap.pending > 0;
+  // 아무것도 안 쓴 새 노트는 올리지 않으니 '올리는 중'으로 안 본다
+  const dirty = note ? note.dirty && note.body !== null && !(isUntouched(note) && !note.remote) : snap.pending > 0;
+  if (snap.saveFailed)
+    return {
+      text: signedIn && snap.status !== "offline" ? "이 기기 저장 공간이 꽉 찼어요 — 드라이브에 올라가면 안전해요" : "저장 공간이 꽉 차서 이 기기에 저장하지 못했어요",
+      tone: "danger",
+    };
   if (!signedIn) return { text: "이 기기에 저장됨 · 로그인하면 드라이브 Study 폴더에 올라가요", tone: "muted" };
   if (snap.status === "offline") return { text: "이 기기에 저장됨 · 인터넷이 연결되면 올라가요", tone: "warn" };
   if (snap.status === "error") return { text: snap.message ?? "올리지 못했어요", tone: "danger" };
@@ -307,6 +374,7 @@ export function NoteEditor({ store, id, signedIn, onClose }: { store: NotesStore
           <input
             value={note.title}
             onChange={(e) => store.edit(id, { title: e.target.value })}
+            disabled={needsLoad}
             aria-label="노트 제목"
             maxLength={120}
             placeholder="제목"

@@ -1,7 +1,7 @@
 // 공부 노트 — 이 기기 먼저 저장 → 드라이브 Study 폴더와 맞추기. npm run test:unit
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NotesStore, defaultTitle, noteFileName, titleOf } from "../src/lib/studyNotes.ts";
+import { NoteConflict, NotesStore, defaultTitle, isUntouched, noteFileName, titleOf } from "../src/lib/studyNotes.ts";
 
 /** 가짜 드라이브(Study 폴더) — 판이 바뀔 때마다 시각이 1초씩 간다 */
 function fakeDrive() {
@@ -35,9 +35,10 @@ function fakeDrive() {
       files.set(id, { name, text, at: tick() });
       return { id, name, at: files.get(id).at };
     },
-    async update(id, name, text) {
+    async update(id, name, text, base) {
       guard("update");
       if (!files.has(id)) throw new Error("드라이브에서 지워진 파일이에요.");
+      if (base !== undefined && Date.parse(files.get(id).at) !== Date.parse(base)) throw new NoteConflict();
       files.set(id, { name, text, at: tick() });
       return { id, name, at: files.get(id).at };
     },
@@ -54,6 +55,8 @@ function fakeDrive() {
     /** 다른 기기(노트북)가 직접 고침 */
     otherDevice: {
       write: (id, name, text) => files.set(id, { name, text, at: tick() }),
+      /** 시각만 바뀜(올리다 끊긴 판 등) */
+      touch: (id) => files.set(id, { ...files.get(id), at: tick() }),
       add: (name, text) => {
         const id = `f${++n}`;
         files.set(id, { name, text, at: tick() });
@@ -269,4 +272,136 @@ test("저장된 값이 망가져 있어도 열린다", () => {
   const s2 = new NotesStore({ load: () => [{ id: "x", title: "t", body: 3 }, null, 5], save: () => {} });
   assert.equal(s2.getSnapshot().notes.length, 1);
   assert.equal(s2.get("x").body, null);
+});
+
+test("아무것도 안 쓴 새 노트 — 제목만 바꿨으면 남긴다", async () => {
+  const d = fakeDrive();
+  const { s } = newStore();
+  s.setBackend(d.api);
+  const n = s.create();
+  assert.equal(isUntouched(s.get(n.id)), true);
+  s.edit(n.id, { title: "단어장" });
+  assert.equal(isUntouched(s.get(n.id)), false);
+  s.discardIfEmpty(n.id);
+  assert.ok(s.get(n.id), "제목만 쓴 노트는 안 치움");
+  await s.sync();
+  assert.equal([...d.files.values()][0]?.name, "단어장.txt");
+});
+
+test("로그인 전에 쓴 노트는 로그인한 계정으로 옮겨 올린다", async () => {
+  const d = fakeDrive();
+  const local = newStore().s;
+  const a = local.create("비행기에서");
+  local.edit(a.id, { body: "오프라인 노트" });
+  local.create(); // 빈 새 노트는 안 옮김
+  const { s: mine } = newStore();
+  assert.equal(mine.importFrom(local), 1);
+  assert.equal(local.getSnapshot().notes.length, 1, "옮긴 노트는 이 기기 칸에서 빠짐");
+  mine.setBackend(d.api);
+  await mine.sync();
+  assert.equal([...d.files.values()][0]?.text, "오프라인 노트");
+  assert.equal(mine.importFrom(local), 0, "두 번 옮기지 않음");
+});
+
+test("올리다 끊겨 시각만 바뀐 판은 가짜 충돌 사본을 안 만든다", async () => {
+  const d = fakeDrive();
+  const { s } = newStore();
+  s.setBackend(d.api);
+  const n = s.create("영어");
+  s.edit(n.id, { body: "같은 내용" });
+  await s.sync();
+  const rid = s.get(n.id).remote.id;
+  d.otherDevice.touch(rid); // 내용은 그대로, 시각만
+  s.edit(n.id, { body: "같은 내용" }); // 이 기기에선 고친 걸로 남아 있음
+  await s.sync();
+  assert.equal(s.getSnapshot().notes.length, 1, "사본 없음");
+  assert.equal(d.files.size, 1);
+  assert.ok(!s.get(n.id).title.includes("(이 기기)"));
+});
+
+test("올리는 순간 다른 기기가 먼저 고쳤으면(서버가 거절) 둘 다 남긴다", async () => {
+  const d = fakeDrive();
+  const { s } = newStore();
+  s.setBackend(d.api);
+  const n = s.create("국어");
+  s.edit(n.id, { body: "처음" });
+  await s.sync();
+  const rid = s.get(n.id).remote.id;
+  s.edit(n.id, { body: "폰에서 고침" });
+  // 목록을 받은 뒤, 올리기 직전에 노트북이 고친다
+  const origList = d.api.list;
+  d.api.list = async () => {
+    const out = await origList();
+    d.otherDevice.write(rid, "국어.txt", "노트북에서 고침");
+    return out;
+  };
+  await s.sync();
+  d.api.list = origList;
+  await s.sync();
+  const texts = [...d.files.values()].map((f) => f.text).sort();
+  assert.deepEqual(texts, ["노트북에서 고침", "폰에서 고침"]);
+  assert.equal(s.getSnapshot().notes.length, 2);
+  assert.ok(s.get(n.id).title.endsWith("(이 기기)"));
+});
+
+test("내용을 아직 안 받은 노트는 서버 판으로 맞춘다(사본 안 만듦)", async () => {
+  const d = fakeDrive();
+  const rid = d.otherDevice.add("노트북.txt", "v1");
+  const { s } = newStore();
+  s.setBackend(d.api);
+  await s.sync();
+  const [n] = s.getSnapshot().notes;
+  assert.equal(n.body, null);
+  d.otherDevice.write(rid, "노트북 고침.txt", "v2");
+  await s.sync();
+  assert.equal(s.getSnapshot().notes.length, 1);
+  assert.equal(s.get(n.id).title, "노트북 고침");
+  assert.equal(s.getSnapshot().pending, 0);
+});
+
+test("드라이브 화면에서 열 때 더 새 판이면 다시 받는다", async () => {
+  const d = fakeDrive();
+  const { s } = newStore();
+  s.setBackend(d.api);
+  const n = s.create("수학");
+  s.edit(n.id, { body: "v1" });
+  await s.sync();
+  const rid = s.get(n.id).remote.id;
+  d.otherDevice.write(rid, "수학.txt", "v2");
+  const f = d.files.get(rid);
+  const got = s.adopt({ id: rid, name: f.name, at: f.at });
+  assert.equal(got.id, n.id);
+  assert.equal(s.get(n.id).body, null, "다시 받게 비움");
+  assert.equal(await s.load(n.id), "v2");
+});
+
+test("다른 탭이 저장한 노트를 합친다(지운 건 안 살림)", async () => {
+  const storage = memStorage();
+  const { s: tab1 } = newStore({ storage });
+  const { s: tab2 } = newStore({ storage });
+  const a = tab1.create("탭1 노트");
+  tab1.edit(a.id, { body: "1" });
+  tab2.absorb(storage.peek());
+  assert.equal(tab2.get(a.id)?.body, "1");
+  tab2.edit(a.id, { body: "1+2" });
+  tab1.absorb(storage.peek());
+  assert.equal(tab1.get(a.id).body, "1+2", "더 많이 고친 쪽");
+  const b = tab1.create("지울 노트");
+  tab1.edit(b.id, { body: "x" });
+  tab1.remove(b.id);
+  tab1.absorb([...JSON.parse(JSON.stringify(storage.peek())), { ...tab1.getSnapshot().notes[0], id: b.id, title: "지울 노트", body: "x", rev: 9 }]);
+  assert.equal(tab1.get(b.id), undefined, "이 탭에서 지운 건 안 살아남");
+});
+
+test("이 기기에 저장 못 하면(공간 부족) 알린다", () => {
+  let full = false;
+  const s = new NotesStore({ load: () => null, save: () => { if (full) throw new Error("QuotaExceededError"); } });
+  const n = s.create();
+  assert.equal(s.getSnapshot().saveFailed, false);
+  full = true;
+  s.edit(n.id, { body: "x" });
+  assert.equal(s.getSnapshot().saveFailed, true);
+  full = false;
+  s.edit(n.id, { body: "xy" });
+  assert.equal(s.getSnapshot().saveFailed, false);
 });

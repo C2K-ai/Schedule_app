@@ -18,9 +18,15 @@
 - **공부 노트**: `src/lib/studyNotes.ts`(NotesStore — 이 기기 먼저 저장 → 로그인했으면 드라이브 Study 폴더와 맞춤, 오프라인 OK, 두 기기 동시 수정은 둘 다 남김
   '(이 기기)'), `src/components/StudyNotes.tsx`(드라이브 연결·`useStudyNotes`·타이머 탭 '공부 노트' 카드(+ 버튼)·`NoteEditor`),
   드라이브 화면에 '📒 Study' 칸(새 노트·Study 에 올리기·노트 파일은 누르면 메모장으로). 노트 = Study 폴더의 `제목.txt`.
-- 서버: `20261012000000_drive_folder.sql` **적용 완료** — `drive_files.folder` + `must_drive_resize(id, size)`(같은 파일 덮어쓸 때 용량 확인, 크기 직접 수정은 여전히 막힘).
-- 확인: test:unit 62(노트 13 새로)·test:db 167(드라이브 폴더 10 새로)·tsc·eslint·next build, Playwright(가짜 Supabase)로 폰 쓰기→오프라인→다시 연결 시
-  같은 파일 덮어씀, 노트북에서 폰 노트 열기·Ctrl+S, 드라이브 Study 칸, 크게 보기 시계 — 스크립트는 스크래치 `notes/e2e.mjs`.
+- 서버: `20261012000000_drive_folder.sql`·`20261012000100_drive_rewrite.sql` **둘 다 적용 완료** — `drive_files.folder`,
+  `must_drive_rewrite(id, size, expected)`(덮어쓰기: 판이 다르면 drive_conflict, 커지면 용량 확인, **시각은 안 바꿈** — 시각은 다 올린 뒤 앱이 바꿈).
+  v1 `must_drive_resize` 는 v2 를 부르게 바꿔 둠. 크기 직접 수정은 여전히 막힘.
+- 검토 워크플로(3명 + 반박 검증 21명)로 찾은 것 고침: Study 의 사진·PDF 가 노트로 떠서 고치면 원본이 망가지던 것(→ 글 파일만, 1MB·UTF-8 확인),
+  로그인 전에 쓴 노트가 로그인 뒤 사라지던 것(→ 계정으로 옮겨 올림), 올리다 끊기면 가짜 '(이 기기)' 사본(→ 시각 안 바꿈 + 내용 같으면 그냥 맞춤),
+  올리는 순간의 동시 수정(→ 판 확인), 제목만 쓴 노트가 버려지던 것, 탭 두 개(→ storage 이벤트 합치기 + navigator.locks), 목록 500개 한도(→ 끝까지),
+  앱으로 돌아올 때 새로 맞추기, 저장 공간 꽉 참 알림, 드라이브에서 못 올렸을 때 알림. `StudyNotesSync`(Shell 에 늘 붙음)가 어느 화면에서든 올림.
+- 확인: test:unit 70(노트 21)·test:db 175(드라이브 폴더·덮어쓰기 18)·tsc·eslint·next build, Playwright(가짜 Supabase) 34개 — 폰 쓰기→오프라인→다시 연결 시
+  같은 파일 덮어씀, 노트북에서 열기·Ctrl+S, 드라이브 Study 칸, 사진은 노트 아님, 로그인 전 노트 → 로그인 뒤 올라감, 크게 보기 시계 — 스크립트는 스크래치 `notes/e2e.mjs`.
 
 ### 0-0. ⏸ 애니메이션 심사·다듬기 — 사용자가 사전·노트를 먼저 하라고 해서 멈춤 (2026-10-09 낮 시작)
 멈춘 지점(측정): 헤드리스 크롬은 화면 합성을 CPU 로 해서 CPU 안 늦춰도 30fps 언저리 — **프레임 수로는 폰 상태를 못 잼**.

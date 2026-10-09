@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -563,7 +563,7 @@ await db.exec(`reset role;`);
   await db.exec(readFileSync(new URL("../migrations/20261009000100_drive.sql", import.meta.url), "utf8"));
   ok((await q(`select count(*)::int n from pg_policies where policyname in ('own drive files', 'drive own folder')`))[0].n === 2, "드라이브 마이그레이션 다시 돌려도 정책 그대로");
   // 처음 드라이브 파일을 다시 돌리면 열 권한이 처음 상태로 돌아가므로, 뒤 마이그레이션도 차례대로 다시
-  for (const f of ["20261009000200_drive_lock.sql", "20261012000000_drive_folder.sql"]) await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
+  for (const f of ["20261009000200_drive_lock.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql"]) await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 
   // ── 폴더(Study 공부 노트)·같은 파일 고쳐 쓰기 ──
   const nt = (await as(B, `insert into public.drive_files (filename, size, mime, folder) values ('10월 9일 공부 노트.txt', 20, 'text/plain', 'Study') returning id, folder`))[0];
@@ -596,6 +596,36 @@ await db.exec(`reset role;`);
     await db.exec(`reset role`);
   }
   ok(!anonCan, "드라이브: 로그인 안 하면 크기 바꾸기 못 부름");
+
+  // ── 덮어쓰기 v2: 판 확인 + 시각은 안 건드림 ──
+  const base = (await as(B, `update public.drive_files set folder = 'Study', updated_at = '2026-10-09T06:00:00.123Z' where id = '${nt.id}' returning updated_at`))[0].updated_at;
+  const w1 = (await as(B, `select public.must_drive_rewrite('${nt.id}', 300, '2026-10-09T06:00:00.123+00:00') v`))[0].v;
+  const afterW1 = (await as(B, `select size, updated_at from public.drive_files where id = '${nt.id}'`))[0];
+  ok(Number(w1.size) === 300 && Number(afterW1.size) === 300, "덮어쓰기: 같은 판이면 크기 바뀜");
+  ok(new Date(afterW1.updated_at).getTime() === new Date(base).getTime(), "덮어쓰기: 시각은 그대로(올린 뒤 앱이 바꿈)");
+  let cMsg = "";
+  try {
+    await as(B, `select public.must_drive_rewrite('${nt.id}', 310, '2026-10-09T05:59:59Z')`);
+  } catch (e) {
+    cMsg = String(e.message);
+  }
+  ok(cMsg.includes("drive_conflict"), "덮어쓰기: 다른 기기가 그새 고쳤으면 거절");
+  ok(Number((await as(B, `select size from public.drive_files where id = '${nt.id}'`))[0].size) === 300, "덮어쓰기: 거절되면 크기도 그대로");
+  ok(Number((await as(B, `select public.must_drive_rewrite('${nt.id}', 320, null) v`))[0].v.size) === 320, "덮어쓰기: 판 확인 없이(되돌리기)도 됨");
+  const r1 = (await as(B, `select public.must_drive_resize('${nt.id}', 330) v`))[0].v;
+  const afterR1 = (await as(B, `select updated_at from public.drive_files where id = '${nt.id}'`))[0];
+  ok(Number(r1.size) === 330 && new Date(afterR1.updated_at).getTime() === new Date(base).getTime(), "예전 크기 바꾸기도 이제 시각을 안 바꿈");
+  ok(await fails(A, `select public.must_drive_rewrite('${nt.id}', 10, null)`), "덮어쓰기: 남의 파일은 못 함");
+  let anonW = true;
+  await db.exec(`set role anon`);
+  try {
+    await q(`select public.must_drive_rewrite('${nt.id}', 1, null)`);
+  } catch {
+    anonW = false;
+  } finally {
+    await db.exec(`reset role`);
+  }
+  ok(!anonW, "덮어쓰기: 로그인 안 하면 못 부름");
 }
 
 // ── 한 일 기록 ──

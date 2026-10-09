@@ -11,6 +11,21 @@ export const DRIVE_BUCKET = "drive";
 export const MAX_FILE = 50 * 1024 * 1024;
 /** 공부 노트가 들어가는 폴더 */
 export const STUDY_FOLDER = "Study";
+/** 노트(메모장)로 열 수 있는 글 파일 크기 한도 */
+export const NOTE_MAX = 1024 * 1024;
+
+/** 메모장으로 열어도 되는 파일 — 잠기지 않은 1MB 이하 글 파일(text/* 또는 .txt·.md). 사진·PDF 등은 노트가 아니다 */
+export function isNoteFile(f: Pick<DriveFile, "mime" | "filename" | "locked" | "size">): boolean {
+  return !f.locked && f.size <= NOTE_MAX && (f.mime.toLowerCase().startsWith("text/") || /\.(txt|md)$/i.test(f.filename));
+}
+
+/** 덮어쓰려는데 다른 기기가 그새 고쳤음 */
+export class DriveConflict extends Error {
+  constructor() {
+    super("다른 기기에서 먼저 고쳤어요.");
+    this.name = "DriveConflict";
+  }
+}
 
 export interface DriveFile {
   id: string;
@@ -181,17 +196,21 @@ export async function openLocked(sb: SupabaseClient, f: DriveFile, password: str
 
 /**
  * 같은 파일을 새 내용으로 덮어쓴다(공부 노트 고쳐 쓰기) — 크기를 먼저 바꿔(서버가 용량 확인) 같은 자리에 다시 올린다.
- * 올리다 실패하면 크기를 되돌린다. 끝나면 바뀐 줄
+ * expectedAt(이 기기가 알던 판의 시각)이 서버와 다르면 DriveConflict. 올리다 실패하면 크기를 되돌린다.
+ * 시각(updated_at)은 다 올린 뒤에만 바꾼다 — 끊겨도 '다른 기기에서 고침'처럼 안 보이게. 끝나면 바뀐 줄
  */
-export async function replaceFile(sb: SupabaseClient, f: DriveFile, body: Blob, filename?: string): Promise<DriveFile> {
+export async function replaceFile(sb: SupabaseClient, f: DriveFile, body: Blob, filename?: string, expectedAt?: string): Promise<DriveFile> {
   if (body.size > MAX_FILE) throw new Error("파일 하나는 50MB 까지 올릴 수 있어요.");
-  const { error } = await sb.rpc("must_drive_resize", { p_id: f.id, p_size: body.size });
-  if (error) throw new Error(driveError(error));
+  const { error } = await sb.rpc("must_drive_rewrite", { p_id: f.id, p_size: body.size, p_expected: expectedAt ?? null });
+  if (error) {
+    if (String(error.message ?? "").includes("drive_conflict")) throw new DriveConflict();
+    throw new Error(driveError(error));
+  }
   const { error: e2 } = await sb.storage
     .from(DRIVE_BUCKET)
     .upload(path(f), body, { upsert: true, contentType: f.mime || "application/octet-stream", cacheControl: "60" });
   if (e2) {
-    await sb.rpc("must_drive_resize", { p_id: f.id, p_size: f.size }).then(
+    await sb.rpc("must_drive_rewrite", { p_id: f.id, p_size: f.size, p_expected: null }).then(
       () => {},
       () => {},
     );
@@ -206,6 +225,7 @@ export async function replaceFile(sb: SupabaseClient, f: DriveFile, body: Blob, 
 
 /** 글 파일 내용 읽기(공부 노트) — 캐시를 거치지 않고 늘 지금 내용 */
 export async function readText(sb: SupabaseClient, f: DriveFile): Promise<string> {
+  if (!isNoteFile(f)) throw new Error("글 파일이 아니라 노트로 열 수 없어요.");
   let res: Response;
   try {
     res = await fetch(await fileUrl(sb, f), { cache: "no-store" });
@@ -213,5 +233,12 @@ export async function readText(sb: SupabaseClient, f: DriveFile): Promise<string
     throw new Error(driveError(e));
   }
   if (!res.ok) throw new Error(driveError(`${res.status} ${await res.text().catch(() => "")}`));
-  return res.text();
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > NOTE_MAX) throw new Error("노트로 열기엔 너무 큰 파일이에요.");
+  try {
+    // 깨진 글자가 섞인 파일(다른 인코딩 등)은 열지 않는다 — 고쳐 저장하면 원래 내용이 망가지니까
+    return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+  } catch {
+    throw new Error("UTF-8 글 파일이 아니라 노트로 열 수 없어요. 내려받아서 열어 주세요.");
+  }
 }

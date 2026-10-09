@@ -27,6 +27,7 @@ import {
   fileKind,
   fileUrl,
   fmtBytes,
+  isNoteFile,
   listFiles,
   MAX_FILE,
   openLocked,
@@ -65,7 +66,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "doc", label: "문서" },
 ];
 /** 공부 노트(Study 폴더의 글 파일) — 누르면 노트 쓰기 창으로 연다 */
-const isNote = (f: DriveFile) => f.folder === STUDY_FOLDER && !f.locked && (f.mime.startsWith("text/") || /\.(txt|md)$/i.test(f.filename));
+const isNote = (f: DriveFile) => f.folder === STUDY_FOLDER && isNoteFile(f);
 
 interface Upload {
   key: string;
@@ -235,8 +236,15 @@ function DriveBody() {
   const newNote = () => notes.store && setNoteId(notes.store.create().id);
   const closeNote = () => {
     setNoteId(null);
-    // 노트를 올린 뒤 목록·사용량을 새로
-    void notes.store?.flush().then(() => setReload((r) => r + 1));
+    const st = notes.store;
+    if (!st) return;
+    // 노트를 올린 뒤 목록·사용량을 새로 — 못 올렸으면 알려 준다(노트는 이 기기에 남아 있음)
+    void st.flush().then(() => {
+      const s = st.getSnapshot();
+      if (s.status === "error") toast({ text: `${s.message ?? "노트를 올리지 못했어요"} — 이 기기엔 저장돼 있어요`, tone: "danger" });
+      else if (s.status === "offline" && s.pending > 0) toast({ text: "노트는 이 기기에 저장했어요. 인터넷이 연결되면 드라이브에 올라가요." });
+      setReload((r) => r + 1);
+    });
   };
 
   const open = async (f: DriveFile) => {
