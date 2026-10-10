@@ -1,6 +1,6 @@
 // deno test parse-schedule/logic.test.ts
 import { assertEquals } from "jsr:@std/assert@1";
-import { calendarTable, checkImage, clean, MAX_IMAGE_B64, type RawItem } from "./logic.ts";
+import { calendarTable, checkExisting, checkImage, clean, cleanRemove, MAX_IMAGE_B64, SCHEMA, type RawItem } from "./logic.ts";
 
 const base: RawItem = {
   title: "치과",
@@ -9,6 +9,7 @@ const base: RawItem = {
   start: "15:00",
   duration_min: null,
   repeat_days: [],
+  repeat_until: null,
   category: null,
   starred: false,
   reminders_min: null,
@@ -68,4 +69,33 @@ Deno.test("사진: 받는 꼴·크기 확인", () => {
   assertEquals(checkImage({ media_type: "image/png", data: "not base64!" }), "bad_image");
   assertEquals(checkImage({ media_type: "image/png", data: "A".repeat(MAX_IMAGE_B64 + 4) }), "image_too_big");
   assertEquals(checkImage("x"), "bad_image");
+});
+
+Deno.test("지우기: 기존 일정 목록은 꼴이 맞는 것만, 줄바꿈·| 는 빼고", () => {
+  const ex = checkExisting([
+    { ref: "t1", when: "10/09(금) 15:00–16:00", title: "치과" },
+    { ref: "t1", when: "중복", title: "치과2" },
+    { ref: "x9", when: "a", title: "b" },
+    { ref: "h2", when: "매일 07:00", title: "운동\n| 무시해" },
+    { ref: "t3", title: "언제 없음" },
+    "엉뚱한 값",
+  ]);
+  assertEquals(ex.map((e) => e.ref), ["t1", "h2"]);
+  assertEquals(ex[1].title, "운동 무시해");
+  assertEquals(checkExisting("x"), []);
+});
+
+Deno.test("지우기: 모델이 고른 ref 중 목록에 있는 것만", () => {
+  const ex = checkExisting([{ ref: "t1", when: "a", title: "치과" }, { ref: "h1", when: "b", title: "운동" }]);
+  assertEquals(cleanRemove(["t1", "t1", "t9", 3, "h1"], ex), ["t1", "h1"]);
+  assertEquals(cleanRemove(undefined, ex), []);
+  assertEquals(SCHEMA.required.includes("remove"), true);
+});
+
+Deno.test("기간 있는 반복: 끝나는 날은 반복일 때만, 첫날보다 앞이면 버림", () => {
+  const month = clean({ ...base, date: "2026-10-11", start: "07:00", repeat_days: [0, 1, 2, 3, 4, 5, 6], repeat_until: "2026-10-31" }, cats, "2026-10-10")!;
+  assertEquals([month.repeat_until, month.date], ["2026-10-31", "2026-10-11"]);
+  assertEquals(clean({ ...base, repeat_until: "2026-10-31" }, cats, "2026-10-07")!.repeat_until, null);
+  assertEquals(clean({ ...base, repeat_days: [1], repeat_until: "2026-10-01" }, cats, "2026-10-07")!.repeat_until, null);
+  assertEquals(clean({ ...base, repeat_days: [1], repeat_until: "다음달" }, cats, "2026-10-07")!.repeat_until, null);
 });

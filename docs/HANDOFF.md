@@ -5,7 +5,7 @@
 
 ## 0. ⚠️ 지금 상태 — 2026-10-10 갱신 (여기부터 읽기)
 
-**브랜치**: `ui-revamp` = `main`(2026-10-10 오후: 애니메이션 다듬기 → 돌아보기 통계 → 카톡 공유 → 사진 → PC 인박스까지 배포). 끝난 일은 8절.
+**브랜치**: `ui-revamp` = `main`(2026-10-10 저녁: … PC 인박스 → 끝난 일정 폰 알림 막기 → AI 지우기·옮기기 → 기간 있는 반복 → 드라이브 '새 노트'까지 배포). 끝난 일은 8절.
 
 ### 0-0. 일기 책 애니메이션 — 다듬기 배포함(2026-10-10), **사용자 폰 확인 대기**
 사용자 지적 두 가지(닫기가 너무 짧음 · 폰에서 심하게 버벅임)를 고쳐 배포함. 사용자가 써 보고 말하면 그 부분만 고친다(큰 진단·심사 다시 돌리지 말 것).
@@ -40,6 +40,7 @@
   단 Claude 가 `.claude/settings.json` 권한을 스스로 넓히는 건 자동 모드 분류기가 막음(자기 수정) — 승인 창은 사용자가 '항상 허용'.
 - **사용자가 직접 확인할 것**(배포는 끝남): ① 폰에서 일기 책 애니메이션 끊김(0-0) ② 아이폰에서 애니메이션 모양 ③ 카톡 메시지 '공유 → DREAM'
   (홈 화면에 설치한 안드로이드 앱만) ④ Write 사진 버튼으로 시간표 사진 넣기(로그인 필요, 실제 AI 호출은 아직 안 해 봄) ⑤ PC 캘린더 탭 주/일 → 오른쪽 인박스 끌어 놓기.
+  ⑥ Voice/Write 로 "내일 치과 취소해줘"(지우기 확인 창) ⑦ "이번 달 매일 …" → 달 끝까지 들어가는지(8절 23·24).
 - 잠금화면 카드가 사용자 폰에서 안 보이는 문제(7절 '이어서 할 것') — 사용자가 "나중에" 하자고 함.
 - 도구: Deno 는 `npm i --no-save deno`(또는 스크래치에), Playwright 는 `npm i playwright-core@1.56.1` + `executablePath: '/opt/pw-browsers/chromium'`.
   화면 확인: `npx next build` → `cd out && python3 -m http.server 3201`(루트로 서빙) → Playwright. 캘린더 탭 → '주' 에서 시간표·인박스.
@@ -107,12 +108,12 @@
 
 ## 4. 서버(Supabase) 현재 상태
 
-- **적용된 마이그레이션**: `20261005000000_init` ~ `20261010000000_activities` 전부.
+- **적용된 마이그레이션**: `20261005000000_init` ~ `20261013000000_habit_range` 전부.
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v5(Haiku 5.5) · `career-polish` v3(Sonnet 5.5) · `admin` v4 ·
-  `signup` v3(**JWT 검증 끔**) · `send-due-notifications` · `notification-action` · `push-test` v2(제목 DREAM).
+- **Edge Functions**(배포 버전): `parse-schedule` v8(Haiku 5.5) · `career-polish` v3(Sonnet 5.5) · `admin` v4 ·
+  `signup` v3(**JWT 검증 끔**) · `send-due-notifications` v4 · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
   `must_cron_secret`, `must_action_secret`. 키 값은 문서·채팅에 절대 쓰지 말 것.
@@ -205,6 +206,20 @@
 
 21. **PC 인박스 → 끌어서 시간표에**(2026-10-10) — 캘린더 탭 주/일 시간표 오른쪽 `Inbox.tsx`(PC만, `max-md:hidden`): 날짜 없음 + 오늘 이후 날짜만 할 일,
    바로 적기. 끌어 놓으면 `Timeline` `onDropTask` → `placeTask`(시각 일정 1시간, 알림 기본값, 지난 시각이면 강제 끔). 끄는 동안 점선 칸 표시.
+
+22. **끝난 일정엔 '시작 안 함' 폰 알림 안 보냄**(2026-10-10) — `send-due-notifications` v4 `rules.ts` `skipEndedOverdue`·`badgeCounts`,
+   아침 브리핑은 '했는지 확인할 일정 N건'. 앱 안 알림도 끝난 일정은 건너뜀.
+
+23. **AI 로 일정 지우기·옮기기**(2026-10-10) — "내일 치과 취소해줘"·"회의 4시로 옮겨줘"·"운동 그만할래". 지우기·옮기기 말(`REMOVE_RE`)이 있을 때만
+   기존 일정 목록(`existingForAi`: 2일 전~60일 뒤 + 날짜 없음 최대 220개, 반복 30개, ref t#/h#)을 보냄 → parse-schedule **v8** 이 `remove`(ref 목록) 돌려줌.
+   미리보기 '지울 일정'(체크해서 고름)에서 확인한 뒤 지움 — `AiRemovals.tsx`(`toRemovalDrafts`·`RemovalList`·`applyRemovals`). 반복은 앞으로 회차도 지움.
+   미시작 경고 중인 강제 일정은 잠금(못 지움). 실제 모델 5문장(지우기·옮기기·습관 그만·하루만·다 지워) 통과, 한 번 약 0.4원.
+
+24. **기간 있는 반복**(2026-10-10, 사용자: "이번 달 매일 넣었더니 16일까지만") — 원인: 습관 회차를 7일 앞까지만 만들고 끝나는 날이 없었음.
+   `habits.start_day`·`end_day`(마이그레이션 `20261013000000_habit_range`, 서버 `materialize_habits` 도 기간 지킴), AI `repeat_until`(끝나는 날),
+   앱은 끝나는 날이 있는 반복은 그날까지(최대 62일) 미리 만듦(`habitHorizon`). 반복 편집 창에 '기간'(선택). 습관을 만든 시각보다 이른 오늘 회차는 안 만듦(앱·서버 같음).
+
+25. **☰ 드라이브에도 '새 노트'**(2026-10-10) — 파일이 0개여도 📒 Study 칸이 보이고, '파일 올리기' 옆 '새 노트'(Study 폴더에 만듦).
 
 ## 9. 테마·배경 구조
 

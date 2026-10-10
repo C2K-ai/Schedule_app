@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -798,6 +798,42 @@ await db.exec(`reset role;`);
   ok((await countD()) === 2, "일기: D 의 글·열쇠 준비");
   await q(`delete from auth.users where id = $1`, [DD]);
   ok((await countD()) === 0 && (await q(`select count(*)::int n from public.diary_entries where user_id = $1`, [A]))[0].n === 2, "일기: 계정 삭제 → 그 사람 일기·열쇠만 같이 삭제");
+}
+
+// ── 반복(습관) 기간: 시작·끝 날짜 ──
+{
+  // 회차 id 는 습관 id 앞 24글자 + 날짜 — 시험 습관끼리 앞부분이 겹치지 않게
+  const H2 = "c0ffee02-1234-4abc-8def-000000000002";
+  const H3 = "c0ffee03-1234-4abc-8def-000000000003";
+  const today = (await q(`select (now() at time zone 'Asia/Seoul')::date::text d`))[0].d;
+  await q(
+    `insert into public.habits (id, user_id, title, days, start_time, duration_min, start_day, end_day, created_at, updated_at)
+     values ($1, $2, '이번 달만 운동', '{0,1,2,3,4,5,6}', '07:00', 30, $3::date - 3, $3::date, now() - interval '5 day', now()),
+            ($4, $2, '내일부터 독서', '{0,1,2,3,4,5,6}', '21:00', 30, $3::date + 1, null, now() - interval '1 day', now())`,
+    [H2, A, today, H3],
+  );
+  await q(`select public.materialize_habits()`);
+  const d2 = (await q(`select occurrence_date::text d from public.tasks where habit_id = $1 order by 1`, [H2])).map((r) => r.d);
+  const d3 = (await q(`select occurrence_date::text d from public.tasks where habit_id = $1 order by 1`, [H3])).map((r) => r.d);
+  ok(d2.length === 1 && d2[0] === today, `반복 기간: 끝나는 날(오늘) 다음 날은 안 만듦 → ${d2.join(",")}`);
+  ok(d3.length === 1 && d3[0] > today, `반복 기간: 시작하는 날(내일) 전은 안 만듦 → ${d3.join(",")}`);
+  let bad = false;
+  try {
+    await q(`insert into public.habits (user_id, title, days, start_time, duration_min, start_day, end_day) values ($1, 'x', '{1}', '07:00', 30, '2026-10-20', '2026-10-10')`, [A]);
+  } catch {
+    bad = true;
+  }
+  ok(bad, "반복 기간: 끝나는 날이 시작보다 앞이면 거절");
+  // 만들기 전에 이미 지난 오늘 회차는 안 만든다(오후에 '매일 아침 7시'를 넣은 경우)
+  const H4 = "c0ffee04-1234-4abc-8def-000000000004";
+  await q(
+    `insert into public.habits (id, user_id, title, days, start_time, duration_min, created_at, updated_at)
+     values ($1, $2, '방금 만든 습관', '{0,1,2,3,4,5,6}', to_char((now() at time zone 'Asia/Seoul') - interval '1 minute', 'HH24:MI'), 30, now(), now())`,
+    [H4, A],
+  );
+  await q(`select public.materialize_habits()`);
+  const d4 = (await q(`select occurrence_date::text d from public.tasks where habit_id = $1 order by 1`, [H4])).map((r) => r.d);
+  ok(d4.length === 1 && d4[0] > today, `만들기 전에 지난 오늘 회차는 안 만들고 내일부터 → ${d4.join(",")}`);
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

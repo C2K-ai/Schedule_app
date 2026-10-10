@@ -131,7 +131,7 @@ const noop = () => () => {};
  * passive = 늘 떠 있는 뒤쪽 맞추기(StudyNotesSync) — 노트를 한 번도 안 쓴 사람은 서버에 묻지 않는다
  */
 export function useStudyNotes(passive = false): { store: NotesStore | null; snap: NotesSnapshot; signedIn: boolean } {
-  const { session, toast } = usePlanner();
+  const { session } = usePlanner();
   const sb = getSupabase();
   const uid = session.ready ? session.userId : null;
   const store = session.ready ? storeFor(uid ?? "local") : null;
@@ -152,10 +152,9 @@ export function useStudyNotes(passive = false): { store: NotesStore | null; snap
       backends.set(uid, b);
     }
     // 로그인 전에 이 기기에서 쓴 노트는 이 계정으로 옮겨 드라이브에 올린다
-    const moved = store.importFrom(local);
-    if (moved > 0) toast({ text: `로그인 전에 쓴 공부 노트 ${moved}개를 드라이브 Study 폴더로 옮겨요.` });
+    store.importFrom(local);
     store.setBackend(b);
-  }, [store, sb, uid, toast, passive]);
+  }, [store, sb, uid, passive]);
 
   // 인터넷이 돌아오거나 앱으로 돌아오면 맞추고, 앱을 내리면 남은 걸 바로 올린다. 다른 탭이 저장하면 합친다
   const key = `must:study-notes:${uid ?? "local"}`;

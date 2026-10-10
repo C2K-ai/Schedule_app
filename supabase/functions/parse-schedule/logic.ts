@@ -9,6 +9,8 @@ export interface RawItem {
   start: string | null;
   duration_min: number | null;
   repeat_days: number[];
+  /** 기간이 있는 반복의 마지막 날 */
+  repeat_until?: string | null;
   category: string | null;
   starred: boolean;
   reminders_min: number[] | null;
@@ -20,14 +22,14 @@ const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type:
 export const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["items", "reply"],
+  required: ["items", "remove", "reply"],
   properties: {
     items: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "kind", "date", "start", "duration_min", "repeat_days", "category", "starred", "reminders_min", "notes"],
+        required: ["title", "kind", "date", "start", "duration_min", "repeat_days", "repeat_until", "category", "starred", "reminders_min", "notes"],
         properties: {
           title: { type: "string" },
           kind: { type: "string", enum: ["timed", "day", "someday"] },
@@ -35,6 +37,7 @@ export const SCHEMA = {
           start: nullable({ type: "string" }),
           duration_min: nullable({ type: "integer" }),
           repeat_days: { type: "array", items: { type: "integer" } },
+          repeat_until: nullable({ type: "string", format: "date" }),
           category: nullable({ type: "string" }),
           starred: { type: "boolean" },
           reminders_min: nullable({ type: "array", items: { type: "integer" } }),
@@ -42,6 +45,8 @@ export const SCHEMA = {
         },
       },
     },
+    // 지우거나 옮길 기존 일정의 ref(사용자 메시지의 '기존 일정' 목록에서) — 없으면 빈 배열
+    remove: { type: "array", items: { type: "string" } },
     reply: { type: "string" },
   },
 };
@@ -62,12 +67,52 @@ Fields:
 - start: "HH:MM" 24-hour for timed items, else null. Korean hours without 오전/오후: 1–6 → afternoon (13–18), 7–11 → morning unless context says evening ("저녁 7시" → 19:00), 12 → 12:00. 아침 ≈ 08:00, 점심 ≈ 12:00, 오후 ≈ 15:00, 저녁 ≈ 19:00, 밤 ≈ 21:00, 새벽 ≈ 06:00 when no exact time. "반" = :30. If a timed item has no day and that time has already passed today, use tomorrow.
 - duration_min: minutes if they say how long ("한 시간", "30분 동안", "3시부터 5시까지" → 120), else null.
 - repeat_days: for repeating routines ("매일", "평일마다", "주말마다", "매주 월수금") the weekdays as numbers 0=일 1=월 2=화 3=수 4=목 5=금 6=토; empty array otherwise. A repeating item must be "timed" — if no time is said, use a sensible one (매일 아침 → 08:00, otherwise 09:00) and set date to its first occurrence.
+- repeat_until: only for repeating items whose period is limited — the LAST date (YYYY-MM-DD) they should repeat: "이번 달 매일" → the last day of this month, "이번 주 매일" → this Sunday, "11월까지" → 11월 30일, "2주 동안" → first date + 13 days, "시험(10월 24일) 전까지" → the day before. Pick it from the calendar table when it is in range. Null when no end is said ("매일", "평일마다" with no period) and for non-repeating items. "이번 달 매일 …" is ONE repeating item with repeat_days [0,1,2,3,4,5,6] and repeat_until — never list the days as separate items.
 - category: exactly one of the category names listed in the user message when the item clearly fits one (생일 → a birthday category, 사고 싶은 것 → a wishlist category), else null.
 - starred: true only when they stress importance ("중요", "꼭", "절대 잊으면 안 돼", "별표").
 - reminders_min: minutes-before reminders only if they ask ("30분 전에 알려줘" → [30], "정각에" → [0]); null otherwise.
 - notes: extra details worth keeping (place, things to bring, people) that do not belong in the title; else null.
 
-reply: one short, friendly Korean sentence summarising what you understood (e.g. "내일 오후 3시 치과, 금요일 보고서 마감 — 2개 찾았어요."). If nothing schedulable was said, return no items and use reply to say so briefly.`;
+Deleting and moving existing items:
+The user may ask to delete or cancel things already in their planner ("치과 취소해줘", "내일 3시 회의 지워", "오늘 일정 다 빼줘", "운동 습관 그만할래"). Then the user message lists their existing items as lines "ref | when | title".
+- Put the ref of every existing item they want gone in "remove". Do NOT also return a new item for it.
+- Match by meaning of the title (synonyms, short forms and speech-recognition slips are fine) and by the day/time they mention. When they name a day or time, only take items on that day/time. "다", "전부", "모두" with a day means every item listed on that day.
+- To move or reschedule an existing item ("치과 4시로 옮겨줘", "회의 내일로 미뤄"), put its ref in "remove" AND return the new version as an item, keeping its title and length (duration_min = its current length) unless they change them.
+- Refs starting with "h" are repeating routines. Remove one only when they want to stop the routine itself ("매일 운동 그만할래"). To cancel just one day ("오늘 운동은 빼줘"), remove that day's "t" item instead.
+- If nothing in the list clearly matches, leave "remove" empty and say so in reply. Never remove anything they did not ask to remove. If no existing items are listed, "remove" must be empty.
+
+reply: one short, friendly Korean sentence summarising what you understood (e.g. "내일 오후 3시 치과, 금요일 보고서 마감 — 2개 찾았어요.", "내일 15:00 치과를 지울게요."). If nothing schedulable was said, return no items and use reply to say so briefly.`;
+
+/** 지우기·옮기기에 쓰는 기존 일정 한 줄 — ref 는 t1·t2…(일정), h1…(반복 습관) */
+export interface ExistingItem {
+  ref: string;
+  when: string;
+  title: string;
+}
+
+/** 앱이 보낸 기존 일정 목록 검사 — 꼴이 맞는 것만, 최대 300개 */
+export function checkExisting(x: unknown): ExistingItem[] {
+  if (!Array.isArray(x)) return [];
+  const out: ExistingItem[] = [];
+  const seen = new Set<string>();
+  for (const e of x) {
+    const o = e as { ref?: unknown; when?: unknown; title?: unknown };
+    if (!o || typeof o.ref !== "string" || !/^[th]\d{1,4}$/.test(o.ref) || seen.has(o.ref)) continue;
+    if (typeof o.title !== "string" || typeof o.when !== "string") continue;
+    const clip = (s: string, n: number) => s.replace(/[\r\n|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
+    seen.add(o.ref);
+    out.push({ ref: o.ref, when: clip(o.when, 40), title: clip(o.title, 120) || "(제목 없음)" });
+    if (out.length >= 300) break;
+  }
+  return out;
+}
+
+/** 모델이 고른 ref 중 목록에 있는 것만(중복 없이) */
+export function cleanRemove(raw: unknown, existing: ExistingItem[]): string[] {
+  if (!Array.isArray(raw)) return [];
+  const ok = new Set(existing.map((e) => e.ref));
+  return [...new Set(raw.filter((r): r is string => typeof r === "string" && ok.has(r)))];
+}
 
 /** 사진 한 장(앱이 줄여서 base64 로 보냄). 받는 꼴만 확인 — 크기 한도는 base64 글자 수 */
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
@@ -122,6 +167,8 @@ export function clean(raw: RawItem, categories: { id: string; name: string }[], 
   if (kind === "day") start = null;
   const dur = Number.isInteger(raw.duration_min) ? Math.min(720, Math.max(5, raw.duration_min!)) : null;
   const cat = raw.category ? categories.find((c) => c.name.trim() === raw.category!.trim()) : undefined;
+  // 기간 있는 반복의 끝 — 반복일 때만, 첫날보다 앞이면 버림
+  const until = repeat.length && isDate(raw.repeat_until) && date && raw.repeat_until >= date ? raw.repeat_until : null;
   const reminders = Array.isArray(raw.reminders_min)
     ? [...new Set(raw.reminders_min.filter((x) => Number.isInteger(x) && x >= 0 && x <= 1440))].sort((a, b) => b - a)
     : null;
@@ -132,6 +179,7 @@ export function clean(raw: RawItem, categories: { id: string; name: string }[], 
     start,
     duration_min: dur,
     repeat_days: repeat,
+    repeat_until: until,
     category_id: cat?.id ?? null,
     starred: Boolean(raw.starred),
     reminders_min: reminders && reminders.length ? reminders : null,

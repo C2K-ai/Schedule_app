@@ -2,13 +2,14 @@
 
 import { ImagePlus, Loader2, Mic, PenLine, Repeat, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isPastItem, parseSchedule, saveParsed, type ParsedItem } from "@/lib/ai";
+import { existingForAi, isPastItem, parseSchedule, REMOVE_RE, saveParsed, type ParsedItem } from "@/lib/ai";
 import { deleteHabit, deleteTask, liveCategories } from "@/lib/planner";
 import { shrinkPhoto, type Photo } from "@/lib/photo";
 import { SHARED_KEY } from "@/lib/share";
 import { getSupabase } from "@/lib/supabase";
 import { dayKey, fmtTime, parseDayKey, WEEKDAYS } from "@/lib/time";
 import type { Habit, Task } from "@/lib/types";
+import { applyRemovals, RemovalList, toRemovalDrafts, type RemovalDraft } from "./AiRemovals";
 import { usePlanner } from "./PlannerProvider";
 import { Button, cx, inputCls, Modal } from "./ui";
 
@@ -26,7 +27,8 @@ const habitDays = (days: number[]) =>
   days.length === 7 ? "매일" : `매주 ${[...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => WEEKDAYS[d]).join("·")}`;
 
 function whenOf(a: Added): string {
-  if (a.habit) return `${habitDays(a.habit.days)} ${a.habit.start_time}`;
+  if (a.habit)
+    return `${habitDays(a.habit.days)} ${a.habit.start_time}${a.habit.end_day ? ` · ~${dayLabel(a.habit.end_day)}까지` : ""}`;
   const t = a.task!;
   if (t.schedule === "someday") return "날짜 없음";
   const day = dayLabel(dayKey(new Date(t.starts_at)));
@@ -77,6 +79,8 @@ function WriteBody() {
   const [note, setNote] = useState<string | null>(null);
   const [added, setAdded] = useState<Added[]>([]);
   const [held, setHeld] = useState<Held[]>([]);
+  // AI 가 지우자고 고른 기존 일정 — 바로 지우지 않고 확인받는다
+  const [removals, setRemovals] = useState<RemovalDraft[]>([]);
   const close = () => openSheet(null);
 
   const keep = (r: { tasks: Task[]; habits: Habit[] }) =>
@@ -91,9 +95,15 @@ function WriteBody() {
     setNote(null);
     setBusy(true);
     try {
-      const r = await parseSchedule(sb, t, categories, photo ?? undefined);
+      // 지우기·옮기기 말이 있을 때만 기존 일정 목록을 같이 보낸다(사진은 넣기만)
+      const ex = !photo && REMOVE_RE.test(t) ? existingForAi(snap.db) : undefined;
+      const r = await parseSchedule(sb, t, categories, photo ?? undefined, ex);
+      const rm = toRemovalDrafts(r.remove, store.db, Date.now(), settings.graceMin);
+      setRemovals(rm);
+      if (rm.length) setNote(r.reply || null);
       if (!r.items.length) {
-        setNote(r.reply || "일정으로 넣을 만한 걸 찾지 못했어요. 날짜나 시간을 같이 적어 보세요.");
+        if (!rm.length) setNote(r.reply || "일정으로 넣을 만한 걸 찾지 못했어요. 날짜나 시간을 같이 적어 보세요.");
+        else setText("");
         return;
       }
       const now = Date.now();
@@ -183,6 +193,29 @@ function WriteBody() {
           </p>
         )}
         {note && <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm text-muted">{note}</p>}
+
+        {removals.length > 0 && (
+          <div className="rounded-2xl border border-danger/40 p-3">
+            <p className="mb-2 text-sm font-bold">이 일정을 지울까요?</p>
+            <RemovalList items={removals} onToggle={(i) => setRemovals((l) => l.map((r, j) => (j === i ? { ...r, on: !r.on } : r)))} />
+            <div className="mt-3 flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setRemovals([])}>
+                그대로 두기
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={!removals.some((r) => r.on && !r.locked)}
+                onClick={() => {
+                  applyRemovals(store, removals);
+                  setRemovals([]);
+                }}
+              >
+                {removals.filter((r) => r.on && !r.locked).length}개 지우기
+              </Button>
+            </div>
+          </div>
+        )}
 
         {held.length > 0 && (
           <ul className="space-y-1.5">

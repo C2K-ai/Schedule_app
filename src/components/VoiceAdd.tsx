@@ -2,13 +2,14 @@
 
 import { Check, Loader2, Mic, MicOff, Repeat, Sparkles, Star, TriangleAlert, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { parseSchedule, saveParsed, type ParsedItem } from "@/lib/ai";
+import { existingForAi, parseSchedule, REMOVE_RE, saveParsed, type ParsedItem } from "@/lib/ai";
 import { liveCategories } from "@/lib/planner";
 import { speechSupported, useSpeech } from "@/lib/speech";
 import { getSupabase } from "@/lib/supabase";
 import { atTime, dayKey, parseDayKey, WEEKDAYS } from "@/lib/time";
 import { COLOR_HEX, type ScheduleKind } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
+import { applyRemovals, RemovalList, toRemovalDrafts, type RemovalDraft } from "./AiRemovals";
 import { usePlanner } from "./PlannerProvider";
 import { Button, cx, inputCls, Modal, Segmented } from "./ui";
 
@@ -47,6 +48,8 @@ function VoiceBody() {
   const [err, setErr] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
+  // AI 가 지우자고 고른 기존 일정(지우기·옮기기)
+  const [removals, setRemovals] = useState<RemovalDraft[]>([]);
   const [canSpeak] = useState(speechSupported);
   const close = () => openSheet(null);
 
@@ -65,9 +68,13 @@ function VoiceBody() {
     setErr(null);
     setBusy(true);
     try {
-      const r = await parseSchedule(sb, t, categories);
+      // 지우기·옮기기 말이 있을 때만 기존 일정 목록을 같이 보낸다
+      const ex = REMOVE_RE.test(t) ? existingForAi(snap.db) : undefined;
+      const r = await parseSchedule(sb, t, categories, undefined, ex);
       setReply(r.reply);
-      if (r.items.length) setDrafts(r.items.map((it, i) => ({ ...it, key: i, on: true })));
+      const rm = toRemovalDrafts(r.remove, store.db, Date.now(), settings.graceMin);
+      setRemovals(rm);
+      if (r.items.length || rm.length) setDrafts(r.items.map((it, i) => ({ ...it, key: i, on: true })));
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -76,9 +83,12 @@ function VoiceBody() {
   };
 
   const chosen = drafts?.filter((d) => d.on && d.title.trim()) ?? [];
+  const removing = removals.filter((r) => r.on && !r.locked).length;
   const save = () => {
-    if (!chosen.length) return;
-    saveParsed(store, chosen.map((d) => ({ ...d, title: d.title.trim() })), settings, categories);
+    if (!chosen.length && !removing) return;
+    // 지우기는 위 목록에서 이미 확인받았다('했어요' 팝업은 띄우지 않는다)
+    applyRemovals(store, removals);
+    if (chosen.length) saveParsed(store, chosen.map((d) => ({ ...d, title: d.title.trim() })), settings, categories);
     close();
   };
 
@@ -90,19 +100,26 @@ function VoiceBody() {
       <Modal
         open
         onClose={close}
-        title="이렇게 넣을까요?"
+        title={removals.length && !drafts.length ? "이 일정을 지울까요?" : removals.length ? "이렇게 바꿀까요?" : "이렇게 넣을까요?"}
         subtitle={reply ?? undefined}
         footer={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => (setDrafts(null), setReply(null))}>
+            <Button variant="ghost" onClick={() => (setDrafts(null), setReply(null), setRemovals([]))}>
               <Mic size={16} /> 다시 말하기
             </Button>
-            <Button variant="primary" className="ml-auto" disabled={!chosen.length} onClick={save}>
-              <Check size={16} /> {chosen.length}개 추가
+            <Button variant={removing && !chosen.length ? "danger" : "primary"} className="ml-auto" disabled={!chosen.length && !removing} onClick={save}>
+              <Check size={16} /> {[removing ? `${removing}개 지우기` : "", chosen.length ? `${chosen.length}개 추가` : ""].filter(Boolean).join(" · ")}
             </Button>
           </div>
         }
       >
+        {removals.length > 0 && (
+          <div className={cx(drafts.length > 0 && "mb-4")}>
+            <p className="mb-1.5 text-[13px] font-bold text-danger">지울 일정</p>
+            <RemovalList items={removals} onToggle={(i) => setRemovals((l) => l.map((r, j) => (j === i ? { ...r, on: !r.on } : r)))} />
+          </div>
+        )}
+        {drafts.length > 0 && removals.length > 0 && <p className="mb-1.5 text-[13px] font-bold text-muted">넣을 일정</p>}
         <ul className="space-y-3">
           {drafts.map((d) => (
             <DraftCard key={d.key} d={d} categories={categories} onChange={(p) => patch(d.key, p)} />
@@ -228,6 +245,22 @@ function DraftCard({
               <span className="inline-flex items-center gap-1 rounded-lg bg-accent/15 px-2 py-1 font-semibold text-accent-text">
                 <Repeat size={13} /> {fmtDays(d.repeat_days)} 습관
               </span>
+              {d.repeat_until ? (
+                <span className="inline-flex items-center gap-1 text-xs text-muted">
+                  ~
+                  <input
+                    type="date"
+                    value={d.repeat_until}
+                    min={d.date ?? undefined}
+                    onChange={(e) => onChange({ repeat_until: e.target.value || null })}
+                    aria-label="반복 끝나는 날"
+                    className={cx(inputCls, "h-9 w-auto! py-1 text-sm")}
+                  />
+                  까지
+                </span>
+              ) : (
+                <span className="text-xs text-muted">끝나는 날 없이 계속</span>
+              )}
               <input
                 type="time"
                 value={d.start ?? "09:00"}

@@ -11,7 +11,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { liveActivities, liveHabits, liveTasks, materializeHabits } from "@/lib/planner";
+import { habitHorizon, liveActivities, liveHabits, liveTasks, materializeHabits } from "@/lib/planner";
 import { syncLockCard } from "@/lib/lockCard";
 import { mergeSettings } from "@/lib/settings";
 import { unsubscribePush } from "@/lib/push";
@@ -233,13 +233,14 @@ function Inner({
     return () => mq.removeEventListener("change", apply);
   }, [settings.theme, settings.palette]);
 
-  // 습관 → 오늘부터 7일치 회차 생성
+  // 습관 → 오늘부터 7일치 회차 생성(끝나는 날이 있는 반복은 그날까지 — "이번 달 매일"이 달력에 다 보이게)
   const habitsRef = snap.db.habits;
   useEffect(() => {
     const today = startOfDay(new Date());
+    const n = habitHorizon(Object.values(habitsRef), today);
     materializeHabits(
       store,
-      Array.from({ length: 7 }, (_, i) => addDays(today, i)),
+      Array.from({ length: n }, (_, i) => addDays(today, i)),
     );
   }, [store, habitsRef]);
 

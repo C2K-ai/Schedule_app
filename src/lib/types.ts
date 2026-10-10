@@ -144,6 +144,9 @@ export interface Habit extends Row {
   sound_id: string | null;
   strict: boolean;
   active: boolean;
+  /** 기간이 있는 반복("이번 달 매일") — 이 날짜(YYYY-MM-DD, 현지)부터·까지만. 없으면 계속 */
+  start_day?: string | null;
+  end_day?: string | null;
   created_at: string;
 }
 

@@ -4,7 +4,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
 import { claim, finish, release, unbilled } from "../_shared/ai_usage.ts";
 import { admin, cors, json, setting } from "../_shared/env.ts";
-import { calendarTable, checkImage, clean, isDate, isTime, SCHEMA, SYSTEM, WEEKDAYS, type RawItem } from "./logic.ts";
+import { calendarTable, checkExisting, checkImage, clean, cleanRemove, isDate, isTime, SCHEMA, SYSTEM, WEEKDAYS, type RawItem } from "./logic.ts";
 
 // 짧은 추출이라 빠르고 싼 Haiku 로 충분하다 — 5.5 는 4.5 보다 10배 싸다(한 번 약 1원 미만)
 const MODEL = "claude-haiku-5-5";
@@ -16,6 +16,8 @@ interface Body {
   text?: unknown;
   /** 사진 한 장 { media_type, data(base64) } — 시간표·공지·초대장 등. 있으면 글은 없어도 된다 */
   image?: unknown;
+  /** 지우기·옮기기 말이 있을 때만 — 기존 일정 [{ref, when, title}] (ref: t1…·h1…) */
+  existing?: unknown;
   /** 사용자 기기 기준 오늘 YYYY-MM-DD */
   today?: unknown;
   /** 사용자 기기 기준 지금 HH:MM */
@@ -53,6 +55,7 @@ Deno.serve(async (req) => {
   const categories = (Array.isArray(body.categories) ? body.categories : [])
     .filter((c): c is { id: string; name: string } => typeof c?.id === "string" && typeof c?.name === "string")
     .slice(0, 50);
+  const existing = checkExisting(body.existing);
 
   let apiKey: string;
   try {
@@ -77,6 +80,7 @@ Deno.serve(async (req) => {
     `지금: ${today} ${WEEKDAYS[new Date(`${today}T00:00:00Z`).getUTCDay()]}요일 ${body.time}`,
     `달력:\n${calendarTable(today)}`,
     `카테고리: ${categories.length ? categories.map((c) => c.name).join(", ") : "(없음)"}`,
+    ...(existing.length ? [`기존 일정(지우거나 옮길 때만 씀, ref | 언제 | 제목):\n${existing.map((e) => `${e.ref} | ${e.when} | ${e.title}`).join("\n")}`] : []),
     image
       ? `사용자가 사진을 보냈어요. 사진 속 일정을 찾아 주세요.${text ? `\n사용자가 덧붙인 말:\n"""\n${text}\n"""` : ""}`
       : `사용자가 한 말:\n"""\n${text}\n"""`,
@@ -107,9 +111,9 @@ Deno.serve(async (req) => {
     if (res.stop_reason === "max_tokens") return json({ error: "too_long" }, 422);
     const out = res.content.find((b) => b.type === "text");
     if (!out || out.type !== "text") return json({ error: "no_output" }, 502);
-    const parsed = JSON.parse(out.text) as { items: RawItem[]; reply: string };
+    const parsed = JSON.parse(out.text) as { items: RawItem[]; remove?: unknown; reply: string };
     const items = parsed.items.map((r) => clean(r, categories, today)).filter((x) => x !== null);
-    return json({ items, reply: parsed.reply });
+    return json({ items, remove: cleanRemove(parsed.remove, existing), reply: parsed.reply });
   } catch (e) {
     if (unbilled(e)) await release(db, slot);
     if (e instanceof Anthropic.AuthenticationError) return json({ error: "bad_api_key" }, 503);

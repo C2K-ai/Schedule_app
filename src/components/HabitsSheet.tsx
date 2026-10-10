@@ -12,6 +12,12 @@ import { Button, Chip, ColorPicker, cx, Empty, inputCls, Label, Modal, Switch } 
 
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
 
+/** '~10/31까지', '10/12~10/31' */
+function habitRangeLabel(h: Habit): string {
+  const md = (k: string) => `${Number(k.slice(5, 7))}/${Number(k.slice(8, 10))}`;
+  return h.start_day && h.end_day ? `${md(h.start_day)}~${md(h.end_day)}` : h.end_day ? `~${md(h.end_day)}까지` : "";
+}
+
 function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => void }) {
   const { store, settings } = usePlanner();
   const [f, setF] = useState<HabitInput>(
@@ -25,6 +31,8 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
           reminder_offsets: initial.reminder_offsets,
           sound_id: initial.sound_id,
           strict: initial.strict,
+          start_day: initial.start_day ?? null,
+          end_day: initial.end_day ?? null,
         }
       : {
           title: "",
@@ -43,6 +51,7 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
   const save = () => {
     if (!f.title.trim()) return setErr("이름을 적어 주세요");
     if (!f.days.length) return setErr("요일을 하나 이상 고르세요");
+    if (f.start_day && f.end_day && f.end_day < f.start_day) return setErr("끝나는 날이 시작하는 날보다 앞이에요");
     if (initial) {
       updateHabit(store, initial.id, { ...f, title: f.title.trim() });
     } else {
@@ -97,6 +106,32 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
               </option>
             ))}
           </select>
+        </div>
+      </div>
+      <div>
+        <Label>기간(선택) — 비워 두면 계속 반복해요</Label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="date"
+            value={f.start_day ?? ""}
+            onChange={(e) => set({ start_day: e.target.value || null })}
+            aria-label="반복 시작하는 날"
+            className={cx(inputCls, "w-auto!")}
+          />
+          <span className="text-sm text-muted">~</span>
+          <input
+            type="date"
+            value={f.end_day ?? ""}
+            min={f.start_day ?? undefined}
+            onChange={(e) => set({ end_day: e.target.value || null })}
+            aria-label="반복 끝나는 날"
+            className={cx(inputCls, "w-auto!")}
+          />
+          {(f.start_day || f.end_day) && (
+            <button type="button" onClick={() => set({ start_day: null, end_day: null })} className="text-xs font-semibold text-muted hover:text-fg">
+              기간 없애기
+            </button>
+          )}
         </div>
       </div>
       <div>
@@ -188,6 +223,7 @@ export function HabitsSheet() {
                     <p className="mt-0.5 text-sm text-muted">
                       {h.days.length === 7 ? "매일" : ORDER.filter((x) => h.days.includes(x)).map((x) => WEEKDAYS[x]).join("·")} ·{" "}
                       <span className="font-mono tabular-nums">{h.start_time}</span> · {h.duration_min}분
+                      {h.end_day && ` · ${habitRangeLabel(h)}`}
                       {!h.active && " · 일시중지"}
                     </p>
                   </div>

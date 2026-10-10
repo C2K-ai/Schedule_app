@@ -582,6 +582,28 @@ export interface HabitInput {
   reminder_offsets: number[];
   sound_id: string | null;
   strict: boolean;
+  /** 기간이 있는 반복 — 시작·끝 날짜(YYYY-MM-DD). 없으면 계속 */
+  start_day?: string | null;
+  end_day?: string | null;
+}
+
+/** 습관 회차를 미리 만드는 날 수 — 기간 없는 반복은 7일, 끝나는 날이 있으면 그날까지(최대 62일) */
+export const HABIT_AHEAD = 7;
+export const HABIT_MAX_AHEAD = 62;
+
+/** 이 날(YYYY-MM-DD)이 습관 기간 안인가 */
+export const inHabitRange = (h: Pick<Habit, "start_day" | "end_day">, key: string) =>
+  (!h.start_day || key >= h.start_day) && (!h.end_day || key <= h.end_day);
+
+/** 오늘부터 며칠치 회차를 만들지 — 기간 있는 반복이 있으면 그 끝나는 날까지 */
+export function habitHorizon(habits: Habit[], today: Date): number {
+  let n = HABIT_AHEAD;
+  for (const h of habits) {
+    if (!h.active || h.deleted_at || !h.end_day) continue;
+    const days = Math.round((parseDayKey(h.end_day).getTime() - startOfDay(today).getTime()) / DAY) + 1;
+    n = Math.max(n, Math.min(HABIT_MAX_AHEAD, days));
+  }
+  return n;
 }
 
 export function createHabit(store: PlannerStore, input: HabitInput): Habit {
@@ -608,7 +630,7 @@ export function updateHabit(store: PlannerStore, id: string, patch: Partial<Habi
   for (const t of Object.values(store.db.tasks)) {
     if (t.habit_id !== id || t.status !== "planned" || t.deleted_at || !t.occurrence_date) continue;
     if (t.occurrence_date < today) continue;
-    if (!h.active || h.deleted_at || !h.days.includes(parseDayKey(t.occurrence_date).getDay())) {
+    if (!h.active || h.deleted_at || !h.days.includes(parseDayKey(t.occurrence_date).getDay()) || !inHabitRange(h, t.occurrence_date)) {
       store.patch("tasks", t.id, { deleted_at: nowIso() });
       continue;
     }
@@ -636,15 +658,21 @@ export function materializeHabits(store: PlannerStore, days: Date[]) {
   const today = startOfDay(new Date());
   const habits = Object.values(store.db.habits).filter((h) => h.active && !h.deleted_at);
   if (!habits.length) return;
+  const openUntil = addDays(today, HABIT_AHEAD - 1);
   for (const day of days) {
     if (day < today) continue;
     const key = dayKey(day);
     for (const h of habits) {
       if (!h.days.includes(day.getDay())) continue;
+      if (!inHabitRange(h, key)) continue;
+      // 기간 없는 반복은 7일치까지만 미리(끝나는 날이 있는 반복만 그날까지)
+      if (!h.end_day && day > openUntil) continue;
       if (startOfDay(new Date(h.created_at)) > day) continue;
       const id = habitInstanceId(h.id, key);
       if (store.db.tasks[id]) continue;
       const start = atTime(day, h.start_time);
+      // 만들기 전에 이미 지난 회차(오후에 '매일 아침 7시'를 넣은 날의 7시)는 만들지 않는다 — 바로 '했나요?'가 뜨지 않게
+      if (start.getTime() < Date.parse(h.created_at)) continue;
       const created = nowIso();
       const t: Task = {
         id,

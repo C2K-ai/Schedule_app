@@ -241,8 +241,8 @@ function DriveBody() {
     // 노트를 올린 뒤 목록·사용량을 새로 — 못 올렸으면 알려 준다(노트는 이 기기에 남아 있음)
     void st.flush().then(() => {
       const s = st.getSnapshot();
+      // 못 올렸을 때만 알린다(오류). 인터넷이 없을 땐 메모장 위쪽에 이미 '이 기기에 저장됨'이 보인다
       if (s.status === "error") toast({ text: `${s.message ?? "노트를 올리지 못했어요"} — 이 기기엔 저장돼 있어요`, tone: "danger" });
-      else if (s.status === "offline" && s.pending > 0) toast({ text: "노트는 이 기기에 저장했어요. 인터넷이 연결되면 드라이브에 올라가요." });
       setReload((r) => r + 1);
     });
   };
@@ -372,6 +372,11 @@ function DriveBody() {
                   e.target.value = "";
                 }}
               />
+              {filter !== "study" && (
+                <Button variant="soft" onClick={newNote} disabled={!notes.store} title="Study 폴더에 공부 노트 쓰기">
+                  <NotebookPen size={16} /> 새 노트
+                </Button>
+              )}
               <span className="hidden text-xs text-faint md:inline">또는 여기로 끌어다 놓기</span>
               {(files?.length ?? 0) > 5 && (
                 <label className="relative ml-auto block w-full sm:w-56">
@@ -426,7 +431,7 @@ function DriveBody() {
               )}
             </div>
 
-            {((files?.length ?? 0) > 0 || filter === "study") && (
+            {files !== null && (
               <div className="flex flex-wrap gap-1.5">
                 {FILTERS.map((f) => (
                   <Chip key={f.value} active={filter === f.value} onClick={() => setFilter(f.value)}>

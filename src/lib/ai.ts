@@ -1,10 +1,10 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createHabit, createTask } from "./planner";
+import { createHabit, createTask, isTimed, liveHabits, liveTasks } from "./planner";
 import type { PlannerStore } from "./store";
-import { atTime, dayKey, MIN, parseDayKey, toHHMM } from "./time";
-import type { Category, Habit, ScheduleKind, Settings, Task } from "./types";
+import { addDays, atTime, dayKey, fmtTime, MIN, parseDayKey, startOfDay, toHHMM, WEEKDAYS } from "./time";
+import type { Category, DB, Habit, ScheduleKind, Settings, Task } from "./types";
 
 /** parse-schedule 함수가 돌려주는 한 항목 (서버 logic.ts 의 clean() 결과와 같은 모양) */
 export interface ParsedItem {
@@ -14,6 +14,8 @@ export interface ParsedItem {
   start: string | null;
   duration_min: number | null;
   repeat_days: number[];
+  /** 기간이 있는 반복의 마지막 날("이번 달 매일" → 이달 말일). 없으면 계속 반복 */
+  repeat_until?: string | null;
   category_id: string | null;
   starred: boolean;
   reminders_min: number[] | null;
@@ -53,12 +55,15 @@ export async function parseSchedule(
   categories: Category[],
   /** 사진 한 장(src/lib/photo.ts 로 줄인 것) — 있으면 글은 비워도 된다 */
   image?: { media_type: string; data: string },
-): Promise<{ items: ParsedItem[]; reply: string }> {
+  /** 지우기·옮기기 말이 있을 때만 — 기존 일정 목록(existingForAi) */
+  existing?: ExistingForAi,
+): Promise<{ items: ParsedItem[]; reply: string; remove: AiRemoval[] }> {
   const now = new Date();
   const { data, error } = await client.functions.invoke("parse-schedule", {
     body: {
       text,
       ...(image ? { image: { media_type: image.media_type, data: image.data } } : {}),
+      ...(existing?.lines.length ? { existing: existing.lines } : {}),
       today: dayKey(now),
       time: toHHMM(now),
       categories: categories.map((c) => ({ id: c.id, name: c.name })),
@@ -68,7 +73,61 @@ export async function parseSchedule(
     const { code, limit } = await errorBody(error);
     throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 정리에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
   }
-  return data as { items: ParsedItem[]; reply: string };
+  const out = data as { items: ParsedItem[]; reply: string; remove?: string[] };
+  const remove = (out.remove ?? []).map((ref) => existing?.byRef.get(ref)).filter((x): x is AiRemoval => Boolean(x));
+  return { items: out.items, reply: out.reply, remove };
+}
+
+/** AI 가 지우자고 고른 기존 일정 하나 */
+export interface AiRemoval {
+  kind: "task" | "habit";
+  id: string;
+  title: string;
+  /** 사람이 읽는 언제 — '10/11(일) 15:00–16:00', '매일 07:00 (반복)' */
+  when: string;
+}
+
+export interface ExistingForAi {
+  lines: { ref: string; when: string; title: string }[];
+  byRef: Map<string, AiRemoval>;
+}
+
+/** 지우기·옮기기 말인가 — 그때만 기존 일정 목록을 같이 보낸다(평소엔 AI 비용 그대로) */
+export const REMOVE_RE = /지워|지우|지운|취소|삭제|빼\s?줘|빼고|빼 ?줘|없애|캔슬|그만|안\s?(가|해|할|함)|못\s?가|옮겨|옮기|미뤄|미루|바꿔|변경|cancel|delete|remove/i;
+
+const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
+const habitWhen = (h: Habit) =>
+  `${h.days.length === 7 ? "매일" : `매주 ${[...h.days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((x) => WEEKDAYS[x]).join("·")}`} ${h.start_time} (반복${h.end_day ? `, ~${Number(h.end_day.slice(5, 7))}/${Number(h.end_day.slice(8, 10))}` : ""})`;
+
+/**
+ * AI 에게 보여 줄 기존 일정 — 아직 안 끝낸 일정(그제 ~ 60일 뒤 + 날짜 없음)과 반복 습관, 가까운 것부터 최대 250개.
+ * ref(t1·h1…)만 보내고, 실제 id 는 이 기기에만 둔다
+ */
+export function existingForAi(db: DB, now = new Date()): ExistingForAi {
+  const from = addDays(startOfDay(now), -2).getTime();
+  const to = addDays(startOfDay(now), 61).getTime();
+  const tasks = liveTasks(db)
+    .filter((t) => (t.status === "planned" || t.status === "in_progress") && (t.schedule === "someday" || (Date.parse(t.starts_at) >= from && Date.parse(t.starts_at) < to)))
+    .sort((a, b) => Math.abs(Date.parse(a.starts_at) - now.getTime()) - Math.abs(Date.parse(b.starts_at) - now.getTime()))
+    .slice(0, 220)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const habits = liveHabits(db).filter((h) => h.active).slice(0, 30);
+  const lines: ExistingForAi["lines"] = [];
+  const byRef = new Map<string, AiRemoval>();
+  tasks.forEach((t, i) => {
+    const d = new Date(t.starts_at);
+    const when = t.schedule === "someday" ? "날짜 없음" : isTimed(t) ? `${md(d)} ${fmtTime(t.starts_at)}–${fmtTime(t.ends_at)}${t.habit_id ? " (반복 회차)" : ""}` : `${md(d)} 종일`;
+    const ref = `t${i + 1}`;
+    lines.push({ ref, when, title: t.title });
+    byRef.set(ref, { kind: "task", id: t.id, title: t.title, when });
+  });
+  habits.forEach((h, i) => {
+    const ref = `h${i + 1}`;
+    const when = habitWhen(h);
+    lines.push({ ref, when, title: h.title });
+    byRef.set(ref, { kind: "habit", id: h.id, title: h.title, when });
+  });
+  return { lines, byRef };
 }
 
 /** 지난 시각의 시각 일정인가(반복 제외) — 넣자마자 '미시작' 경고가 뜨지 않게 따로 다룬다 */
@@ -104,6 +163,9 @@ export function saveParsed(
           reminder_offsets: reminders ?? settings.defaultOffsets,
           sound_id: null,
           strict: opts.strict ?? true,
+          // 기간: 첫날이 앞날이면 그날부터, 끝나는 날이 있으면 그날까지("이번 달 매일")
+          start_day: it.date && it.date > dayKey(new Date()) ? it.date : null,
+          end_day: it.repeat_until ?? null,
         }),
       );
       continue;
