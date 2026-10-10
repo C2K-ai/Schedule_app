@@ -198,7 +198,7 @@ function MenuPanel({
       <MenuItem icon={<Repeat size={17} />} label="습관" onClick={() => p.openSheet("habits")} />
       <MenuItem icon={<BriefcaseBusiness size={17} />} label="커리어 기록" onClick={onCareer} />
       <MenuItem icon={<HardDrive size={17} />} label="드라이브" onClick={() => p.openSheet("drive")} />
-      <MenuItem icon={<NotebookPen size={17} />} label="변명 노트·주간 리포트" onClick={() => p.openSheet("log")} />
+      <MenuItem icon={<NotebookPen size={17} />} label="돌아보기·변명 노트" onClick={() => p.openSheet("log")} />
       <MenuItem icon={<Brain size={17} />} label="집중(뽀모도로)" onClick={() => p.setFocusScreen(true)} />
 
       <MenuHeading>테마</MenuHeading>
