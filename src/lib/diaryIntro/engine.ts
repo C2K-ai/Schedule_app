@@ -387,15 +387,15 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   const isOpen = mode === "open";
   const reduced = !!opts.reducedMotion;
   const END = reduced ? REDUCED_MS : isOpen ? OPEN.end : CLOSE.end;
-  // 폰·태블릿(좁거나 터치)은 가볍게: 반짝이·먼지 없음, 장·띠 적게, 캔버스 작게, 표지 무지개 박은 멈춰 둠 — 3D 조각·다시 칠하기가 적을수록 덜 끊긴다
+  // 폰·태블릿(좁거나 터치)은 가볍게: 반짝이·먼지 없음, 장·띠 조금 적게, 뒤 캔버스 작게, 표지 무지개 박은 멈춰 둠 — 3D 조각·다시 칠하기가 적을수록 덜 끊긴다
   const narrow0 = (root.clientWidth || win.innerWidth) < 640;
   const mobile = narrow0 || !!win.matchMedia?.("(pointer: coarse)").matches;
-  const NS = mobile ? 4 : 10;
+  const NS = mobile ? 6 : 10;
   const LEAF: LeafPlan | null = reduced
     ? null
     : isOpen
-      ? leafPlan(mobile ? 5 : OPEN.leaves, OPEN.riffle)
-      : leafPlan(mobile ? 4 : CLOSE.leaves, CLOSE.riffle);
+      ? leafPlan(mobile ? 6 : OPEN.leaves, OPEN.riffle)
+      : leafPlan(mobile ? 5 : CLOSE.leaves, CLOSE.riffle);
   /** 폰: 장 그늘 투명도를 1/20 단위로 — 값이 그대로면 다시 칠하지 않는다 */
   const qo20 = (v: number) => (mobile ? Math.round(v * 20) / 20 : v);
 
@@ -602,8 +602,9 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       // 펼치기 끝 = 덮기 처음: 오른쪽 페이지 묶음이 0.45 남음
       zLiftEnd: Tb + Tp * 0.45 + 0.3 + liftH,
       // 캔버스는 화면 1배 이하(폰은 더 작게) — 빛·반짝이는 부드러워서 티가 안 나고, 매 프레임 넘기는 비용이 크게 준다
-      bgS: mobile ? 0.5 : Math.min(dpr, 1),
-      frS: mobile ? 0.6 : Math.min(dpr, 1),
+      // 폰: 뒤(별·빛줄기) 0.75배, 앞(빛·반짝임) 1배 — 0.5/0.6 은 깨져 보였다(사용자)
+      bgS: mobile ? 0.75 : Math.min(dpr, 1),
+      frS: Math.min(dpr, 1),
     };
 
     const px = (v: number) => `${f2(v)}px`;
