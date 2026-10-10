@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import { SHARED_KEY, sharedText } from "@/lib/share";
 import { setAppBadge, showSystemNotification, registerServiceWorker } from "@/lib/notify";
 import { activeFocus, checkinQueue, completeTask, enforcementQueue, finishFocus, focusRemaining, startFocus, startTask } from "@/lib/planner";
 import { refreshPushSubscription } from "@/lib/push";
@@ -276,6 +277,18 @@ export function ReminderEngine() {
     const action = q.get("action");
     if (action) {
       handleAction(action, q.get("task"), false);
+      window.history.replaceState(null, "", withBase("/"));
+      return;
+    }
+    // 다른 앱에서 공유받은 글(manifest share_target) → 'Write' 창에 채워서 연다
+    const shared = sharedText(q);
+    if (shared) {
+      try {
+        sessionStorage.setItem(SHARED_KEY, shared);
+      } catch {
+        /* 못 넘기면 빈 창 */
+      }
+      latest.current.openSheet("write");
       window.history.replaceState(null, "", withBase("/"));
     }
   }, [handleAction]);

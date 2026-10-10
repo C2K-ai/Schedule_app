@@ -19,6 +19,9 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#0b0920",
     theme_color: "#0b0920",
     categories: ["productivity", "lifestyle"],
+    // 카톡 등에서 '공유 → DREAM' — 받은 글이 ?title=&text=&url= 로 앱 첫 화면에 들어오고, 'Write' 창에 채워진다(ReminderEngine).
+    // 안드로이드에서 홈 화면에 설치한 앱만 공유 목록에 뜬다(아이폰 Safari 는 미지원).
+    share_target: { action: withBase("/"), method: "GET", params: { title: "title", text: "text", url: "url" } },
     icons: [
       { src: withBase("/icons/icon-192.png"), sizes: "192x192", type: "image/png", purpose: "any" },
       { src: withBase("/icons/icon-512.png"), sizes: "512x512", type: "image/png", purpose: "any" },

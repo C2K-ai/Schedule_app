@@ -1,9 +1,10 @@
 "use client";
 
 import { Loader2, Mic, PenLine, Repeat, Sparkles, TriangleAlert } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { isPastItem, parseSchedule, saveParsed, type ParsedItem } from "@/lib/ai";
 import { deleteHabit, deleteTask, liveCategories } from "@/lib/planner";
+import { SHARED_KEY } from "@/lib/share";
 import { getSupabase } from "@/lib/supabase";
 import { dayKey, fmtTime, parseDayKey, WEEKDAYS } from "@/lib/time";
 import type { Habit, Task } from "@/lib/types";
@@ -41,7 +42,23 @@ export function WriteAdd() {
 function WriteBody() {
   const { openSheet, openEditor, store, settings, snap, session } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
-  const [text, setText] = useState("");
+  // 카톡 등에서 공유받은 글이 있으면 채워서 연다(ReminderEngine 이 넘겨줌)
+  const [shared] = useState(() => {
+    try {
+      return sessionStorage.getItem(SHARED_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    if (!shared) return;
+    try {
+      sessionStorage.removeItem(SHARED_KEY);
+    } catch {
+      /* 무시 */
+    }
+  }, [shared]);
+  const [text, setText] = useState(shared);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -107,6 +124,7 @@ function WriteBody() {
       }
     >
       <div className="space-y-4">
+        {shared && <p className="mb-2 text-sm text-muted">다른 앱에서 공유받은 글이에요. 날짜·시간이 들어 있는지 보고 넣으세요.</p>}
         <form
           className="flex gap-2"
           onSubmit={(e) => {
