@@ -1,9 +1,10 @@
 "use client";
 
-import { Loader2, Mic, PenLine, Repeat, Sparkles, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ImagePlus, Loader2, Mic, PenLine, Repeat, Sparkles, TriangleAlert, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { isPastItem, parseSchedule, saveParsed, type ParsedItem } from "@/lib/ai";
 import { deleteHabit, deleteTask, liveCategories } from "@/lib/planner";
+import { shrinkPhoto, type Photo } from "@/lib/photo";
 import { SHARED_KEY } from "@/lib/share";
 import { getSupabase } from "@/lib/supabase";
 import { dayKey, fmtTime, parseDayKey, WEEKDAYS } from "@/lib/time";
@@ -59,6 +60,18 @@ function WriteBody() {
     }
   }, [shared]);
   const [text, setText] = useState(shared);
+  // 사진으로 일정 넣기 — 시간표·공지·초대장 사진을 AI 가 읽는다
+  const [photo, setPhoto] = useState<Photo | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    setErr(null);
+    try {
+      setPhoto(await shrinkPhoto(f));
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -71,14 +84,14 @@ function WriteBody() {
 
   const submit = async () => {
     const t = text.trim();
-    if (busy || !t) return;
+    if (busy || (!t && !photo)) return;
     const sb = getSupabase();
     if (!sb || !session.userId) return setErr("AI 정리는 로그인한 상태에서만 쓸 수 있어요 (설정 → 계정).");
     setErr(null);
     setNote(null);
     setBusy(true);
     try {
-      const r = await parseSchedule(sb, t, categories);
+      const r = await parseSchedule(sb, t, categories, photo ?? undefined);
       if (!r.items.length) {
         setNote(r.reply || "일정으로 넣을 만한 걸 찾지 못했어요. 날짜나 시간을 같이 적어 보세요.");
         return;
@@ -89,6 +102,7 @@ function WriteBody() {
       if (future.length) keep(saveParsed(store, future, settings, categories));
       if (past.length) setHeld((list) => [...past.map((item, i) => ({ key: `${now}-${i}`, item })), ...list]);
       setText("");
+      setPhoto(null);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -132,22 +146,36 @@ function WriteBody() {
             void submit();
           }}
         >
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pick(e.target.files?.[0]).finally(() => (e.target.value = ""))} />
+          <Button type="button" variant="soft" className="h-12 shrink-0 px-3" aria-label="사진으로 넣기" title="사진으로 넣기(시간표·공지·초대장)" onClick={() => fileRef.current?.click()}>
+            <ImagePlus size={18} />
+          </Button>
           <input
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="예: 29일 1시부터 2시 치과"
+            placeholder={photo ? "덧붙일 말(없어도 돼요)" : "예: 29일 1시부터 2시 치과"}
             aria-label="일정 적기"
             maxLength={2000}
             enterKeyHint="send"
             className={cx(inputCls, "h-12 text-base")}
           />
-          <Button variant="primary" className="h-12 shrink-0" disabled={busy || !text.trim()}>
+          <Button variant="primary" className="h-12 shrink-0" disabled={busy || (!text.trim() && !photo)}>
             {busy ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
             <span className="hidden sm:inline">{busy ? "정리 중…" : "넣기"}</span>
           </Button>
         </form>
 
+        {photo && (
+          <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface-2 p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- 기기 안 미리보기(data URL) */}
+            <img src={photo.preview} alt="넣을 사진" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+            <p className="min-w-0 flex-1 text-sm text-muted">사진 속 일정을 찾아 넣어요. 시간표는 매주 반복 일정으로 들어가요.</p>
+            <button type="button" aria-label="사진 빼기" onClick={() => setPhoto(null)} className="rounded-lg p-1.5 text-muted hover:bg-surface-3">
+              <X size={16} />
+            </button>
+          </div>
+        )}
         {err && (
           <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
             <TriangleAlert size={16} className="mt-0.5 shrink-0" />

@@ -4,7 +4,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
 import { claim, finish, release, unbilled } from "../_shared/ai_usage.ts";
 import { admin, cors, json, setting } from "../_shared/env.ts";
-import { calendarTable, clean, isDate, isTime, SCHEMA, SYSTEM, WEEKDAYS, type RawItem } from "./logic.ts";
+import { calendarTable, checkImage, clean, isDate, isTime, SCHEMA, SYSTEM, WEEKDAYS, type RawItem } from "./logic.ts";
 
 // 짧은 추출이라 빠르고 싼 Haiku 로 충분하다 — 5.5 는 4.5 보다 10배 싸다(한 번 약 1원 미만)
 const MODEL = "claude-haiku-5-5";
@@ -14,6 +14,8 @@ interface Body {
   /** true 면 Claude 를 부르지 않고 키가 있는지만 알려 준다(설정 화면용) */
   ping?: unknown;
   text?: unknown;
+  /** 사진 한 장 { media_type, data(base64) } — 시간표·공지·초대장 등. 있으면 글은 없어도 된다 */
+  image?: unknown;
   /** 사용자 기기 기준 오늘 YYYY-MM-DD */
   today?: unknown;
   /** 사용자 기기 기준 지금 HH:MM */
@@ -42,7 +44,9 @@ Deno.serve(async (req) => {
     return json({ ready, model: MODEL });
   }
   const text = typeof body.text === "string" ? body.text.trim() : "";
-  if (!text) return json({ error: "empty" }, 400);
+  const image = checkImage(body.image);
+  if (image === "bad_image" || image === "image_too_big") return json({ error: image }, 400);
+  if (!text && !image) return json({ error: "empty" }, 400);
   if (text.length > MAX_TEXT) return json({ error: "too_long", max: MAX_TEXT }, 400);
   if (!isDate(body.today) || !isTime(body.time)) return json({ error: "bad_clock" }, 400);
   const today = body.today;
@@ -73,7 +77,9 @@ Deno.serve(async (req) => {
     `지금: ${today} ${WEEKDAYS[new Date(`${today}T00:00:00Z`).getUTCDay()]}요일 ${body.time}`,
     `달력:\n${calendarTable(today)}`,
     `카테고리: ${categories.length ? categories.map((c) => c.name).join(", ") : "(없음)"}`,
-    `사용자가 한 말:\n"""\n${text}\n"""`,
+    image
+      ? `사용자가 사진을 보냈어요. 사진 속 일정을 찾아 주세요.${text ? `\n사용자가 덧붙인 말:\n"""\n${text}\n"""` : ""}`
+      : `사용자가 한 말:\n"""\n${text}\n"""`,
   ].join("\n\n");
 
   try {
@@ -84,7 +90,17 @@ Deno.serve(async (req) => {
       thinking: { type: "disabled" },
       output_config: { format: { type: "json_schema", schema: SCHEMA } },
       system: SYSTEM,
-      messages: [{ role: "user", content: userMsg }],
+      messages: [
+        {
+          role: "user",
+          content: image
+            ? [
+                { type: "image", source: { type: "base64", media_type: image.media_type, data: image.data } },
+                { type: "text", text: userMsg },
+              ]
+            : userMsg,
+        },
+      ],
     });
     await finish(db, slot, res.model ?? MODEL, res.usage);
     if (res.stop_reason === "refusal") return json({ error: "refused" }, 422);

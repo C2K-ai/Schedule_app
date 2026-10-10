@@ -50,7 +50,9 @@ export const SYSTEM = `You turn a Korean user's spoken or hastily typed words in
 Typed input is often terse, like "29일 1시부터 2시 치과" or "금 3시 미팅" — handle it the same way.
 The text usually comes from speech recognition, so expect missing spaces, filler words ("어", "음", "그니까"), homophone mistakes, run-on sentences and self-corrections ("3시, 아니 4시"). Work out what they actually meant — the user wants an assistant that understands sloppy speech. When they correct themselves, keep only the final version.
 
-Return every distinct thing they want to do as one item. Never invent items they did not mention.
+Sometimes the input is a photo instead of (or along with) text — a class timetable, a notice, a poster, an invitation, an appointment card or a chat screenshot. Read every schedule shown in it the same way; if the user also typed text, it says which parts they care about. A weekly timetable (weekday columns and time rows) becomes repeating items: one item per subject and weekly time slot, with repeat_days set. Skip events in the photo that are clearly already over unless the user asks for them.
+
+Return every distinct thing they want to do as one item. Never invent items they did not mention or that are not in the photo.
 
 Fields:
 - title: short, natural Korean task name (e.g. "치과 예약", "보고서 제출"). Drop the date/time words from the title. If they give only a date/time with no task name at all (e.g. "29일 1시부터 2시"), still return ONE item with title "일정".
@@ -66,6 +68,19 @@ Fields:
 - notes: extra details worth keeping (place, things to bring, people) that do not belong in the title; else null.
 
 reply: one short, friendly Korean sentence summarising what you understood (e.g. "내일 오후 3시 치과, 금요일 보고서 마감 — 2개 찾았어요."). If nothing schedulable was said, return no items and use reply to say so briefly.`;
+
+/** 사진 한 장(앱이 줄여서 base64 로 보냄). 받는 꼴만 확인 — 크기 한도는 base64 글자 수 */
+export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+export type ImageType = (typeof IMAGE_TYPES)[number];
+export const MAX_IMAGE_B64 = 4_000_000; // 약 3MB — 앱은 긴 변 1568px JPEG 로 줄여 보내서 보통 0.3~0.6MB
+export function checkImage(x: unknown): { media_type: ImageType; data: string } | "bad_image" | "image_too_big" | null {
+  if (x === undefined || x === null) return null;
+  const o = x as { media_type?: unknown; data?: unknown };
+  if (typeof o !== "object" || typeof o.data !== "string" || !IMAGE_TYPES.includes(o.media_type as ImageType)) return "bad_image";
+  if (o.data.length > MAX_IMAGE_B64) return "image_too_big";
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(o.data)) return "bad_image";
+  return { media_type: o.media_type as ImageType, data: o.data };
+}
 
 export const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 export const isTime = (s: unknown): s is string => typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);

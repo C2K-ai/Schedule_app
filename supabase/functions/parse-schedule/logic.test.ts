@@ -1,6 +1,6 @@
 // deno test parse-schedule/logic.test.ts
 import { assertEquals } from "jsr:@std/assert@1";
-import { calendarTable, clean, type RawItem } from "./logic.ts";
+import { calendarTable, checkImage, clean, MAX_IMAGE_B64, type RawItem } from "./logic.ts";
 
 const base: RawItem = {
   title: "치과",
@@ -59,4 +59,13 @@ Deno.test("길이·알림 범위 정리, 빈 제목은 버림", () => {
 Deno.test("모르는 카테고리는 없음, 날짜 빠지면 오늘", () => {
   const r = clean({ ...base, kind: "day", date: null, category: "회사" }, cats, "2026-10-07")!;
   assertEquals([r.date, r.category_id], ["2026-10-07", null]);
+});
+
+Deno.test("사진: 받는 꼴·크기 확인", () => {
+  assertEquals(checkImage(undefined), null);
+  assertEquals(checkImage({ media_type: "image/jpeg", data: "QUJD" }), { media_type: "image/jpeg", data: "QUJD" });
+  assertEquals(checkImage({ media_type: "image/bmp", data: "QUJD" }), "bad_image");
+  assertEquals(checkImage({ media_type: "image/png", data: "not base64!" }), "bad_image");
+  assertEquals(checkImage({ media_type: "image/png", data: "A".repeat(MAX_IMAGE_B64 + 4) }), "image_too_big");
+  assertEquals(checkImage("x"), "bad_image");
 });

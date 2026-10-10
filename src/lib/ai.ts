@@ -21,6 +21,8 @@ export interface ParsedItem {
 }
 
 const MESSAGES: Record<string, string> = {
+  bad_image: "이 사진은 읽을 수 없어요. JPG·PNG 사진으로 해 보세요.",
+  image_too_big: "사진이 너무 커요. 다른 사진으로 해 보세요.",
   no_api_key: "AI 키가 아직 서버에 없어요. 설정 → AI 에서 넣는 방법을 확인하세요.",
   bad_api_key: "서버에 넣은 AI 키가 올바르지 않아요. 키를 다시 확인해 주세요.",
   rate_limited: "AI 요청이 잠깐 몰렸어요. 몇 초 뒤 다시 눌러 주세요.",
@@ -49,11 +51,14 @@ export async function parseSchedule(
   client: SupabaseClient,
   text: string,
   categories: Category[],
+  /** 사진 한 장(src/lib/photo.ts 로 줄인 것) — 있으면 글은 비워도 된다 */
+  image?: { media_type: string; data: string },
 ): Promise<{ items: ParsedItem[]; reply: string }> {
   const now = new Date();
   const { data, error } = await client.functions.invoke("parse-schedule", {
     body: {
       text,
+      ...(image ? { image: { media_type: image.media_type, data: image.data } } : {}),
       today: dayKey(now),
       time: toHHMM(now),
       categories: categories.map((c) => ({ id: c.id, name: c.name })),
