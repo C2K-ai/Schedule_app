@@ -1,9 +1,9 @@
-// DREAM 일기 여닫기 연출 엔진 — 프레임워크 없이 root 안에만 그린다(document id·모듈 전역 상태 없음).
+// DREAM 일기 여닫기 연출 엔진 — 프레임워크 없이 root 안에만 그린다(document id 없음, 모듈 전역은 무늬 캐시뿐).
 // render(t) 는 시간만 보고 그린다: seek(ms) 로 아무 장면이나 늘 똑같이 볼 수 있다.
 // 펼치기: 덮인 책 → 표지가 왼쪽 책등 축으로 열림 → 촤라락 + 금빛 → 오른쪽 종이가 앞으로 나와 일기 종이가 된다.
-// 덮기: 종이가 오른쪽 페이지로 작아짐 → 표지가 왼→오로 덮임 → 책이 뒤집혀 뒷표지 DIARY.
+// 덮기: 종이가 오른쪽 페이지로 작아짐 → 남은 장이 촤라락 왼쪽으로 → 뒷표지가 넘어와 덮이며 DIARY → 잠깐 머물다 앱으로.
 
-import { coverArt, makeDither, makeLeather, makeSprites, MOON_40, spineArt, type Sprites } from "./art";
+import { coverArt, makeDither, makeLeather, makeSprites, MOON_40, type Sprites } from "./art";
 import { CSS } from "./css";
 import {
   DEG,
@@ -64,6 +64,8 @@ export interface DiaryIntroOptions {
   paper?: Partial<PaperMetrics> | (() => Partial<PaperMetrics> | null | undefined) | null;
   /** 눌러서·Esc/Enter/Space 로 건너뛰기(기본 켬) */
   interactive?: boolean;
+  /** 덮기: 연출이 화면을 다 가린 순간 한 번 — 밑의 일기 화면을 숨겨 끝에 앱이 비쳐 보이게 */
+  onCovered?: () => void;
 }
 
 export interface DiaryIntro {
@@ -104,7 +106,6 @@ export function defaultPaperMetrics(vw: number, vh: number): PaperMetrics {
 }
 
 /* ─────────── 상수 ─────────── */
-const STRIPS = 10;
 const LEAF_CURL = 56;
 const LEAF_BOW = 34;
 const ASPECT = 0.72;
@@ -116,6 +117,32 @@ const LIGHT = (() => {
   return [v[0] / l, v[1] / l, v[2] / l];
 })();
 const WEEK = "일월화수목금토";
+/** 한 프레임에 시계가 나아가는 최대 시간 — 폰이 잠깐 멈춰도 장면을 건너뛰지 않고 이어서 그린다 */
+const MAX_STEP = 50;
+
+/* ─────────── 무늬·빛 조각 캐시(문서마다 한 번) — 누르는 순간 만드느라 멈칫하지 않게 ─────────── */
+interface Tex {
+  spr: Sprites;
+  leather: string;
+  dither: string;
+}
+const TEX = new WeakMap<Document, Tex>();
+function textures(doc: Document): Tex {
+  let t = TEX.get(doc);
+  if (!t) {
+    t = { spr: makeSprites(doc), leather: makeLeather(doc), dither: makeDither(doc) };
+    TEX.set(doc, t);
+  }
+  return t;
+}
+/** 앱이 한가할 때 미리 만들어 둔다(DiaryIntro 의 preloadDiaryIntro 가 부름) */
+export function warmDiaryIntro(doc: Document = document): void {
+  try {
+    textures(doc);
+  } catch {
+    /* 못 만들면 열 때 다시 */
+  }
+}
 
 /* ─────────── 스타일 캐시: 값이 바뀔 때만 쓴다 ─────────── */
 interface Box {
@@ -207,6 +234,9 @@ interface Light {
   out: number;
   amb: number;
   fadeAll: number;
+  /** 책배 틈 빛이 새는 쪽(1 = 오른쪽, -1 = 왼쪽)과 높이 */
+  side: number;
+  zLeak: number;
 }
 interface Spark {
   kind: "dot" | "glint" | "bokeh";
@@ -315,22 +345,24 @@ function template(mode: DiaryIntroMode): string {
     <div class="w di-shadow" data-k="shadowL"></div>
     <div class="w di-rib di-rib-floor"></div>
     <div class="w p3 di-book">
-      ${open ? "" : `${coverFace("di-back")}<div class="w di-spine"><i class="sp-gold"></i><i class="co-shade"></i></div>`}
-      <div class="w di-board"></div>
-      <div class="w di-board-edge"><i class="rib di-rib" style="filter:brightness(.8)"></i></div>
-      <div class="w di-rib di-rib-sq"></div>
+      ${open ? `<div class="w di-board"></div><div class="w di-board-edge"><i class="rib di-rib" style="filter:brightness(.8)"></i></div><div class="w di-rib di-rib-sq"></div>` : ""}
       <div class="w di-pg r" data-k="pageR">${PAGE_INNER}<i class="gut-l"></i><i class="cast"></i><i class="pglow"></i></div>
       <div class="w di-pedge" data-k="edgeR"><i class="rib di-rib"></i><i class="lit"></i></div>
-      ${open ? `<div class="w di-pg l" data-k="pageL">${PAGE_INNER}<i class="gut-r"></i><i class="cast"></i><i class="pglow"></i></div><div class="w di-pedge" data-k="edgeL"><i class="lit"></i></div>` : ""}
+      <div class="w di-pg l" data-k="pageL">${PAGE_INNER}<i class="gut-r"></i><i class="cast"></i><i class="pglow"></i></div><div class="w di-pedge" data-k="edgeL"><i class="lit"></i></div>
       <div class="w di-liftshadow"></div>
       <div class="w di-pg lift" data-k="lift">${PAGE_INNER}<i class="gut-l"></i><i class="pglow"></i></div>
-      ${open ? '<div class="w p3 di-leaves"></div>' : ""}
+      <div class="w p3 di-leaves"></div>
       <div class="w p3 di-cover">
         ${coverFace("di-cout")}
         <div class="w di-cface di-cin"><i class="ci-paper"></i><i class="ci-gut"></i><i class="ci-warm"></i><i class="ci-shade"></i></div>
         <div class="w di-cedge-n"><i class="lit"></i></div>
         <div class="w di-cedge-f"><i class="lit"></i></div>
       </div>
+      ${
+        open
+          ? ""
+          : `<div class="w p3 di-bcover">${coverFace("di-back")}<div class="w di-cface di-bin"><i class="ci-paper"></i><i class="ci-gut"></i><i class="ci-warm"></i><i class="ci-shade"></i></div><div class="w di-bedge-n"></div><div class="w di-bedge-f"></div></div>`
+      }
     </div>
   </div></div>
   <div class="di-vignette"></div>
@@ -355,7 +387,14 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   const isOpen = mode === "open";
   const reduced = !!opts.reducedMotion;
   const END = reduced ? REDUCED_MS : isOpen ? OPEN.end : CLOSE.end;
-  const LEAF: LeafPlan | null = isOpen ? leafPlan(OPEN.leaves, OPEN.riffle) : null;
+  // 폰(좁은 화면)은 장·띠를 줄인다 — 3D 조각이 적을수록 덜 끊긴다
+  const narrow0 = (root.clientWidth || win.innerWidth) < 640;
+  const NS = narrow0 ? 6 : 10;
+  const LEAF: LeafPlan | null = reduced
+    ? null
+    : isOpen
+      ? leafPlan(narrow0 ? 7 : OPEN.leaves, OPEN.riffle)
+      : leafPlan(narrow0 ? 6 : CLOSE.leaves, CLOSE.riffle);
 
   const wrap = doc.createElement("div");
   wrap.className = "di";
@@ -421,19 +460,21 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     pageLEl && edgeLEl
       ? { page: box(pageLEl), edge: box(edgeLEl), glow: sub(pageLEl, ".pglow"), cast: sub(pageLEl, ".cast"), lit: sub(edgeLEl, ".lit") }
       : null;
+  // 덮기: 뒷표지(판 + 안쪽 면지 + 바깥 DIARY)가 한 덩어리로 책등 축을 돈다
+  const bcEl = qo(".di-bcover");
   const backEl = qo(".di-back");
-  const spineEl = qo(".di-spine");
+  const binEl = qo(".di-bin");
   const back =
-    backEl && spineEl
+    bcEl && backEl && binEl
       ? {
-          face: box(backEl),
+          group: box(bcEl),
           shade: sub(backEl, ".co-shade"),
           holo1: sub(backEl, ".co-holo > .h1"),
           holo2: sub(backEl, ".co-holo > .h2"),
           spec: sub(backEl, ".co-spec > b"),
           gloss: sub(backEl, ".co-gloss > b"),
-          spine: box(spineEl),
-          spineShade: sub(spineEl, ".co-shade"),
+          inShade: sub(binEl, ".ci-shade"),
+          inWarm: sub(binEl, ".ci-warm"),
         }
       : null;
   const cvBg = q(".di-cv-bg") as HTMLCanvasElement;
@@ -449,7 +490,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   wd.textContent = `(${WEEK[date.getDay()]})`;
   dateEl.appendChild(wd);
 
-  /* 넘어가는 장(펼치기에만): 장마다 띠 STRIPS 개를 겹겹이 */
+  /* 넘어가는 장: 장마다 띠 NS 개를 겹겹이 */
   const leaves: LeafEl[] = [];
   const leavesHost = qo(".di-leaves");
   if (LEAF && leavesHost) {
@@ -458,14 +499,14 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       leaf.className = "w p3 di-leaf";
       let parent: HTMLElement = leaf;
       const strips: Strip[] = [];
-      for (let s = 0; s < STRIPS; s++) {
+      for (let s = 0; s < NS; s++) {
         const strip = s === 0 ? leaf : doc.createElement("div");
         if (s > 0) {
           strip.className = "di-strip";
           parent.appendChild(strip);
         }
         const face = doc.createElement("div");
-        face.className = "di-sface" + (s === STRIPS - 1 ? " tip" : "");
+        face.className = "di-sface" + (s === NS - 1 ? " tip" : "");
         face.innerHTML = `${PAGE_INNER}${s === 0 ? '<i class="gut-l"></i>' : ""}<i class="d0"></i><i class="d1"></i><i class="w0"></i><i class="w1"></i>`;
         for (const c of [".pr", ".hr"]) {
           const n = face.querySelector<HTMLElement>(c);
@@ -483,13 +524,14 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     }
   }
 
-  /* 무늬·빛 조각(인스턴스마다 새로 — 전역 캐시 없음) */
+  /* 무늬·빛 조각(문서마다 한 번 만들어 둔 것) */
   let SPR: Sprites | null = null;
   if (!reduced) {
     try {
-      SPR = makeSprites(doc);
-      wrap.style.setProperty("--di-leather", `url(${makeLeather(doc)})`);
-      wrap.style.setProperty("--di-dither", `url(${makeDither(doc)})`);
+      const tx = textures(doc);
+      SPR = tx.spr;
+      wrap.style.setProperty("--di-leather", `url(${tx.leather})`);
+      wrap.style.setProperty("--di-dither", `url(${tx.dither})`);
     } catch {
       SPR = null;
     }
@@ -554,10 +596,11 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       dOut: Tb + Tp / 2,
       dIn: Tp / 2,
       unit: (W * zO) / 150,
-      // 펼치기 끝: 페이지 묶음이 0.45 남음 / 덮기 처음: 장이 모두 오른쪽
-      zLiftEnd: (isOpen ? Tb + Tp * 0.45 : Tb + Tp) + 0.3 + liftH,
-      bgS: dpr >= 2 ? 1 : dpr,
-      frS: Math.min(dpr, 1.5),
+      // 펼치기 끝 = 덮기 처음: 오른쪽 페이지 묶음이 0.45 남음
+      zLiftEnd: Tb + Tp * 0.45 + 0.3 + liftH,
+      // 캔버스는 화면 1배 이하(폰은 더 작게) — 빛·반짝이는 부드러워서 티가 안 나고, 매 프레임 넘기는 비용이 크게 준다
+      bgS: Math.min(dpr, 1) * (narrow ? 0.75 : 1),
+      frS: Math.min(dpr, 1) * (narrow ? 0.9 : 1),
     };
 
     const px = (v: number) => `${f2(v)}px`;
@@ -575,7 +618,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       "--thick": px(thick),
       "--vw": px(vw),
       "--vh": px(vh),
-      "--sw": px(PW / STRIPS),
+      "--sw": px(PW / NS),
       "--ov": px(Math.max(0.8, 1.3 / zO)),
       "--rw": px(Math.max(5, W * 0.026)),
       "--rx": px(Math.round(PW * 0.07)),
@@ -610,7 +653,6 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       const bk = coverArt(W, H, "DIARY", null, true);
       wrap.style.setProperty("--art-frame-b", bk.frame);
       wrap.style.setProperty("--art-title-b", bk.title);
-      wrap.style.setProperty("--art-spine", spineArt(thick, H));
     }
 
     // 움직이지 않는 자리(책 공간)
@@ -628,8 +670,11 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     fixed(".di-cin", t3(W, 0, G.dIn, "rotateY(180deg)"));
     fixed(".di-cedge-n", t3(0, H, G.dOut, "rotateX(-90deg)"));
     fixed(".di-cedge-f", t3(W, 0, G.dOut, "rotateY(90deg)"));
-    fixed(".di-back", t3(W, -H / 2, 0, "rotateY(180deg)"));
-    fixed(".di-spine", t3(0, -H / 2, 0, "rotateY(-90deg)"));
+    // 뒷표지 덩어리 안(책등 축 기준): 안쪽 면지는 위, 바깥 DIARY 는 아래를 보다가 넘어오면 위를 본다
+    fixed(".di-bin", t3(0, 0, -G.dIn));
+    fixed(".di-back", t3(W, 0, -G.dOut, "rotateY(180deg)"));
+    fixed(".di-bedge-n", t3(0, H, -G.dIn, "rotateX(-90deg)"));
+    fixed(".di-bedge-f", t3(W, 0, -G.dIn, "rotateY(90deg)"));
     fixed(".di-rib-floor", t3(Math.round(PW * 0.07), H / 2 - 0.6, 0.35, "rotateZ(7deg)"));
 
     // 캔버스: 뒤 = 화면 1배 이하, 앞(빛·반짝이) = 1.5배 이하
@@ -641,6 +686,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       c.height = Math.round(vh * s);
     }
     PART = buildParticles(G);
+    if (lite) trim(PART);
     for (const L of leaves) L.vis = null;
     fxClear = false;
   }
@@ -652,7 +698,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     if ((win.devicePixelRatio || 1) >= 2.5) k *= 0.85;
     if ((win.navigator.hardwareConcurrency || 8) <= 4) k *= 0.8;
     const N = {
-      sparks: isOpen ? Math.round(300 * k) : 0,
+      sparks: Math.round((isOpen ? 300 : 110) * k),
       leak: Math.round((isOpen ? 30 : 26) * k),
       ambient: Math.round((isOpen ? 220 : 120) * k),
       stars: Math.round(80 * k),
@@ -664,7 +710,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       const r = R(), kind: Spark["kind"] = r < 0.1 ? "glint" : r < 0.24 ? "bokeh" : "dot", side = R() < 0.5 ? -1 : 1;
       sparks.push({
         kind,
-        t0: 560 + Math.pow(R(), 1.45) * 1250,
+        t0: isOpen ? 560 + Math.pow(R(), 1.45) * 1250 : CLOSE.riffle[0] + Math.pow(R(), 1.2) * (CLOSE.riffle[1] - CLOSE.riffle[0]),
         u: side * Math.pow(R(), 0.75) * 0.95,
         v: (R() - 0.55) * 0.85,
         life: 0.9 + R() * 1.1,
@@ -680,7 +726,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       });
     }
     const leak: Leak[] = [];
-    const [l0, l1] = isOpen ? [280, 700] : [CLOSE.cover[0] + 120, CLOSE.cover[1] - 40];
+    const [l0, l1] = isOpen ? [280, 700] : [CLOSE.back[0] + 300, CLOSE.back[1] - 20];
     for (let i = 0; i < N.leak; i++)
       leak.push({
         t0: l0 + R() * (l1 - l0),
@@ -723,19 +769,28 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
         len: 0.75 + R() * 0.55,
         w: 0.12 + R() * 0.38,
         a: 0.22 + R() * 0.42,
-        t0: isOpen ? OPEN.burst[0] + R() * 360 : -1000,
+        t0: isOpen ? OPEN.burst[0] + R() * 360 : CLOSE.glowIn[0] + R() * 300,
         f: 0.004 + R() * 0.006,
         ph: R() * 6.28,
         warm: R() < 0.5,
       });
     return { sparks, leak, ambient, stars, rays };
   }
+  /** 느린 폰: 빛 조각을 절반으로(같은 조각에서 덜어내 화면이 튀지 않게), 큰 보케는 뺀다 */
+  let lite = false;
+  function trim(P: Particles): void {
+    P.sparks = P.sparks.filter((_, i) => i % 2 === 0);
+    P.leak = P.leak.filter((_, i) => i % 2 === 0);
+    P.ambient = P.ambient.filter((p, i) => p.layer !== 2 && i % 2 === 0);
+    P.stars = P.stars.filter((_, i) => i % 2 === 0);
+  }
 
   /* ─────────── 카메라: CSS 변환 + 캔버스용으로 똑같이 계산 ─────────── */
   /** pO: 덮인 자세 0 → 펼친 자세 1, pL: 들린 페이지에 1:1 로 붙음, zMul: 잠깐 물러서기 */
-  function camera(g: Geo, pO: number, pLf: number, drift: number, zMul: number): Cam {
+  /** side: 덮인 책이 책등 오른쪽(1, 처음 모습) / 왼쪽(-1, 뒷표지로 덮인 끝 모습) */
+  function camera(g: Geo, pO: number, pLf: number, drift: number, zMul: number, side = 1): Cam {
     let zoom = Math.min(1, expLerp(g.zC, g.zO, pO) * (0.975 + 0.025 * drift) * zMul);
-    let fx = lerp(g.W * 0.5, 0, pO), fy = lerp(0, -g.H * 0.04, pO), fz = lerp(g.thick, g.Tb + g.Tp * 0.6, pO);
+    let fx = lerp(side * g.W * 0.5, 0, pO), fy = lerp(0, -g.H * 0.04, pO), fz = lerp(g.thick, g.Tb + g.Tp * 0.6, pO);
     let tilt = lerp(TH_C, TH_O, pO), yaw = lerp(YAW_C, 0, pO);
     let ccx = g.vw / 2, ccy = g.vh * lerp(0.5, g.narrow ? 0.6 : 0.585, pO);
     zoom = expLerp(zoom, 1, pLf);
@@ -770,14 +825,15 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     if (d < 220) return -180 + Math.sin((Math.PI * (d - 130)) / 90);
     return -180;
   }
-  function coverAngleClose(t: number): number {
-    const [a, b] = CLOSE.cover;
-    if (t <= a) return -180;
-    if (t < b) return -180 + 180 * Math.pow((t - a) / (b - a), 2.2); // 왼쪽에서 들려 오른쪽으로 덮인다
+  /** 덮기: 뒷표지가 천천히 들려 세로를 지나 왼쪽 묶음 위로 내려앉는다(살짝 튕김) */
+  function backAngle(t: number): number {
+    const [a, b] = CLOSE.back;
+    if (t <= a) return 0;
+    if (t < b) return -180 * Math.pow((t - a) / (b - a), 2.1);
     const d = t - b;
-    if (d < 100) return -4 * Math.sin((Math.PI * d) / 100);
-    if (d < 170) return -1 * Math.sin((Math.PI * (d - 100)) / 70);
-    return 0;
+    if (d < 120) return -180 + 3.5 * Math.sin((Math.PI * d) / 120);
+    if (d < 200) return -180 + 0.8 * Math.sin((Math.PI * (d - 120)) / 80);
+    return -180;
   }
   const lambert = (nx: number, nz: number) => Math.max(0, nx * LIGHT[0] + nz * LIGHT[2]);
   /** 면이 빛을 덜 받는 만큼 그늘(0~1) */
@@ -858,6 +914,62 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     setO(el.wrap, 1);
   }
 
+  /** 넘어가는 장들 — 오른쪽 묶음(zR)에서 왼쪽 묶음(zL)으로. 페이지에 드리우는 그늘을 돌려준다 */
+  function leavesAt(t: number, zR: number, zL: number, surf: number, pgL: number): { r: number; l: number } {
+    const g = G;
+    let castR = 0, castL = 0;
+    if (!g) return { r: 0, l: 0 };
+    const { PH, Tp } = g;
+    const wts: number[] = [];
+    let wsum = 0;
+    for (let s = 1; s < NS; s++) {
+      const ww = Math.pow(s / NS, 1.25);
+      wts.push(ww);
+      wsum += ww;
+    }
+    for (let i = 0; i < leaves.length; i++) {
+      const L = leaves[i], qv = leafP(i, t), vis = qv > 0 && qv < 1;
+      if (L.vis !== vis) {
+        setV(L.leaf, vis);
+        L.vis = vis;
+      }
+      if (!vis) continue;
+      const e = inOutCubic(qv);
+      const c = -LEAF_CURL * Math.sin(2 * Math.PI * qv) * (1 - 0.2 * qv) + LEAF_BOW * Math.sin(Math.PI * qv);
+      const rootA = clamp(-180 * e - c * 0.5, -180, 0);
+      const cEff = clamp(c, -180 - rootA, -rootA); // 페이지 묶음 아래로는 휘지 않는다
+      const z = lerp(zR + 0.6, zL + 0.5, e) + Math.sin(Math.PI * qv) * Tp * 0.1 + i * 0.03;
+      setT(L.leaf, `translate3d(0px,${f2(-PH / 2)}px,${f2(z)}px) rotateY(${f2(rootA)}deg)`);
+      const ang = [rootA];
+      let acc = rootA;
+      for (let s = 1; s < NS; s++) {
+        const bend = (cEff * wts[s - 1]) / wsum;
+        acc += bend;
+        ang.push(acc);
+        setT(L.strips[s].strip, `rotateY(${f2(bend)}deg)`);
+      }
+      // 관절 값을 이웃 띠와 나눠 가져서(Gouraud) 꺾인 자국이 안 보인다 — 투명도만 바꾼다
+      const jd: number[] = [], jw: number[] = [];
+      for (let j = 0; j <= NS; j++) {
+        const th = j <= 0 ? ang[0] : j >= NS ? ang[NS - 1] : (ang[j - 1] + ang[j]) / 2;
+        const u = j / NS, up = Math.abs(Math.sin(th * DEG));
+        jd.push(leafDark(th) * (1 - 0.5 * surf));
+        jw.push(Math.min(0.9, Math.max(pgL, 0.25) * (0.85 * Math.exp(-1.6 * u) + 0.28 * up)));
+      }
+      for (let s = 0; s < NS; s++) {
+        const st = L.strips[s];
+        setO(st.d0, jd[s]);
+        setO(st.d1, jd[s + 1]);
+        setO(st.w0, jw[s]);
+        setO(st.w1, jw[s + 1]);
+      }
+      const mid = -(rootA + cEff * 0.5), sm = Math.sin(mid * DEG);
+      castR += 0.26 * sm * clamp01((125 - mid) / 50);
+      castL += 0.22 * sm * clamp01((mid - 55) / 50);
+    }
+    return { r: castR, l: castL };
+  }
+
   function renderOpen(g: Geo, t: number): void {
     const { PW, PH, Tb, Tp } = g;
     const pO = inOutCubic(span(t, OPEN.pan));
@@ -888,54 +1000,8 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       /* 넘어가는 장(넘어가는 동안만 보인다) */
       const pgL = Math.min(1, surf * 0.95 + flash * 0.3);
       const car = ca * DEG;
-      let castR = 0.32 * Math.sin(-car) * clamp01((ca + 125) / 50), castL = 0;
-      const wts: number[] = [];
-      let wsum = 0;
-      for (let s = 1; s < STRIPS; s++) {
-        const ww = Math.pow(s / STRIPS, 1.25);
-        wts.push(ww);
-        wsum += ww;
-      }
-      for (let i = 0; i < leaves.length; i++) {
-        const L = leaves[i], qv = leafP(i, t), vis = qv > 0 && qv < 1;
-        if (L.vis !== vis) {
-          setV(L.leaf, vis);
-          L.vis = vis;
-        }
-        if (!vis) continue;
-        const e = inOutCubic(qv);
-        const c = -LEAF_CURL * Math.sin(2 * Math.PI * qv) * (1 - 0.2 * qv) + LEAF_BOW * Math.sin(Math.PI * qv);
-        const rootA = clamp(-180 * e - c * 0.5, -180, 0);
-        const cEff = clamp(c, -180 - rootA, -rootA); // 페이지 묶음 아래로는 휘지 않는다
-        const z = lerp(zR + 0.6, zL + 0.5, e) + Math.sin(Math.PI * qv) * Tp * 0.1 + i * 0.03;
-        setT(L.leaf, `translate3d(0px,${f2(-PH / 2)}px,${f2(z)}px) rotateY(${f2(rootA)}deg)`);
-        const ang = [rootA];
-        let acc = rootA;
-        for (let s = 1; s < STRIPS; s++) {
-          const bend = (cEff * wts[s - 1]) / wsum;
-          acc += bend;
-          ang.push(acc);
-          setT(L.strips[s].strip, `rotateY(${f2(bend)}deg)`);
-        }
-        // 관절 값을 이웃 띠와 나눠 가져서(Gouraud) 꺾인 자국이 안 보인다 — 투명도만 바꾼다
-        const jd: number[] = [], jw: number[] = [];
-        for (let j = 0; j <= STRIPS; j++) {
-          const th = j <= 0 ? ang[0] : j >= STRIPS ? ang[STRIPS - 1] : (ang[j - 1] + ang[j]) / 2;
-          const u = j / STRIPS, up = Math.abs(Math.sin(th * DEG));
-          jd.push(leafDark(th) * (1 - 0.5 * surf));
-          jw.push(Math.min(0.9, Math.max(pgL, 0.25) * (0.85 * Math.exp(-1.6 * u) + 0.28 * up)));
-        }
-        for (let s = 0; s < STRIPS; s++) {
-          const st = L.strips[s];
-          setO(st.d0, jd[s]);
-          setO(st.d1, jd[s + 1]);
-          setO(st.w0, jw[s]);
-          setO(st.w1, jw[s + 1]);
-        }
-        const mid = -(rootA + cEff * 0.5), sm = Math.sin(mid * DEG);
-        castR += 0.26 * sm * clamp01((125 - mid) / 50);
-        castL += 0.22 * sm * clamp01((mid - 55) / 50);
-      }
+      const lc = leavesAt(t, zR, zL, surf, pgL);
+      const castR = 0.32 * Math.sin(-car) * clamp01((ca + 125) / 50) + lc.r, castL = lc.l;
 
       /* 페이지 묶음 */
       const firstLanded = !!LEAF && t >= LEAF.starts[0] + LEAF.durs[0];
@@ -955,7 +1021,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
         setO(pL.lit, surf * 0.45);
       }
       setO(el.floorGlow, Math.min(1, surf * 0.85 + leak * 0.35 + flash * 0.2));
-      shadowsAt(g, ca, 0, 0);
+      shadowsAt(g, clamp01(-Math.cos(ca * DEG)), 1);
 
       /* 들리는 페이지: 끝이 살짝 들리며 떠오르고, 카메라가 그 위에 1:1 로 내려앉는다 */
       const liftOn = t >= OPEN.lift[0];
@@ -985,55 +1051,78 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
 
     const fadeAll = 1 - smooth(ramp(t, OPEN.lightOut[0] + 100, OPEN.lightOut[1] + 40));
     if (sheetDone) clearFX();
-    else drawFX(g, t, { cam, zR, zTop: (zR + zL) / 2, leak, surf, rays, flash, out, amb: smooth(ramp(t, 720, 1200)) * out, fadeAll });
+    else drawFX(g, t, { cam, zR, zTop: (zR + zL) / 2, leak, surf, rays, flash, out, amb: smooth(ramp(t, 720, 1200)) * out, fadeAll, side: 1, zLeak: zR + Tb });
   }
 
   function renderClose(g: Geo, t: number): void {
-    const { W, PW, PH, Tb, Tp } = g;
+    const { PW, PH, Tb, Tp } = g;
     const ul = span(t, CLOSE.unlift);
     const le = 1 - outCubic(ul); // 1 = 들려서 화면에 1:1, 0 = 페이지 위에 내려앉음
     const pO = 1 - inOutCubic(span(t, CLOSE.pan));
-    const fp = span(t, CLOSE.flip), fe = inOutCubic(fp), fa = 180 * fe;
-    const cam = camera(g, pO, le, 1 - outSine(ramp(t, CLOSE.pan[0], CLOSE.end)), 1 - 0.1 * Math.sin(Math.PI * fp));
-    const ca = coverAngleClose(t), open = clamp01(-ca / 180);
-    const zR = Tb + Tp;
-    const lit = 1 - smooth(span(t, CLOSE.lightOut));
-    const leak = smooth(ramp(open, 0.015, 0.1)) * (1 - smooth(ramp(open, 0.3, 0.72))) * (t < CLOSE.cover[1] ? 1 : 0) * 0.9;
-    const surf = lit * 0.65 * smooth(ramp(open, 0.25, 0.9));
-    const rays = lit * 0.55 * smooth(ramp(open, 0.15, 0.85));
+    const bp = span(t, CLOSE.back);
+    const cb = backAngle(t);
+    const xp = smooth(span(t, CLOSE.exit));
+    const cam = camera(g, pO, le, 1 - outSine(ramp(t, CLOSE.pan[0], CLOSE.end)), (1 - 0.06 * Math.sin(Math.PI * bp)) * (1 - 0.04 * xp), -1);
+    // 오른쪽 묶음은 장이 떠나는 만큼 얇아지고, 왼쪽 묶음은 내려앉는 만큼 두꺼워진다
+    let gone = 0, landed = 0;
+    for (let i = 0; i < leaves.length; i++) {
+      const qv = leafP(i, t);
+      gone += smooth(ramp(qv, 0, 0.25));
+      landed += inOutCubic(qv);
+    }
+    const nL = Math.max(1, leaves.length);
+    const zR = Tb + Tp * 0.45 * (1 - gone / nL), zL = Tb + Tp * (0.55 + (0.45 * landed) / nL);
+    const glow = smooth(span(t, CLOSE.glowIn)) * (1 - smooth(span(t, CLOSE.glowOut)));
+    const leak = smooth(ramp(-cb, 105, 150)) * (1 - smooth(ramp(-cb, 168, 179))) * (t < CLOSE.back[1] + 60 ? 1 : 0) * 0.9;
+    const surf = 0.6 * glow;
+    const rays = 0.5 * glow;
     const shrinkOn = t >= CLOSE.shrink[0];
+    const rightOn = t < CLOSE.back[0]; // 뒷표지가 들리면 오른쪽엔 남은 장이 없다
 
-    setO(el.wrap, smooth(span(t, CLOSE.fadeIn)));
+    setO(el.wrap, smooth(span(t, CLOSE.fadeIn)) * (1 - xp));
     setOff(el.stage, !shrinkOn);
     setO(el.veil, 0);
 
     if (shrinkOn) {
       setT(el.world, camCSS(cam));
-      // 책 전체: 가운데 축으로 뒤집으며 모서리가 책상을 스치게 들어 올린다
-      const s = Math.sin(fa * DEG), c = Math.cos(fa * DEG), cz0 = g.thick / 2;
-      const up = (W / 2) * Math.abs(s) + cz0 * Math.abs(c) - cz0 + W * 0.05 * Math.sin(Math.PI * fp);
-      setT(el.book, fp <= 0 ? "none" : `translate3d(${f2(W / 2)}px,0px,${f2(cz0 + up)}px) rotateY(${f2(fa)}deg) translate3d(${f2(-W / 2)}px,0px,${f2(-cz0)}px)`);
-      coverAt(g, ca, inOutSine(span(t, [CLOSE.cover[0] - 200, CLOSE.cover[1]])), open, leak, surf, fa);
+      coverAt(g, -180, 1, 1, 0, surf, 0);
+      const lc = leavesAt(t, zR, zL, surf, Math.min(1, surf * 0.95));
+
+      /* 뒷표지: 책등 축으로 오른쪽 → 왼쪽, 바깥 DIARY 가 위로 */
+      const a = cb * DEG;
       if (back) {
-        setV(back.spine, ca > -20);
-        setO(back.shade, shadeOf(-s, -c) * 0.7);
-        setO(back.spineShade, shadeOf(-c, s) * 0.6);
+        setT(back.group, `translate3d(0px,${f2(-g.H / 2)}px,${f2(g.zA)}px) rotateY(${cb.toFixed(2)}deg)`);
+        setO(back.shade, shadeOf(-Math.sin(a), -Math.cos(a)) * 0.7);
+        setO(back.inShade, shadeOf(Math.sin(a), Math.cos(a)) * 0.42);
+        setO(back.inWarm, Math.min(1, leak * 0.75 + surf * 0.6));
         const sp = inOutSine(span(t, CLOSE.sheen));
         const sc = lerp(-0.2, 1.3, sp);
         setT(back.spec, `translateX(${f2((sc / 0.34 - 0.5) * 100)}%) skewX(-20deg)`);
         setT(back.gloss, `translateX(${f2(((sc * 0.8 + 0.1) / 0.72 - 0.5) * 100)}%) skewX(-20deg)`);
-        setT(back.holo1, `translateX(${f2(-(14 + 10 * fe + 8 * sp))}%)`);
-        setT(back.holo2, `translateX(${f2(-(30 - 12 * fe - 6 * sp))}%)`);
+        setT(back.holo1, `translateX(${f2(-(14 + 10 * bp + 8 * sp))}%)`);
+        setT(back.holo2, `translateX(${f2(-(30 - 12 * bp - 6 * sp))}%)`);
       }
 
+      /* 페이지 묶음 */
+      setV(el.pageR, rightOn);
+      setV(el.edgeR, rightOn);
       setT(el.pageR, `translate3d(0px,${f2(-PH / 2)}px,${f2(zR)}px)`);
-      setT(el.edgeR, `translate3d(0px,${f2(PH / 2)}px,${f2(zR)}px) rotateX(-90deg)`);
+      setT(el.edgeR, `translate3d(0px,${f2(PH / 2)}px,${f2(zR)}px) rotateX(-90deg) scaleY(${Math.max(0.001, (zR - Tb) / Tp).toFixed(4)})`);
       setO(pR.glow, surf * 0.95);
-      setO(pR.cast, clamp01(0.32 * Math.sin(-ca * DEG) * clamp01((ca + 125) / 50)));
-      setO(pR.lit, leak * 0.7 + surf * 0.4);
+      setO(pR.cast, clamp01(lc.r));
+      setO(pR.lit, surf * 0.4);
+      if (pL) {
+        setV(pL.page, true);
+        setV(pL.edge, true);
+        setT(pL.page, `translate3d(${-PW}px,${f2(-PH / 2)}px,${f2(zL)}px)`);
+        setT(pL.edge, `translate3d(${-PW}px,${f2(PH / 2)}px,${f2(zL)}px) rotateX(-90deg) scaleY(${Math.max(0.001, (zL - Tb) / Tp).toFixed(4)})`);
+        setO(pL.glow, surf * 0.95);
+        setO(pL.cast, clamp01(lc.l + 0.32 * Math.sin(-a) * clamp01((-cb - 55) / 50)));
+        setO(pL.lit, leak * 0.8 + surf * 0.45);
+      }
       setO(el.floorGlow, Math.min(1, surf * 0.8 + leak * 0.4));
-      shadowsAt(g, ca, fa, fp);
-      setO(el.ribFloor, 1 - smooth(ramp(t, CLOSE.flip[0] - 50, CLOSE.flip[0] + 50)));
+      shadowsAt(g, 1, clamp01(Math.cos(a)));
+      setO(el.ribFloor, 1 - smooth(ramp(t, CLOSE.riffle[0], CLOSE.riffle[0] + 300)));
 
       /* 들린 페이지가 내려앉는다(끝이 살짝 들렸다가 눕는다) */
       const liftOn = t < CLOSE.unlift[1];
@@ -1064,27 +1153,26 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       drawFX(g, t, {
         cam,
         zR,
-        zTop: zR,
+        zTop: (zR + zL) / 2,
         leak,
         surf,
         rays,
         flash: 0,
-        out: lit,
-        amb: lit * 0.7,
-        fadeAll: 1,
+        out: glow,
+        amb: glow * 0.6,
+        fadeAll: 1 - xp,
+        side: -1,
+        zLeak: zL + Tb,
       });
   }
 
-  /** 책상 위 그림자: 오른쪽(책 밑), 왼쪽(펼친 표지 밑) — 뒤집을 때는 책 그림자가 좁아지고 옅어진다 */
-  function shadowsAt(g: Geo, ca: number, fa: number, fp: number): void {
-    const { W, H, thick } = g;
-    const s = Math.abs(Math.sin(fa * DEG)), c = Math.abs(Math.cos(fa * DEG));
-    const wf = W * c + thick * s;
-    setT(el.shadowR, t3(W / 2 - wf / 2 + W * 0.012, -H / 2 + H * 0.02, 0.1, `scaleX(${(wf / W).toFixed(4)})`));
-    setO(el.shadowR, 1 - 0.45 * Math.sin(Math.PI * fp));
-    const spread = clamp01(-Math.cos(ca * DEG));
-    setT(el.shadowL, t3(-W * spread - W * 0.012, -H / 2 + H * 0.02, 0.1, `scaleX(${spread.toFixed(4)})`));
-    setO(el.shadowL, smooth(clamp01((spread - 0.45) / 0.55)) * 0.95);
+  /** 책상 위 그림자: 왼쪽(펼친 표지 밑), 오른쪽(책 밑) — 둘 다 책등에서 바깥으로 펼친 만큼 */
+  function shadowsAt(g: Geo, spreadL: number, spreadR: number): void {
+    const { W, H } = g;
+    setT(el.shadowR, t3(W * 0.012, -H / 2 + H * 0.02, 0.1, `scaleX(${spreadR.toFixed(4)})`));
+    setO(el.shadowR, smooth(clamp01(spreadR / 0.4)));
+    setT(el.shadowL, t3(-W * spreadL - W * 0.012, -H / 2 + H * 0.02, 0.1, `scaleX(${spreadL.toFixed(4)})`));
+    setO(el.shadowL, smooth(clamp01((spreadL - 0.45) / 0.55)) * 0.95);
   }
 
   /* ─────────── 캔버스 빛 ─────────── */
@@ -1162,10 +1250,10 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     f.clearRect(0, 0, vw, vh);
     f.globalCompositeOperation = "lighter";
     if (S.leak > 0.005) {
-      const c = P3(PW * 0.99, 0, S.zR + g.Tb);
+      const c = P3(S.side * PW * 0.99, 0, S.zLeak);
       sprite(f, spr.glow, c.x, c.y, W * 0.55 * z * c.k, H * 1.05 * z * c.k * ct, S.leak * 0.85);
       sprite(f, spr.hot, c.x, c.y, W * 0.12 * z * c.k, H * 0.9 * z * c.k * ct, S.leak * 0.75);
-      sprite(f, spr.soft, c.x + W * 0.15 * z, c.y - W * 0.22 * z, W * 1.1 * z, W * 1.3 * z, S.leak * 0.3);
+      sprite(f, spr.soft, c.x + S.side * W * 0.15 * z, c.y - W * 0.22 * z, W * 1.1 * z, W * 1.3 * z, S.leak * 0.3);
     }
     if (S.surf > 0.003) {
       sprite(f, spr.glow, center.x, center.y, PW * 2.0 * z * kc, PH * 0.95 * z * kc * ct, S.surf * 0.36 + S.flash * 0.22);
@@ -1180,7 +1268,7 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       for (const p of part.leak) {
         const age = (t - p.t0) / 1000;
         if (age < 0 || age > p.life) continue;
-        const qq = age / p.life, pos = P3(PW * (0.98 + p.vx * age), p.v * PH, S.zR + g.Tb + W * p.vz * age);
+        const qq = age / p.life, pos = P3(S.side * PW * (0.98 + p.vx * age), p.v * PH, S.zLeak + W * p.vz * age);
         if (pos.w < 0.4) continue;
         const a = p.a * smooth(clamp01(qq * 6)) * (1 - smooth(ramp(qq, 0.45, 1))) * (0.7 + 0.3 * Math.sin(t * 0.001 * p.tw + p.ph)) * S.fadeAll;
         const sz = p.size * unit * Math.min(pos.k, 2.2);
@@ -1249,6 +1337,11 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   /* ─────────── 재생·건너뛰기·찾아보기 ─────────── */
   let raf = 0;
   let t0 = 0;
+  let last = 0;
+  let clockOn = false;
+  let frames = 0;
+  let slow = 0;
+  let coveredFired = false;
   let state: "idle" | "playing" | "done" = "idle";
   let fired = false;
   let destroyed = false;
@@ -1257,6 +1350,15 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     if (raf) win.cancelAnimationFrame(raf);
     raf = 0;
   };
+  function covered(): void {
+    if (coveredFired || isOpen || !opts.onCovered) return;
+    coveredFired = true;
+    try {
+      opts.onCovered();
+    } catch {
+      /* 무시 */
+    }
+  }
   function finish(): void {
     cancel();
     state = "done";
@@ -1274,7 +1376,27 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   function tick(now: number): void {
     raf = 0;
     if (destroyed || state !== "playing") return;
+    // 시계는 첫 장면이 실제로 그려진 다음 프레임부터 — 만드는 동안 앞부분이 건너뛰어지지 않게
+    if (!clockOn) {
+      clockOn = true;
+      t0 = now;
+      last = now;
+      startVoice();
+    }
+    const dt = now - last;
+    last = now;
+    if (dt > MAX_STEP) t0 += dt - MAX_STEP; // 크게 멈칫했으면 그만큼 늦춰서 이어 그린다(툭 건너뛰지 않게)
+    // 처음 몇 프레임이 느리면(폰) 빛 조각을 덜어 낸다
+    if (!lite && frames < 30) {
+      frames++;
+      if (dt > 26) slow++;
+      if (frames >= 8 && slow >= 5 && PART) {
+        lite = true;
+        trim(PART);
+      }
+    }
     cur = now - t0;
+    if (!isOpen && cur >= CLOSE.covered) covered();
     if (cur >= END) {
       finish();
       return;
@@ -1287,10 +1409,14 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     cancel();
     state = "playing";
     cur = 0;
+    clockOn = false;
+    frames = 0;
+    slow = 0;
     render(0);
-    startVoice();
-    t0 = win.performance.now();
-    raf = win.requestAnimationFrame(tick);
+    // 첫 rAF 뒤의 프레임에 render(0) 이 그려진다 → 그다음 rAF 에서 시계를 켠다
+    raf = win.requestAnimationFrame(() => {
+      raf = win.requestAnimationFrame(tick);
+    });
   }
   function skip(): void {
     if (destroyed || fired) return;

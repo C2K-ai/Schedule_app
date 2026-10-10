@@ -841,6 +841,8 @@ function DiaryPage() {
   const [day, setDay] = useState(openedOn);
   const [listMonth, setListMonth] = useState(() => openedOn.slice(0, 7));
   const [phase, setPhase] = useState<"open" | "shown" | "close">("open");
+  // 덮는 책이 화면을 다 가리면 이 화면은 숨긴다 — 책이 사라질 때 밑에 앱이 비쳐 보이게
+  const [covered, setCovered] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const sideList = useMedia("(min-width: 1400px)");
   const desktop = useMedia("(min-width: 768px) and (pointer: fine)");
@@ -875,7 +877,7 @@ function DiaryPage() {
   const ready = snap.diary.state.kind === "ready";
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="일기" className="diary-paper fixed inset-0 z-[60]">
+    <div role="dialog" aria-modal="true" aria-label="일기" className={cx("diary-paper fixed inset-0 z-[60]", phase === "close" && covered && "invisible")}>
       <div data-diary-scroll className="absolute inset-0 overflow-y-auto overscroll-contain">
         {/* 오른쪽 위 — 목록·닫기(스크롤해도 그 자리). 효과음은 설정에서만(사용자 요청) */}
         <div className="pointer-events-none sticky top-0 z-10 flex h-0 items-start justify-end">
@@ -958,6 +960,7 @@ function DiaryPage() {
           mode={phase}
           sound={settings.diarySound}
           onDone={phase === "open" ? () => setPhase("shown") : () => p.openSheet(null)}
+          onCovered={() => setCovered(true)}
         />
       )}
     </div>

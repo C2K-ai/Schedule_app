@@ -43,6 +43,7 @@ import { CalendarTab } from "./CalendarTab";
 import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
 import { DiarySheet } from "./DiarySheet";
+import { preloadDiaryIntro } from "./DiaryIntro";
 import { CheckinModal, EnforcementModal, OverdueSiren, PostponeDialog, RescheduleDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
 import { AutoFullscreen, TopBar } from "./Header";
@@ -289,6 +290,16 @@ export function Shell() {
 
   // 서랍 열린 동안 뒤 화면 스크롤 막기 + Esc 로 닫기(위에 창이 떠 있으면 그 창부터)
   useLayer(drawer, () => setDrawer(false));
+
+  // DREAM 책 애니메이션: 앱이 한가해지면 엔진·무늬를 미리 준비(누르는 순간 멈칫하지 않게), 서랍을 열면 바로
+  useEffect(() => {
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
+    const id = window.setTimeout(() => (w.requestIdleCallback ? w.requestIdleCallback(preloadDiaryIntro, { timeout: 4000 }) : preloadDiaryIntro()), 2500);
+    return () => window.clearTimeout(id);
+  }, []);
+  useEffect(() => {
+    if (drawer) preloadDiaryIntro();
+  }, [drawer]);
 
   const title = TABS.find((t) => t.value === tab)!.label;
   const addNew = () => {

@@ -21,18 +21,22 @@ export const OPEN = {
   end: 2500,
 } as const;
 
-/** 덮기: 종이가 작아져 오른쪽 페이지로 → 표지가 왼→오로 덮임 → 책이 뒤집혀 뒷표지 DIARY */
+/** 덮기: 종이가 작아져 오른쪽 페이지로 → 남은 장이 촤라락 왼쪽으로 마저 넘어감 → 뒷표지가 넘어와 덮이며 DIARY → 잠깐 머물다 앱으로 */
 export const CLOSE = {
   fadeIn: [0, 80] as Span,
+  covered: 110, // 이때부터 연출이 화면을 다 가린다 — 밑의 일기 화면을 숨겨도 된다
   textOut: [0, 150] as Span,
-  shrink: [50, 390] as Span,
-  unlift: [390, 700] as Span,
-  lightOut: [250, 980] as Span,
-  cover: [540, 900] as Span,
-  pan: [600, 1080] as Span,
-  flip: [960, 1330] as Span,
-  sheen: [1180, 1460] as Span,
-  end: 1460,
+  shrink: [40, 440] as Span,
+  unlift: [420, 740] as Span,
+  glowIn: [500, 950] as Span,
+  glowOut: [1350, 1850] as Span,
+  riffle: [740, 1460] as Span, // 들린 종이가 내려앉은 뒤
+  leaves: 8,
+  back: [1380, 1960] as Span, // 뒷표지가 책등 축으로 오른쪽 → 왼쪽
+  pan: [1250, 2050] as Span,
+  sheen: [1960, 2420] as Span,
+  exit: [2340, 2680] as Span, // 앱 위로 스르르
+  end: 2680,
 } as const;
 
 /** 움직임 줄이기: 짧은 페이드만 */

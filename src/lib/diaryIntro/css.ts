@@ -15,7 +15,7 @@ export const CSS = `
   --di-ribbon-hi: #ffb27e; --di-ribbon: #ea8650; --di-ribbon-lo: #9d4722;
   --di-shadow: 6, 4, 22;
   --di-serif: var(--diary-serif, "Cormorant Garamond", "Playfair Display", Didot, "Bodoni 72", "Libre Baskerville", Georgia, "Times New Roman", serif);
-  position: absolute; inset: 0; overflow: hidden; contain: strict; isolation: isolate;
+  position: absolute; inset: 0; overflow: hidden; contain: strict; isolation: isolate; will-change: opacity;
   font-family: inherit; line-height: 1.5; text-align: left; color: var(--di-ink);
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
   user-select: none; -webkit-user-select: none; touch-action: manipulation; cursor: pointer;
@@ -30,15 +30,15 @@ export const CSS = `
     radial-gradient(90% 62% at 50% 44%, var(--di-bg-0) 0%, rgba(30, 23, 82, 0) 70%),
     radial-gradient(140% 100% at 50% 40%, var(--di-bg-1) 38%, var(--di-bg-2) 100%); }
 /* 빛이 나는 동안 배경을 호박빛으로 — 곱하기 대신 보통 겹침(값싼 투명도만 바뀐다) */
-.di-warm { position: absolute; inset: 0; opacity: 0;
+/* 투명도가 매 프레임 바뀌는 막은 따로 합성(will-change) — 다시 칠하지 않고 투명도만 바꾼다 */
+.di-warm { position: absolute; inset: 0; opacity: 0; will-change: opacity;
   background: radial-gradient(70% 58% at 50% var(--warm-y, 52%), rgba(112, 62, 26, 0.9) 0%, rgba(74, 36, 40, 0.55) 45%, rgba(30, 16, 40, 0) 100%); }
 .di-cv { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; display: block; }
-.di-cv-front { mix-blend-mode: screen; }
 .di-scene { position: absolute; inset: 0; overflow: hidden; }
-.di-vignette { position: absolute; inset: 0; background: radial-gradient(125% 92% at 50% 48%, transparent 55%, rgba(3, 2, 14, 0.55) 100%); }
+.di-vignette { position: absolute; inset: 0; will-change: opacity; background: radial-gradient(125% 92% at 50% 48%, transparent 55%, rgba(3, 2, 14, 0.55) 100%); }
 .di-dither { position: absolute; inset: 0; background-image: var(--di-dither); background-size: var(--di-dither-size) var(--di-dither-size); }
 .di-front { position: absolute; inset: 0; pointer-events: none; }
-.di-veil { position: absolute; inset: 0; background: #0b0920; opacity: 0; }
+.di-veil { position: absolute; inset: 0; background: #0b0920; opacity: 0; will-change: opacity; }
 
 /* 3D 세계: x → 오른쪽(책등 x=0), y → 앞쪽, z → 책상에서 위로 */
 .di-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-style: preserve-3d; transform-origin: 0 0; }
@@ -73,7 +73,7 @@ export const CSS = `
 .di .gut-r { background: linear-gradient(to left, rgba(84, 56, 20, 0.3), rgba(84, 56, 20, 0.07) 7%, rgba(84, 56, 20, 0) 16%); }
 .di .cast { opacity: 0; background: linear-gradient(to right, rgba(var(--di-shadow), 0.7), rgba(var(--di-shadow), 0.25) 40%, rgba(var(--di-shadow), 0) 85%); }
 /* 페이지에 비친 빛 — 크림빛이 남게(주황으로 물들지 않게) 흰빛 쪽으로 */
-.di .pglow { opacity: 0; background: radial-gradient(118% 100% at var(--gx) 44%, rgba(255, 238, 196, 0.9), rgba(255, 222, 160, 0.46) 38%, rgba(255, 214, 140, 0.14) 72%, rgba(255, 210, 130, 0) 100%); }
+.di .pglow { opacity: 0; will-change: opacity; background: radial-gradient(118% 100% at var(--gx) 44%, rgba(255, 238, 196, 0.9), rgba(255, 222, 160, 0.46) 38%, rgba(255, 214, 140, 0.14) 72%, rgba(255, 210, 130, 0) 100%); }
 .di-pg.r .pglow, .di-pg.lift .pglow { --gx: 0%; }
 .di-pg.l .pglow { --gx: 100%; }
 .di-liftshadow { width: var(--PW); height: var(--PH); opacity: 0; background: rgba(var(--di-shadow), 0.45);
@@ -82,7 +82,7 @@ export const CSS = `
 /* 금박을 입힌 책배(페이지 묶음 가장자리) */
 .di-pedge { width: var(--PW); height: var(--Tp); overflow: hidden;
   background:
-    repeating-linear-gradient(180deg, rgba(110, 72, 18, 0) 0 1.1px, rgba(110, 72, 18, 0.34) 1.1px 1.7px),
+    repeating-linear-gradient(180deg, rgba(110, 72, 18, 0) 0 2.6px, rgba(110, 72, 18, 0.16) 2.6px 3.4px),
     linear-gradient(90deg, #8f6420 0%, #e9c77e 14%, #c9993f 34%, #f8e2a6 56%, #c7973c 78%, #f0d38e 90%, #8c611c 100%); }
 .di-pedge::after { content: ""; position: absolute; inset: 0;
   background: linear-gradient(180deg, rgba(255, 245, 210, 0.42), rgba(0, 0, 0, 0) 32%, rgba(40, 20, 0, 0.32)); }
@@ -156,15 +156,14 @@ export const CSS = `
     linear-gradient(200deg, #2a2a6c, var(--di-endpaper) 50%, var(--di-endpaper-lo)); }
 .ci-gut { background: linear-gradient(to left, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0) 14%); }
 .ci-warm { opacity: 0; background: radial-gradient(115% 92% at 100% 46%, rgba(255, 216, 150, 0.7), rgba(255, 186, 110, 0.22) 46%, rgba(255, 170, 90, 0) 82%); }
-.di-cedge-n { width: var(--W); height: var(--Tb); background: linear-gradient(to bottom, #2c3078, var(--di-cover-edge)); }
-.di-cedge-f { width: var(--Tb); height: var(--H); background: linear-gradient(to right, #2c3078, var(--di-cover-edge)); }
+.di-cedge-n, .di-bedge-n { width: var(--W); height: var(--Tb); background: linear-gradient(to bottom, #2c3078, var(--di-cover-edge)); }
+.di-cedge-f, .di-bedge-f { width: var(--Tb); height: var(--H); background: linear-gradient(to right, #2c3078, var(--di-cover-edge)); }
+/* 뒷표지 안쪽(덮기): 책등이 왼쪽(x=0) — 앞표지 안쪽(.di-cin)을 좌우만 바꾼 꼴 */
+.di-bin { background: var(--di-cover-lo); border-radius: 2px 6px 6px 2px; }
+.di .di-bin .ci-paper { left: 0; right: var(--sq); }
+.di-bin .ci-gut { background: linear-gradient(to right, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0) 14%); }
+.di-bin .ci-warm { background: radial-gradient(115% 92% at 0% 46%, rgba(255, 216, 150, 0.7), rgba(255, 186, 110, 0.22) 46%, rgba(255, 170, 90, 0) 82%); }
 .di-cedge-n .lit, .di-cedge-f .lit { opacity: 0; background: linear-gradient(to right, rgba(255, 200, 130, 0.35), rgba(255, 226, 170, 0.95)); }
-/* 책등(뒤집을 때 위로 지나간다) */
-.di-spine { width: var(--thick); height: var(--H); border-radius: 3px;
-  background: linear-gradient(to right, #0d0f36, var(--di-cover) 30%, #2a2f80 55%, var(--di-cover) 75%, #0d0f36); }
-.di-spine > .sp-gold { -webkit-mask-image: var(--art-spine); mask-image: var(--art-spine); -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
-  background: linear-gradient(90deg, var(--di-gold-lo), var(--di-gold-hi) 45%, var(--di-gold) 60%, var(--di-gold-lo)); }
-
 /* 끝 장면 종이 — DiarySheet 와 같은 자리·같은 값(.diary-paper·.diary-col·.diary-date·.diary-hrule·.diary-lines) */
 .di-sheet, .di-sheet-shadow { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; visibility: hidden; }
 .di-sheet { overflow: hidden; }

@@ -143,16 +143,11 @@ export function startSound(win: Window, kind: SoundKind, leaves: LeafPlan | null
     chain(noise(t, 0.12, 0.9), filt("lowpass", 520, 0.7), env(t, peak * 0.45, 0.002, 0.09), master);
   };
 
-  if (kind === "chime") {
-    // 움직임 줄이기: 부드러운 세 음만
-    [1318.5, 1975.5, 2637.0].forEach((f, i) => bell(f, at(30 + i * 70), 0.03, 0.9, (i - 1) * 0.2));
-  } else if (kind === "open") {
-    swish(at(OPEN.cover[0]), at(OPEN.cover[1]), 320, 1500, 0.075, 0.3);
-    thump(at(OPEN.cover[1]), 118, 0.72, 0.3);
-    // 촤라락: 장마다 틱 세 번, 오른쪽 → 왼쪽으로 지나간다
+  // 촤라락: 장마다 틱 세 번, 오른쪽 → 왼쪽으로 지나간다 + 그 사이 사각거림
+  const riffle = (rs: readonly [number, number]) => {
     if (leaves) {
       leaves.starts.forEach((s, i) => {
-        const pan = lerp(0.32, -0.32, i / (leaves.n - 1));
+        const pan = lerp(0.32, -0.32, i / Math.max(1, leaves.n - 1));
         for (const [frac, amp] of [
           [0.12, 0.12],
           [0.5, 0.22],
@@ -167,14 +162,21 @@ export function startSound(win: Window, kind: SoundKind, leaves: LeafPlan | null
         }
       });
     }
-    {
-      const s0 = at(OPEN.riffle[0]), s1 = at(OPEN.riffle[1]);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, s0);
-      g.gain.exponentialRampToValueAtTime(0.03, (s0 + s1) / 2);
-      g.gain.exponentialRampToValueAtTime(0.0001, s1);
-      chain(noise(s0, s1 - s0 + 0.05, 0.5), filt("highpass", 2400, 0.6), g, master);
-    }
+    const s0 = at(rs[0]), s1 = at(rs[1]);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, s0);
+    g.gain.exponentialRampToValueAtTime(0.03, (s0 + s1) / 2);
+    g.gain.exponentialRampToValueAtTime(0.0001, s1);
+    chain(noise(s0, s1 - s0 + 0.05, 0.5), filt("highpass", 2400, 0.6), g, master);
+  };
+
+  if (kind === "chime") {
+    // 움직임 줄이기: 부드러운 세 음만
+    [1318.5, 1975.5, 2637.0].forEach((f, i) => bell(f, at(30 + i * 70), 0.03, 0.9, (i - 1) * 0.2));
+  } else if (kind === "open") {
+    swish(at(OPEN.cover[0]), at(OPEN.cover[1]), 320, 1500, 0.075, 0.3);
+    thump(at(OPEN.cover[1]), 118, 0.72, 0.3);
+    riffle(OPEN.riffle);
     // 빛이 터질 때: 종 아르페지오 + 따뜻한 화음 + 반짝이는 공기
     {
       const ts = at(OPEN.burst[0] + 30);
@@ -199,18 +201,17 @@ export function startSound(win: Window, kind: SoundKind, leaves: LeafPlan | null
     bell(1975.5, at(OPEN.text[0] - 120), 0.018, 0.75, 0.1);
     bell(2637.0, at(OPEN.text[0] - 50), 0.012, 0.7, -0.1);
   } else {
-    // 덮기: 종이가 접혀 들어감 → 표지가 덮이며 툭 → 책이 뒤집혀 내려앉음
+    // 덮기: 종이가 접혀 들어감 → 남은 장 촤라락 → 뒷표지가 덮이며 툭 → DIARY 에 작은 종
     swish(at(CLOSE.shrink[0]), at(CLOSE.unlift[0] + 80), 2400, 700, 0.04, 0.6, 0.6);
     {
       const when = at(CLOSE.unlift[1] - 40);
       chain(noise(when, 0.08, 1.1), filt("bandpass", 3200, 1.1), env(when, 0.08, 0.003, 0.05), master);
     }
-    swish(at(CLOSE.cover[0]), at(CLOSE.cover[1]), 1400, 320, 0.07, 0.3);
-    thump(at(CLOSE.cover[1]), 112, 0.7, 0.28);
-    swish(at(CLOSE.flip[0]), at(CLOSE.flip[1]), 500, 1300, 0.05, 1.0, 0.7);
-    thump(at(CLOSE.flip[1]), 92, 0.5, 0.2);
-    bell(1318.5, at(CLOSE.flip[1] + 20), 0.016, 0.5, -0.1);
-    bell(987.8, at(CLOSE.flip[1] + 90), 0.013, 0.5, 0.1);
+    riffle(CLOSE.riffle);
+    swish(at(CLOSE.back[0]), at(CLOSE.back[1]), 1400, 320, 0.07, 0.3);
+    thump(at(CLOSE.back[1]), 104, 0.72, 0.28);
+    bell(1318.5, at(CLOSE.sheen[0] + 20), 0.016, 0.6, -0.1);
+    bell(987.8, at(CLOSE.sheen[0] + 100), 0.013, 0.6, 0.1);
   }
 
   let stopped = false;
