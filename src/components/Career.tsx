@@ -1,28 +1,16 @@
 "use client";
 
-import { BriefcaseBusiness, Check, ClipboardCopy, Loader2, Pencil, Plus, Sparkles, Trash, TriangleAlert } from "lucide-react";
+import { BriefcaseBusiness, Check, ClipboardCopy, ClipboardPaste, Loader2, Pencil, Plus, Sparkles, Trash, TriangleAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { polishCareer } from "@/lib/ai";
+import { CAREER_KINDS, careerPeriod as period, kindLabel } from "@/lib/career";
 import { careerMaterial, deleteCareer, liveCareer, saveCareer } from "@/lib/planner";
 import { getSupabase } from "@/lib/supabase";
 import { addDays, dayKey, fmtTime, uuid } from "@/lib/time";
-import type { CareerEntry, CareerKind } from "@/lib/types";
+import type { CareerEntry } from "@/lib/types";
+import { CareerImport } from "./CareerImport";
 import { usePlanner } from "./PlannerProvider";
 import { Button, cx, Empty, inputCls, Label, Modal } from "./ui";
-
-export const CAREER_KINDS: { value: CareerKind; label: string }[] = [
-  { value: "work", label: "업무" },
-  { value: "project", label: "프로젝트" },
-  { value: "study", label: "공부·교육" },
-  { value: "cert", label: "자격증" },
-  { value: "award", label: "수상" },
-  { value: "activity", label: "대외활동" },
-  { value: "etc", label: "기타" },
-];
-const kindLabel = (k: CareerKind) => CAREER_KINDS.find((x) => x.value === k)?.label ?? "기타";
-
-const period = (e: Pick<CareerEntry, "start_day" | "end_day">) =>
-  `${e.start_day.replaceAll("-", ".")} ~ ${e.end_day ? e.end_day.replaceAll("-", ".") : "진행 중"}`;
 
 /** 이력서에 붙여 넣기 좋은 마크다운 */
 export function careerMarkdown(list: CareerEntry[]): string {
@@ -219,6 +207,7 @@ export function CareerSheet({ open, onClose }: { open: boolean; onClose: () => v
   const { snap, store, toast } = usePlanner();
   const list = useMemo(() => liveCareer(snap.db), [snap.db]);
   const [editing, setEditing] = useState<Draft | null>(null);
+  const [importing, setImporting] = useState(false);
   if (!open) return null;
 
   const blank = (): Draft => ({
@@ -240,19 +229,31 @@ export function CareerSheet({ open, onClose }: { open: boolean; onClose: () => v
       open
       onClose={() => {
         setEditing(null);
+        setImporting(false);
         onClose();
       }}
-      title={editing ? (list.some((x) => x.id === editing.id) ? "커리어 기록 고치기" : "새 커리어 기록") : "커리어 기록"}
-      subtitle={editing ? undefined : "했던 일을 그때그때 남겨 두면, 나중에 이력서·포트폴리오를 쓸 때 그대로 꺼내 쓸 수 있어요."}
+      title={editing ? (list.some((x) => x.id === editing.id) ? "커리어 기록 고치기" : "새 커리어 기록") : importing ? "한 번에 넣기" : "커리어 기록"}
+      subtitle={
+        editing
+          ? undefined
+          : importing
+            ? "정리해 둔 커리어 글을 그대로 붙여 넣으면 AI 가 항목별 기록으로 나눠요. 글은 고치지 않아요."
+            : "했던 일을 그때그때 남겨 두면, 나중에 이력서·포트폴리오를 쓸 때 그대로 꺼내 쓸 수 있어요."
+      }
       size="lg"
     >
       {editing ? (
         <Editor key={editing.id} initial={editing} onDone={() => setEditing(null)} />
+      ) : importing ? (
+        <CareerImport onDone={() => setImporting(false)} />
       ) : (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={() => setEditing(blank())}>
               <Plus size={16} /> 새 기록
+            </Button>
+            <Button onClick={() => setImporting(true)}>
+              <ClipboardPaste size={16} /> 한 번에 넣기
             </Button>
             {list.length > 0 && (
               <Button
@@ -269,7 +270,7 @@ export function CareerSheet({ open, onClose }: { open: boolean; onClose: () => v
             <Empty
               icon={<BriefcaseBusiness size={22} />}
               title="아직 기록이 없어요"
-              desc="프로젝트·업무·자격증·공부한 것 무엇이든. 대충 적으면 AI 가 그 기간 일정과 노트를 참고해 이력서 문장으로 다듬어요."
+              desc="프로젝트·업무·자격증·공부한 것 무엇이든. 대충 적으면 AI 가 그 기간 일정과 노트를 참고해 이력서 문장으로 다듬어요. 정리해 둔 글이 있으면 '한 번에 넣기'로 통째로 붙여 넣어도 돼요."
             />
           ) : (
             [...byYear.entries()].map(([year, items]) => (

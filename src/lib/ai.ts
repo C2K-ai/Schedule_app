@@ -1,6 +1,7 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { CAREER_IMPORT_MAX, type ImportedCareer } from "./career";
 import { createHabit, createTask, isTimed, liveHabits, liveTasks } from "./planner";
 import type { PlannerStore } from "./store";
 import { addDays, atTime, dayKey, fmtTime, MIN, parseDayKey, startOfDay, toHHMM, WEEKDAYS } from "./time";
@@ -230,4 +231,17 @@ export async function polishCareer(
     throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 다듬기에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
   }
   return data as Polished;
+}
+
+/** 커리어 '한 번에 넣기' — 정리해 둔 글을 통째로 → 항목별 기록(글은 그대로, 날짜·종류만 정리) */
+export async function importCareer(client: SupabaseClient, text: string, today: string): Promise<ImportedCareer[]> {
+  const { data, error } = await client.functions.invoke("career-polish", { body: { mode: "import", text, today } });
+  if (error) {
+    const { code, limit } = await errorBody(error);
+    if (code === "empty") throw new Error("붙여 넣은 글이 없어요.");
+    if (code === "too_long") throw new Error(`글이 너무 길어요. ${CAREER_IMPORT_MAX.toLocaleString()}자씩 나눠서 넣어 주세요.`);
+    if (code === "timeout") throw new Error("AI 가 너무 오래 걸렸어요. 글을 반씩 나눠서 넣어 주세요.");
+    throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 나누기에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
+  }
+  return (data as { entries?: ImportedCareer[] }).entries ?? [];
 }
