@@ -20,6 +20,29 @@ const FALLBACK_MS = 350;
 /** 여닫기 연출에 소리가 있는지 — 효과음 설정 스위치를 보여 줄지 */
 export const DIARY_INTRO_SOUND = true;
 
+const VEIL_ID = "diary-tap-veil";
+/**
+ * DREAM 을 누르는 순간 바로 화면을 어둡게 — 일기 화면을 그리는 동안(폰에서 0.2~0.3초) 멈춘 것처럼 보이지 않게.
+ * 투명도 전환은 합성 스레드에서 돌아서 그리는 중에도 부드럽다. 책 장면이 붙으면 DiaryIntro 가 걷어 낸다.
+ */
+export function openDiaryWithVeil(open: () => void): void {
+  if (typeof document === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return open();
+  document.getElementById(VEIL_ID)?.remove();
+  const v = document.createElement("div");
+  v.id = VEIL_ID;
+  v.setAttribute("aria-hidden", "true");
+  v.style.cssText = "position:fixed;inset:0;z-index:70;background:#0b0920;opacity:0;transition:opacity 140ms ease-out;pointer-events:none";
+  document.body.appendChild(v);
+  // 못 걷히는 일이 없게(엔진 실패 등) — 2초 뒤엔 스스로 사라진다
+  window.setTimeout(() => v.remove(), 2000);
+  requestAnimationFrame(() => {
+    v.style.opacity = "1";
+    // 어두워지기 시작한 장면이 한 번 그려진 뒤에 무거운 일기 화면을 연다
+    requestAnimationFrame(() => window.setTimeout(open, 0));
+  });
+}
+const liftVeil = () => document.getElementById(VEIL_ID)?.remove();
+
 let warming: Promise<void> | null = null;
 /** 앱이 한가할 때 엔진을 받아 두고 무늬도 만들어 둔다 — DREAM 을 누르는 순간 멈칫하지 않게 */
 export function preloadDiaryIntro(): void {
@@ -74,9 +97,11 @@ export function DiaryIntro({ mode, sound, onDone, onCovered }: DiaryIntroProps) 
         intro = it;
         it.play();
         setMounted(true);
+        liftVeil();
       })
       .catch((e) => {
         console.warn("[diary] 책 애니메이션을 못 불러와 페이드로 대신해요", e);
+        liftVeil();
         if (!cancelled) setFallback(true);
       });
     return () => {

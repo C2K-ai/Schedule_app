@@ -26,18 +26,51 @@ import { Card, cx, Empty } from "./ui";
 
 export type TaskFilter = { kind: "all" } | { kind: "starred" } | { kind: "category"; id: string };
 
+/** 카카오톡·네이버·인스타 같은 앱 안 브라우저 — 여기선 설치가 안 된다 */
+const IN_APP = /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp|; wv\)/i;
+
+/** 앱 안 브라우저에서 진짜 브라우저(Chrome·Safari)로 이 주소를 연다 */
+function openInBrowser() {
+  const url = location.href;
+  if (/KAKAOTALK/i.test(navigator.userAgent)) location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(url)}`;
+  else if (/Android/i.test(navigator.userAgent))
+    location.href = `intent://${location.host}${location.pathname}${location.search}#Intent;scheme=https;package=com.android.chrome;end`;
+}
+
 function InstallHint() {
   const { openSheet } = usePlanner();
   const [ios] = useState(() => isIOS());
   const [android] = useState(() => /Android/i.test(navigator.userAgent));
+  const [inApp] = useState(() => IN_APP.test(navigator.userAgent));
   const [show, setShow] = useState(() => {
     try {
-      return !isStandalone() && !localStorage.getItem("must:install-hint-dismissed");
+      // 앱 안 브라우저면 예전에 닫았어도 다시 알려 준다(여기선 설치 자체가 안 되니까)
+      return !isStandalone() && (IN_APP.test(navigator.userAgent) || !localStorage.getItem("must:install-hint-dismissed"));
     } catch {
       return false;
     }
   });
   if (!show) return null;
+  if (inApp)
+    return (
+      <div className="fade-up flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
+        <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-fg">
+          <Share size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">이 화면에선 앱 설치가 안 돼요</p>
+          <p className="mt-0.5 text-muted">
+            카카오톡 같은 앱 안에서 열려 있어요. {ios ? "Safari" : "Chrome"}에서 열어야 홈 화면에 설치할 수 있어요.
+            {ios && " 오른쪽 아래(또는 위) 메뉴 → ‘Safari로 열기’를 눌러 주세요."}
+          </p>
+          {!ios && (
+            <button onClick={openInBrowser} className="mt-1.5 text-sm font-bold text-accent-text">
+              Chrome으로 열기 →
+            </button>
+          )}
+        </div>
+      </div>
+    );
   return (
     <div className="fade-up flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
       <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-fg">
@@ -49,7 +82,7 @@ function InstallHint() {
           {ios
             ? "Safari 아래쪽 공유 버튼 → ‘홈 화면에 추가’ → 설치된 앱을 열고 설정 → 알림 켜기. (iOS는 설치해야만 알림이 옵니다)"
             : android
-              ? "Chrome 오른쪽 위 ⋮ → ‘앱 설치’ → 홈 화면의 DREAM 으로 열고 설정 → 알림 켜기. 배터리는 ‘제한 없음’으로."
+              ? "Chrome 오른쪽 위 ⋮ → ‘앱 설치’(또는 ‘홈 화면에 추가’) → 홈 화면의 DREAM 으로 열고 설정 → 알림 켜기. 배터리는 ‘제한 없음’으로. 이미 설치했다면 ⋮ 에 ‘앱에서 열기’가 보여요."
               : "주소창 오른쪽 설치 아이콘(또는 상단 ‘앱 설치’)을 누르세요. 설치 후 설정 → 알림에서 권한을 켜면 됩니다."}
         </p>
         <button onClick={() => openSheet("settings", "notify")} className="mt-1.5 text-sm font-bold text-accent-text">

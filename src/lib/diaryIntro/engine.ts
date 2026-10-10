@@ -387,14 +387,17 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   const isOpen = mode === "open";
   const reduced = !!opts.reducedMotion;
   const END = reduced ? REDUCED_MS : isOpen ? OPEN.end : CLOSE.end;
-  // 폰(좁은 화면)은 장·띠를 줄인다 — 3D 조각이 적을수록 덜 끊긴다
+  // 폰·태블릿(좁거나 터치)은 가볍게: 반짝이·먼지 없음, 장·띠 적게, 캔버스 작게, 표지 무지개 박은 멈춰 둠 — 3D 조각·다시 칠하기가 적을수록 덜 끊긴다
   const narrow0 = (root.clientWidth || win.innerWidth) < 640;
-  const NS = narrow0 ? 6 : 10;
+  const mobile = narrow0 || !!win.matchMedia?.("(pointer: coarse)").matches;
+  const NS = mobile ? 4 : 10;
   const LEAF: LeafPlan | null = reduced
     ? null
     : isOpen
-      ? leafPlan(narrow0 ? 7 : OPEN.leaves, OPEN.riffle)
-      : leafPlan(narrow0 ? 6 : CLOSE.leaves, CLOSE.riffle);
+      ? leafPlan(mobile ? 5 : OPEN.leaves, OPEN.riffle)
+      : leafPlan(mobile ? 4 : CLOSE.leaves, CLOSE.riffle);
+  /** 폰: 장 그늘 투명도를 1/20 단위로 — 값이 그대로면 다시 칠하지 않는다 */
+  const qo20 = (v: number) => (mobile ? Math.round(v * 20) / 20 : v);
 
   const wrap = doc.createElement("div");
   wrap.className = "di";
@@ -599,8 +602,8 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       // 펼치기 끝 = 덮기 처음: 오른쪽 페이지 묶음이 0.45 남음
       zLiftEnd: Tb + Tp * 0.45 + 0.3 + liftH,
       // 캔버스는 화면 1배 이하(폰은 더 작게) — 빛·반짝이는 부드러워서 티가 안 나고, 매 프레임 넘기는 비용이 크게 준다
-      bgS: Math.min(dpr, 1) * (narrow ? 0.75 : 1),
-      frS: Math.min(dpr, 1) * (narrow ? 0.9 : 1),
+      bgS: mobile ? 0.5 : Math.min(dpr, 1),
+      frS: mobile ? 0.6 : Math.min(dpr, 1),
     };
 
     const px = (v: number) => `${f2(v)}px`;
@@ -697,13 +700,15 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     let k = clamp(0.35 + 0.65 * Math.sqrt(area), 0.55, 1);
     if ((win.devicePixelRatio || 1) >= 2.5) k *= 0.85;
     if ((win.navigator.hardwareConcurrency || 8) <= 4) k *= 0.8;
-    const N = {
-      sparks: Math.round((isOpen ? 300 : 110) * k),
-      leak: Math.round((isOpen ? 30 : 26) * k),
-      ambient: Math.round((isOpen ? 220 : 120) * k),
-      stars: Math.round(80 * k),
-      rays: isOpen ? 24 : 18,
-    };
+    const N = mobile
+      ? { sparks: 0, leak: 10, ambient: 0, stars: 24, rays: 10 }
+      : {
+          sparks: Math.round((isOpen ? 300 : 110) * k),
+          leak: Math.round((isOpen ? 30 : 26) * k),
+          ambient: Math.round((isOpen ? 220 : 120) * k),
+          stars: Math.round(80 * k),
+          rays: isOpen ? 24 : 18,
+        };
     const R = mulberry32(20261008);
     const sparks: Spark[] = [];
     for (let i = 0; i < N.sparks; i++) {
@@ -860,6 +865,11 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
     setO(co.ciWarm, Math.min(1, leak * 0.75 + surf * 0.85));
     setO(co.edgeNLit, leak * 0.85 + surf * 0.2);
     setO(co.edgeFLit, leak * 0.9);
+    if (mobile) {
+      // 폰: 박 위를 지나가는 빛은 멈춰 둔다(표지 면을 매 프레임 다시 칠하지 않게)
+      sheenP = 0.55;
+      open = 0;
+    }
     const sc = lerp(0.2, 1.3, sheenP);
     setT(co.gloss, `translateX(${f2((sc / 0.72 - 0.5) * 100)}%) skewX(-20deg)`);
     setT(co.spec, `translateX(${f2((sc / 0.34 - 0.5) * 100)}%) skewX(-20deg)`);
@@ -958,10 +968,10 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       }
       for (let s = 0; s < NS; s++) {
         const st = L.strips[s];
-        setO(st.d0, jd[s]);
-        setO(st.d1, jd[s + 1]);
-        setO(st.w0, jw[s]);
-        setO(st.w1, jw[s + 1]);
+        setO(st.d0, qo20(jd[s]));
+        setO(st.d1, qo20(jd[s + 1]));
+        setO(st.w0, qo20(jw[s]));
+        setO(st.w1, qo20(jw[s + 1]));
       }
       const mid = -(rootA + cEff * 0.5), sm = Math.sin(mid * DEG);
       castR += 0.26 * sm * clamp01((125 - mid) / 50);

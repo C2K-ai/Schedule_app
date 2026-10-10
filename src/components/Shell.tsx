@@ -43,7 +43,7 @@ import { CalendarTab } from "./CalendarTab";
 import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
 import { DiarySheet } from "./DiarySheet";
-import { preloadDiaryIntro } from "./DiaryIntro";
+import { openDiaryWithVeil, preloadDiaryIntro } from "./DiaryIntro";
 import { CheckinModal, EnforcementModal, OverdueSiren, PostponeDialog, RescheduleDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
 import { AutoFullscreen, TopBar } from "./Header";
@@ -311,7 +311,7 @@ export function Shell() {
       onFilter={pickFilter}
       onCategories={() => setCatEdit(true)}
       onCareer={() => (setCareer(true), setDrawer(false))}
-      onDiary={() => (p.openSheet("diary"), setDrawer(false))}
+      onDiary={() => (setDrawer(false), openDiaryWithVeil(() => p.openSheet("diary")))}
     />
   );
 
