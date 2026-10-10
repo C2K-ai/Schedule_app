@@ -3,6 +3,7 @@
 //   보호: x-cron-secret 헤더 == CRON_SECRET
 import { admin, cors, describe, json, sendToUser, setting, signAction, VIBRATIONS, type PushPayload } from "../_shared/push.ts";
 import { sendBriefings } from "./briefing.ts";
+import { badgeCounts, skipEndedOverdue, type BadgeRow } from "./rules.ts";
 
 interface Job {
   id: number;
@@ -27,24 +28,23 @@ Deno.serve(async (req) => {
 
   const taskIds = [...new Set(jobs.map((j) => j.task_id))];
   const userIds = [...new Set(jobs.map((j) => j.user_id))];
-  const [{ data: tasks }, { data: profiles }, { data: overdue }] = await Promise.all([
+  const [{ data: tasks }, { data: profiles }, { data: open }] = await Promise.all([
     db.from("tasks").select("id, title, status, starts_at, ends_at, deleted_at").in("id", taskIds),
     db.from("profiles").select("id, timezone, grace_min, settings").in("id", userIds),
-    // 앱 아이콘 배지 숫자 = 시작 안 한 강제 일정 수
+    // 앱 아이콘 배지 숫자 = 시간 안의 미시작 강제 일정 + 끝났는데 체크 안 한 일정(최근 7일) — rules.ts
     db
       .from("tasks")
-      .select("user_id")
+      .select("user_id, strict, starts_at, ends_at")
       .in("user_id", userIds)
       .eq("status", "planned")
-      .eq("strict", true)
+      .eq("schedule", "timed")
       .is("deleted_at", null)
-      .lt("starts_at", new Date(Date.now() - 5 * 60000).toISOString())
-      .gt("starts_at", new Date(Date.now() - 24 * 3600000).toISOString()),
+      .lt("starts_at", new Date().toISOString())
+      .gt("ends_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),
   ]);
   const T = new Map((tasks ?? []).map((t) => [t.id, t]));
   const P = new Map((profiles ?? []).map((p) => [p.id, p]));
-  const badge = new Map<string, number>();
-  for (const r of overdue ?? []) badge.set(r.user_id, (badge.get(r.user_id) ?? 0) + 1);
+  const badge = badgeCounts((open ?? []) as BadgeRow[], Date.now(), (uid) => P.get(uid)?.grace_min ?? 5);
 
   const actionUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/notification-action`;
   let sent = 0,
@@ -55,6 +55,12 @@ Deno.serve(async (req) => {
     const t = T.get(job.task_id);
     if (!t || t.deleted_at || t.status !== "planned") {
       await db.from("notification_jobs").update({ sent_at: new Date().toISOString(), last_error: "skipped: not planned" }).eq("id", job.id);
+      skipped++;
+      continue;
+    }
+    // 끝난 일정엔 '시작 안 함'을 보내지 않는다(앱을 열면 '했나요?'로 묻는다)
+    if (skipEndedOverdue(job.kind, t, Date.now())) {
+      await db.from("notification_jobs").update({ sent_at: new Date().toISOString(), last_error: "skipped: ended" }).eq("id", job.id);
       skipped++;
       continue;
     }

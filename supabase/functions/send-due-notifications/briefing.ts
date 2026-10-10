@@ -13,8 +13,18 @@ export interface BriefTask {
 const hhmm = (iso: string, tz: string) =>
   new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(new Date(iso));
 
-/** 앱의 buildBriefing(src/components/Briefing.tsx)과 같은 문구. overdue = 최근 7일 미시작 강제 일정 수(앱의 enforcementQueue 와 같은 기준) */
-export function briefingText(tasks: BriefTask[], now: number, tz: string, graceMin: number, overdue: number): { title: string; body: string } {
+/**
+ * 앱의 buildBriefing(src/components/Briefing.tsx)과 같은 문구.
+ * overdue = 지금 시간 안의 미시작 강제 일정 수(앱 enforcementQueue), unchecked = 끝났는데 체크 안 한 일정 수(앱 checkinQueue)
+ */
+export function briefingText(
+  tasks: BriefTask[],
+  now: number,
+  tz: string,
+  graceMin: number,
+  overdue: number,
+  unchecked = 0,
+): { title: string; body: string } {
   const open = tasks.filter((t) => t.status === "planned" || t.status === "in_progress");
   const timed = (t: BriefTask) => (t.schedule ?? "timed") === "timed";
   const first = open
@@ -24,6 +34,7 @@ export function briefingText(tasks: BriefTask[], now: number, tz: string, graceM
     open.length ? `오늘 할 일 ${open.length}개` : "오늘 잡힌 할 일이 없어요",
     first ? `다음 ${hhmm(first.starts_at, tz)} ${first.title}` : null,
     overdue ? `미시작 ${overdue}건` : null,
+    unchecked ? `했는지 확인할 일정 ${unchecked}건` : null,
   ].filter(Boolean);
   return { title: "☀ 좋은 아침이에요", body: parts.join(" · ") };
 }
@@ -63,17 +74,31 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
     const now = Date.now();
     const { data: prof } = await db.from("profiles").select("grace_min").eq("id", d.user_id).maybeSingle();
     const grace = prof?.grace_min ?? 5;
-    const { count: overdue } = await db
-      .from("tasks")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", d.user_id)
-      .is("deleted_at", null)
-      .eq("status", "planned")
-      .eq("strict", true)
-      .eq("schedule", "timed")
-      .lt("starts_at", new Date(now - grace * 60_000).toISOString())
-      .gt("starts_at", new Date(now - 7 * 86_400_000).toISOString());
-    const text = briefingText((tasks ?? []) as BriefTask[], now, d.tz, grace, overdue ?? 0);
+    const nowIso = new Date(now).toISOString();
+    const [{ count: overdue }, { count: unchecked }] = await Promise.all([
+      // 지금 시간 안의 미시작 강제 일정
+      db
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", d.user_id)
+        .is("deleted_at", null)
+        .eq("status", "planned")
+        .eq("strict", true)
+        .eq("schedule", "timed")
+        .lt("starts_at", new Date(now - grace * 60_000).toISOString())
+        .gt("ends_at", nowIso),
+      // 끝났는데 체크 안 한 일정(최근 7일) — 실패가 아니라 '했나요?'
+      db
+        .from("tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", d.user_id)
+        .is("deleted_at", null)
+        .eq("status", "planned")
+        .eq("schedule", "timed")
+        .lte("ends_at", nowIso)
+        .gt("ends_at", new Date(now - 7 * 86_400_000).toISOString()),
+    ]);
+    const text = briefingText((tasks ?? []) as BriefTask[], now, d.tz, grace, overdue ?? 0, unchecked ?? 0);
     const payload: PushPayload = {
       ...text,
       tag: `must-briefing-${d.local_day}`,

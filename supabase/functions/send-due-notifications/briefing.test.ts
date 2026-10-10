@@ -33,6 +33,11 @@ Deno.test("유예 시간 안의 일정은 '다음'으로 보인다", () => {
   assertEquals(r.body, "오늘 할 일 1개 · 다음 09:55 방금 시작");
 });
 
+Deno.test("끝났는데 체크 안 한 일정은 '확인할 일정'으로(실패 아님)", () => {
+  const r = briefingText([t("치과", "2026-10-08T06:00:00Z")], now, "Asia/Seoul", 5, 0, 3);
+  assertEquals(r.body, "오늘 할 일 1개 · 다음 15:00 치과 · 했는지 확인할 일정 3건");
+});
+
 Deno.test("할 일이 없으면 그렇게 말한다", () => {
   assertEquals(briefingText([], now, "Asia/Seoul", 5, 0).body, "오늘 잡힌 할 일이 없어요");
 });

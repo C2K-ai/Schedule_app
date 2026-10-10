@@ -91,7 +91,7 @@ export function describeTrigger(tr: { kind: AlarmKind; seq: number; task: Task }
     case "overdue": {
       const late = fmtSpan(now - Date.parse(t.starts_at));
       const tone =
-        seq >= 3 ? "더 미루면 기록에 '놓침'으로 남습니다." : seq === 2 ? "지금이라도 시작하세요." : "시작하거나 사유를 남기세요.";
+        seq >= 3 ? "지금 못 하면 앱에서 미루기를 눌러 두세요." : seq === 2 ? "지금이라도 시작하세요." : "시작하거나 사유를 남기세요.";
       return { title: `⚠ 시작 안 함 (${late} 지남) · ${t.title}`, body: `${range} · ${tone}` };
     }
     case "end":
