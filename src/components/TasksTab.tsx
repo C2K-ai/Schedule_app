@@ -21,21 +21,11 @@ import { useNow } from "@/lib/useNow";
 import { AuthForm } from "./AuthForm";
 import { BriefingCard } from "./Briefing";
 import { NowStrip } from "./NowBar";
+import { IN_APP } from "./InAppNotice";
 import { usePlanner } from "./PlannerProvider";
 import { Card, cx, Empty } from "./ui";
 
 export type TaskFilter = { kind: "all" } | { kind: "starred" } | { kind: "category"; id: string };
-
-/** 카카오톡·네이버·인스타 같은 앱 안 브라우저 — 여기선 설치가 안 된다 */
-const IN_APP = /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp|; wv\)/i;
-
-/** 앱 안 브라우저에서 진짜 브라우저(Chrome·Safari)로 이 주소를 연다 */
-function openInBrowser() {
-  const url = location.href;
-  if (/KAKAOTALK/i.test(navigator.userAgent)) location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(url)}`;
-  else if (/Android/i.test(navigator.userAgent))
-    location.href = `intent://${location.host}${location.pathname}${location.search}#Intent;scheme=https;package=com.android.chrome;end`;
-}
 
 function InstallHint() {
   const { openSheet } = usePlanner();
@@ -44,33 +34,14 @@ function InstallHint() {
   const [inApp] = useState(() => IN_APP.test(navigator.userAgent));
   const [show, setShow] = useState(() => {
     try {
-      // 앱 안 브라우저면 예전에 닫았어도 다시 알려 준다(여기선 설치 자체가 안 되니까)
-      return !isStandalone() && (IN_APP.test(navigator.userAgent) || !localStorage.getItem("must:install-hint-dismissed"));
+      return !isStandalone() && !localStorage.getItem("must:install-hint-dismissed");
     } catch {
       return false;
     }
   });
   if (!show) return null;
-  if (inApp)
-    return (
-      <div className="fade-up flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
-        <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-fg">
-          <Share size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold">이 화면에선 앱 설치가 안 돼요</p>
-          <p className="mt-0.5 text-muted">
-            카카오톡 같은 앱 안에서 열려 있어요. {ios ? "Safari" : "Chrome"}에서 열어야 홈 화면에 설치할 수 있어요.
-            {ios && " 오른쪽 아래(또는 위) 메뉴 → ‘Safari로 열기’를 눌러 주세요."}
-          </p>
-          {!ios && (
-            <button onClick={openInBrowser} className="mt-1.5 text-sm font-bold text-accent-text">
-              Chrome으로 열기 →
-            </button>
-          )}
-        </div>
-      </div>
-    );
+  // 앱 안 브라우저는 Shell 맨 위의 InAppNotice 가 알려 준다
+  if (inApp) return null;
   return (
     <div className="fade-up flex items-start gap-3 rounded-2xl border border-line bg-surface px-4 py-3 text-sm">
       <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-fg">

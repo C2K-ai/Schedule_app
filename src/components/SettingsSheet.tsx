@@ -11,6 +11,7 @@ import {
   type PermissionState,
 } from "@/lib/notify";
 import { aiStatus } from "@/lib/ai";
+import { feedUrl, GOOGLE_ADD_BY_URL, loadFeed, makeFeed, removeFeed } from "@/lib/calendarFeed";
 import { clearRecovery, inRecovery } from "@/lib/authLinks";
 import { lockCardSupported, testLockCard } from "@/lib/lockCard";
 import { OFFSET_CHOICES } from "@/lib/settings";
@@ -600,6 +601,111 @@ function AiTab() {
   );
 }
 
+/** 구글 캘린더에서 DREAM 일정 보기 — 비밀 구독 주소(ICS)를 만들어 구글 캘린더 'URL로 추가'에 붙여 넣는다(보기만) */
+function GoogleCalendarSection() {
+  const { session, toast } = usePlanner();
+  const sb = getSupabase();
+  const uid = session.userId;
+  // undefined = 불러오는 중, null = 없음
+  const [token, setToken] = useState<string | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sb || !uid) return;
+    let alive = true;
+    loadFeed(sb, uid).then(
+      (t) => alive && setToken(t),
+      (e) => alive && (setToken(null), setErr((e as Error).message)),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [sb, uid]);
+  if (!sb || !uid) return null;
+  const run = async (f: () => Promise<void>) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await f();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const url = token ? feedUrl(token) : "";
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ text: "주소를 복사했어요 — 구글 캘린더 'URL로 추가'에 붙여 넣으세요", tone: "ok" });
+    } catch {
+      setErr("복사를 못 했어요. 주소 칸을 길게 눌러 직접 복사해 주세요.");
+    }
+  };
+  return (
+    <Section title="구글 캘린더에서 보기" desc="DREAM 일정을 구글 캘린더에 띄워요. 보기만 되고, 고치는 건 DREAM 에서 해요.">
+      {token === undefined ? (
+        <p className="text-sm text-muted">불러오는 중…</p>
+      ) : !token ? (
+        <Button variant="primary" disabled={busy} onClick={() => run(async () => setToken(await makeFeed(sb, uid)))}>
+          구독 주소 만들기
+        </Button>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input readOnly value={url} aria-label="구글 캘린더 구독 주소" onFocus={(e) => e.currentTarget.select()} className={cx(inputCls, "h-10 font-mono text-xs")} />
+            <Button variant="primary" className="h-10 shrink-0" onClick={copy}>
+              복사
+            </Button>
+          </div>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+            <li>
+              PC 에서{" "}
+              <a href={GOOGLE_ADD_BY_URL} target="_blank" rel="noreferrer" className="font-semibold text-accent-text underline">
+                구글 캘린더 → URL로 추가
+              </a>{" "}
+              를 열어요(왼쪽 &lsquo;다른 캘린더&rsquo; 옆 + → &lsquo;URL로 추가&rsquo;).
+            </li>
+            <li>위 주소를 붙여 넣고 &lsquo;캘린더 추가&rsquo;. 같은 구글 계정이면 폰 구글 캘린더 앱에도 보여요.</li>
+          </ol>
+          <p className="text-xs text-muted">
+            구글이 몇 시간마다 새로 읽어서, DREAM 에서 바꾼 게 바로 안 보일 수 있어요. 지난 30일부터 앞으로 6개월 일정이 보여요(건너뛴 건 빼고, 끝낸 건 ✓).
+          </p>
+          <p className="text-xs font-semibold text-warn">이 주소를 아는 사람은 내 일정을 볼 수 있어요. 남에게 보내지 마세요.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="soft"
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                if (confirm("새 주소로 바꾸면 지금 주소는 바로 끊겨요. 구글 캘린더에도 새 주소를 다시 넣어야 해요. 바꿀까요?"))
+                  void run(async () => setToken(await makeFeed(sb, uid)));
+              }}
+            >
+              새 주소로 바꾸기
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                if (confirm("구독을 끌까요? 구글 캘린더에서 DREAM 일정이 더 이상 새로 고쳐지지 않아요(구글 쪽 캘린더는 직접 지워 주세요)."))
+                  void run(async () => {
+                    await removeFeed(sb, uid);
+                    setToken(null);
+                  });
+              }}
+            >
+              끄기
+            </Button>
+          </div>
+        </div>
+      )}
+      {err && <p className="mt-2 text-sm text-danger">{err}</p>}
+    </Section>
+  );
+}
+
 /** 비밀번호 바꾸기 — 재설정 메일 링크로 들어왔으면 '새 비밀번호 정하기'로 */
 function PasswordSection() {
   const { toast, session, store, snap } = usePlanner();
@@ -777,6 +883,7 @@ function AccountTab() {
           <LogoutButton />
         </Section>
         <PasswordSection />
+        <GoogleCalendarSection />
         <Section title="동기화 상태">
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl bg-surface-2 p-3">

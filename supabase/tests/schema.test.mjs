@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -834,6 +834,48 @@ await db.exec(`reset role;`);
   await q(`select public.materialize_habits()`);
   const d4 = (await q(`select occurrence_date::text d from public.tasks where habit_id = $1 order by 1`, [H4])).map((r) => r.d);
   ok(d4.length === 1 && d4[0] > today, `만들기 전에 지난 오늘 회차는 안 만들고 내일부터 → ${d4.join(",")}`);
+}
+
+// ── 구글 캘린더 구독 주소 ──
+{
+  const as = async (uid, sql, params) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql, params);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const throws = async (uid, sql, params) => {
+    try {
+      await as(uid, sql, params);
+      return false;
+    } catch (e) {
+      return String(e.message);
+    }
+  };
+  const TK = "t".repeat(43);
+  let r = await as(A, `insert into public.calendar_feeds (token) values ($1) returning user_id`, [TK]);
+  ok(r.length === 1 && r[0].user_id === A, "캘린더 구독: 내 주소 만들기(주인은 로그인한 사람)");
+  ok(await throws(A, `insert into public.calendar_feeds (user_id, token) values ($1, $2)`, [B, "u".repeat(43)]), "캘린더 구독: 남의 이름으로 못 만듦");
+  ok(await throws(B, `insert into public.calendar_feeds (token) values ($1)`, [TK]), "캘린더 구독: 같은 토큰 두 번 못 씀");
+  ok(await throws(B, `insert into public.calendar_feeds (token) values ('짧음')`), "캘린더 구독: 짧거나 이상한 토큰 막힘");
+  ok((await as(B, `select count(*)::int n from public.calendar_feeds`))[0].n === 0, "RLS: B 는 A 의 구독 주소를 못 봄");
+  ok((await as(B, `update public.calendar_feeds set token = $1 returning user_id`, ["v".repeat(43)])).length === 0, "RLS: 남의 주소를 못 바꿈");
+  r = await as(A, `update public.calendar_feeds set token = $1 returning token`, ["w".repeat(43)]);
+  ok(r.length === 1 && r[0].token === "w".repeat(43), "캘린더 구독: 새 주소로 바꾸기");
+  let anonSee = true;
+  await db.exec(`set role anon`);
+  try {
+    await q(`select token from public.calendar_feeds`);
+  } catch {
+    anonSee = false;
+  } finally {
+    await db.exec(`reset role`);
+  }
+  ok(!anonSee, "캘린더 구독: 로그인 안 하면 표를 못 읽음");
+  r = await as(A, `delete from public.calendar_feeds returning user_id`);
+  ok(r.length === 1, "캘린더 구독: 끄기(내 행 지우기)");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

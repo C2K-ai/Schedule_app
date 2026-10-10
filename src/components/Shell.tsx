@@ -43,6 +43,7 @@ import { CalendarTab } from "./CalendarTab";
 import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
 import { DiarySheet } from "./DiarySheet";
+import { InAppNotice } from "./InAppNotice";
 import { openDiaryWithVeil, preloadDiaryIntro } from "./DiaryIntro";
 import { CheckinModal, EnforcementModal, OverdueSiren, PostponeDialog, RescheduleDialog } from "./Enforcement";
 import { FocusDock, FocusScreen } from "./Focus";
@@ -380,6 +381,7 @@ export function Shell() {
           <StudyDock onOpen={() => setTab("timer")} hidden={tab === "timer"} />
         </TopBar>
         <main className="mx-auto max-w-[1200px] space-y-4 px-4 pt-4 pb-40 md:px-8 md:pt-6 md:pb-24">
+          <InAppNotice />
           <OverdueBanner
             onOpen={() => {
               p.setFocusScreen(false);
