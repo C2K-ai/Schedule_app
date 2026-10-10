@@ -148,7 +148,7 @@ export function CareerImport({ onDone }: { onDone: () => void }) {
         {err && <ErrorLine text={err} />}
         <Button variant="primary" onClick={split} disabled={busy || !text.trim()} className="w-full">
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {busy ? "항목별로 나누는 중… (20초쯤)" : "AI로 나누기"}
+          {busy ? "항목별로 나누는 중… (글이 길면 1분쯤 걸려요)" : "AI로 나누기"}
         </Button>
       </div>
     );
