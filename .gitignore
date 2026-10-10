@@ -42,8 +42,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# 로컬 도구 설정
-.claude/
+# 로컬 도구 설정 — 클라우드 세션도 읽어야 하는 settings.json 만 올린다
+.claude/*
+!.claude/settings.json
 
 # 사용자가 준 테마 사진(출처 미확인) — 공개 저장소에 올리지 않음
 /design/
