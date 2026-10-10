@@ -27,7 +27,8 @@ export const DEFAULT_SETTINGS: Settings = {
   // 잠금화면 카드는 원하는 사람만 켠다(기본 꺼짐)
   lockCard: false,
   studyGoalMin: 360,
-  studyAutoPause: true,
+  // 2026-10-10 사용자: 열품타처럼 잡지 말고 나가 있어도 계속 재기 → 기본 꺼짐(예전 키 studyAutoPause 는 버림)
+  studyAwayStop: false,
   ddays: [],
   // 일기 책 효과음 — 조용한 게 기본
   diarySound: false,

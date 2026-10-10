@@ -517,10 +517,10 @@ function FocusTab() {
       </Section>
       <Section title="공부 타이머" desc="열품타처럼 과목별로 시간을 쌓습니다.">
         <Switch
-          checked={settings.studyAutoPause}
-          onChange={(studyAutoPause) => updateSettings({ studyAutoPause })}
+          checked={settings.studyAwayStop}
+          onChange={(studyAwayStop) => updateSettings({ studyAwayStop })}
           label="자리 비우면 자동 멈춤"
-          desc="공부 중에 앱을 1분 넘게 벗어나면 떠난 시각에 멈춥니다. 딴짓한 시간이 쌓이지 않게."
+          desc="기본은 꺼짐 — 다른 앱을 쓰거나 화면을 꺼도 타이머가 계속 가요. 켜면 앱을 1분 넘게 벗어날 때 떠난 시각에 멈춰요(딴짓한 시간이 안 쌓이게)."
         />
       </Section>
       <Section title="하루 시작 시각" desc="타임라인을 처음 보여 줄 시각이자, 공부 시간을 하루로 묶는 경계입니다(새벽 공부는 전날로).">

@@ -140,11 +140,9 @@ function BigClock({ onClose }: { onClose: () => void }) {
           닫기
         </button>
       )}
-      {settings.studyAutoPause && (
-        <p className="absolute bottom-[max(20px,env(safe-area-inset-bottom))] text-xs text-white/40">
-          앱을 1분 넘게 벗어나면 자동으로 멈춥니다
-        </p>
-      )}
+      <p className="absolute bottom-[max(20px,env(safe-area-inset-bottom))] text-xs text-white/40">
+        {settings.studyAwayStop ? "앱을 1분 넘게 벗어나면 자동으로 멈춥니다" : "다른 앱을 쓰거나 화면을 꺼도 타이머는 계속 가요"}
+      </p>
       <div className="text-fg">
         <DictionarySheet open={dict} onClose={() => setDict(false)} />
         {noteId && notes.store && (

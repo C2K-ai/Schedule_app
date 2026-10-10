@@ -30,7 +30,7 @@ const AWAY_GRACE_MS = 60_000;
 /**
  * 보이지 않는 관리자 —
  *  · 재는 동안 탭 제목에 시간 표시
- *  · '자리 비우면 멈춤': 앱이 1분 넘게 화면 밖이면 화면을 떠난 시각에 멈춘다(열품타의 집중 잠금 대신).
+ *  · '자리 비우면 멈춤'(설정, 기본 꺼짐): 켜면 앱이 1분 넘게 화면 밖일 때 떠난 시각에 멈춘다. 끄면 나가 있어도 계속 잰다.
  *    폰에서 앱이 꺼졌다 다시 열려도 알 수 있게 떠난 시각을 저장해 둔다.
  */
 export function StudyEngine() {
@@ -51,7 +51,7 @@ export function StudyEngine() {
   }, [active, subject, now]);
 
   useEffect(() => {
-    if (!settings.studyAutoPause) return;
+    if (!settings.studyAwayStop) return;
     const check = () => {
       let rec: { id: string; at: number } | null = null;
       try {
@@ -85,7 +85,7 @@ export function StudyEngine() {
     check();
     document.addEventListener("visibilitychange", check);
     return () => document.removeEventListener("visibilitychange", check);
-  }, [settings.studyAutoPause, store, toast]);
+  }, [settings.studyAwayStop, store, toast]);
 
   return null;
 }

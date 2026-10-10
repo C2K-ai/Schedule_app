@@ -242,7 +242,8 @@ export interface Settings {
   /** 하루 공부 목표(분) */
   studyGoalMin: number;
   /** 공부 중 다른 앱·탭으로 가면 자동 일시정지(열품타의 집중 잠금 대신) */
-  studyAutoPause: boolean;
+  /** 공부 중 앱을 1분 넘게 벗어나면 떠난 시각에 멈춤(기본 꺼짐 — 다른 일 하러 나가도 계속 잰다) */
+  studyAwayStop: boolean;
   ddays: DDay[];
   /** 일기를 열고 닫을 때 책 넘기는 효과음(기본 꺼짐) */
   diarySound: boolean;
