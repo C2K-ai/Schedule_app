@@ -66,6 +66,8 @@ export interface DiaryIntroOptions {
   interactive?: boolean;
   /** 덮기: 연출이 화면을 다 가린 순간 한 번 — 밑의 일기 화면을 숨겨 끝에 앱이 비쳐 보이게 */
   onCovered?: () => void;
+  /** "high" = 화면 크기와 상관없이 최고 화질(폰용 영상을 녹화할 때). 기본은 기기에 맞춤 */
+  quality?: "auto" | "high";
 }
 
 export interface DiaryIntro {
@@ -135,6 +137,15 @@ function textures(doc: Document): Tex {
   }
   return t;
 }
+/** 폰에서 녹화 영상으로 틀 때의 효과음 — 영상은 최고 화질(장 수 = OPEN/CLOSE.leaves)로 녹화했으니 그 시간표로 */
+export function introSound(win: Window, mode: DiaryIntroMode): Voice | null {
+  try {
+    return startSound(win, mode, mode === "open" ? leafPlan(OPEN.leaves, OPEN.riffle) : leafPlan(CLOSE.leaves, CLOSE.riffle));
+  } catch {
+    return null;
+  }
+}
+
 /** 앱이 한가할 때 미리 만들어 둔다(DiaryIntro 의 preloadDiaryIntro 가 부름) */
 export function warmDiaryIntro(doc: Document = document): void {
   try {
@@ -389,7 +400,8 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
   const END = reduced ? REDUCED_MS : isOpen ? OPEN.end : CLOSE.end;
   // 폰·태블릿(좁거나 터치)은 가볍게: 반짝이·먼지 없음, 장·띠 조금 적게, 뒤 캔버스 작게, 표지 무지개 박은 멈춰 둠 — 3D 조각·다시 칠하기가 적을수록 덜 끊긴다
   const narrow0 = (root.clientWidth || win.innerWidth) < 640;
-  const mobile = narrow0 || !!win.matchMedia?.("(pointer: coarse)").matches;
+  const high = opts.quality === "high";
+  const mobile = !high && (narrow0 || !!win.matchMedia?.("(pointer: coarse)").matches);
   const NS = mobile ? 6 : 10;
   const LEAF: LeafPlan | null = reduced
     ? null
@@ -603,8 +615,8 @@ export function createDiaryIntro(root: HTMLElement, opts: DiaryIntroOptions): Di
       zLiftEnd: Tb + Tp * 0.45 + 0.3 + liftH,
       // 캔버스는 화면 1배 이하(폰은 더 작게) — 빛·반짝이는 부드러워서 티가 안 나고, 매 프레임 넘기는 비용이 크게 준다
       // 폰: 뒤(별·빛줄기) 0.75배, 앞(빛·반짝임) 1배 — 0.5/0.6 은 깨져 보였다(사용자)
-      bgS: mobile ? 0.75 : Math.min(dpr, 1),
-      frS: Math.min(dpr, 1),
+      bgS: high ? dpr : mobile ? 0.75 : Math.min(dpr, 1),
+      frS: high ? dpr : Math.min(dpr, 1),
     };
 
     const px = (v: number) => `${f2(v)}px`;
