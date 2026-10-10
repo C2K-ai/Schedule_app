@@ -368,6 +368,38 @@ export function createTask(store: PlannerStore, input: TaskInput, settings: Sett
   return t;
 }
 
+/**
+ * 인박스(날짜 없음·날짜만)의 할 일을 시간표의 한 시각에 놓는다(PC 끌어 놓기) — 시각 일정이 되고 알림도 기본값으로.
+ * 이미 지난 시각이면 강제 모드는 끈다(놓자마자 '미시작' 경고가 뜨지 않게).
+ */
+export function placeTask(store: PlannerStore, id: string, start: Date, settings: Settings, minutes = 60) {
+  const t = store.db.tasks[id];
+  if (!t || t.deleted_at) return;
+  const end = new Date(start.getTime() + minutes * MIN);
+  store.patch("tasks", id, {
+    schedule: "timed",
+    starts_at: start.toISOString(),
+    ends_at: end.toISOString(),
+    reminder_offsets: t.reminder_offsets.length ? t.reminder_offsets : settings.defaultOffsets,
+    strict: end.getTime() > Date.now(),
+  });
+}
+
+/** 인박스 — 아직 시각을 안 정한 할 일(날짜 없음 + 오늘 이후 날짜만). 날짜 있는 것 먼저, 그다음 날짜 없음(만든 순) */
+export function inboxTasks(tasks: Task[], now = Date.now()): Task[] {
+  const today = dayKey(new Date(now));
+  return tasks
+    .filter(
+      (t) =>
+        !t.deleted_at &&
+        (t.status === "planned" || t.status === "in_progress") &&
+        (t.schedule === "someday" || (t.schedule === "day" && dayKey(new Date(t.starts_at)) >= today)),
+    )
+    .sort((a, b) =>
+      a.schedule !== b.schedule ? (a.schedule === "day" ? -1 : 1) : a.schedule === "day" ? a.starts_at.localeCompare(b.starts_at) : a.created_at.localeCompare(b.created_at),
+    );
+}
+
 export function toggleStar(store: PlannerStore, id: string) {
   const t = store.db.tasks[id];
   if (t) store.patch("tasks", id, { starred: !t.starred });

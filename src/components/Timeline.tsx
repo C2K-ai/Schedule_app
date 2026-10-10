@@ -22,7 +22,12 @@ interface Props {
   /** 시각이 있는 한 일 기록 — 일정과 다른 모양(점선)으로, 끌어서 옮기지 않는다 */
   activities?: Activity[];
   onOpenActivity?: (a: Activity) => void;
+  /** PC: 인박스의 할 일을 끌어다 놓았을 때(그 칸·시각, 15분 단위) */
+  onDropTask?: (taskId: string, start: Date) => void;
 }
+
+/** 인박스 → 시간표 끌어 놓기에 쓰는 데이터 종류 */
+export const TASK_DRAG_TYPE = "application/x-dream-task";
 
 type Item = { kind: "task"; task: Task } | { kind: "activity"; act: Activity };
 
@@ -116,6 +121,7 @@ export function Timeline({
   dayRates,
   activities = [],
   onOpenActivity,
+  onDropTask,
 }: Props) {
   const now = useNow(30_000);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -273,6 +279,33 @@ export function Timeline({
     onCreate(start);
   };
 
+  // 인박스에서 끌고 오는 중 — 놓일 자리(칸·분)를 선으로 보여 준다
+  const [dropAt, setDropAt] = useState<{ di: number; mins: number } | null>(null);
+  const dropMins = (e: React.DragEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return Math.max(0, Math.min(24 * 60 - 15, Math.round((((e.clientY - rect.top) / hourPx) * 60) / 15) * 15));
+  };
+  const dropProps = (di: number, day: Date) =>
+    onDropTask
+      ? {
+          onDragOver: (e: React.DragEvent) => {
+            if (!e.dataTransfer.types.includes(TASK_DRAG_TYPE)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            const mins = dropMins(e);
+            setDropAt((d) => (d && d.di === di && d.mins === mins ? d : { di, mins }));
+          },
+          onDragLeave: () => setDropAt(null),
+          onDrop: (e: React.DragEvent) => {
+            const id = e.dataTransfer.getData(TASK_DRAG_TYPE);
+            setDropAt(null);
+            if (!id) return;
+            e.preventDefault();
+            onDropTask(id, new Date(startOfDay(day).getTime() + dropMins(e) * MIN));
+          },
+        }
+      : {};
+
   const today = new Date(now);
   const nowTop = (minutesOfDay(today) / 60) * hourPx;
   const todayIndex = days.findIndex((d) => sameDay(d, today));
@@ -347,7 +380,15 @@ export function Timeline({
                 style={{ left: `${(di / days.length) * 100}%`, width: `${100 / days.length}%` }}
                 onPointerDown={(e) => onColumnPointerDown(e, di)}
                 onPointerUp={(e) => onColumnPointerUp(e, day)}
+                {...dropProps(di, day)}
               >
+                {dropAt?.di === di && (
+                  <div className="pointer-events-none absolute inset-x-1 z-20 rounded-lg border-2 border-dashed border-accent bg-accent/10" style={{ top: (dropAt.mins / 60) * hourPx, height: hourPx }}>
+                    <span className="ml-1.5 font-mono text-xs font-bold text-accent-text tabular-nums">
+                      {String(Math.floor(dropAt.mins / 60)).padStart(2, "0")}:{String(dropAt.mins % 60).padStart(2, "0")}
+                    </span>
+                  </div>
+                )}
                 {placed[di].map((p) => {
                   if (p.item.kind === "activity") {
                     const a = p.item.act;
