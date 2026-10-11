@@ -1,20 +1,20 @@
 // 커리어 기록 공용·한 번에 넣기(미리보기). npm run test:unit
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { careerPeriod, normText, toDrafts, unusedLines } from "../src/lib/career.ts";
+import { careerPeriod, cutChars, normText, toDrafts, unusedLines } from "../src/lib/career.ts";
 
 test("기간 글자 — 하루·달·해·범위·진행 중", () => {
   const p = (start_day, end_day) => careerPeriod({ start_day, end_day });
-  assert.equal(p("2025-09-09", "2025-09-09"), "2025.09.09");
+  assert.equal(p("2024-11-05", "2024-11-05"), "2024.11.05");
   assert.equal(p("2026-03-01", "2026-03-31"), "2026.03");
   assert.equal(p("2024-02-01", "2024-02-29"), "2024.02");
   assert.equal(p("2026-03-01", "2026-06-30"), "2026.03 ~ 2026.06");
   assert.equal(p("2025-01-01", "2025-12-31"), "2025");
   assert.equal(p("2024-01-01", "2025-12-31"), "2024 ~ 2025");
-  assert.equal(p("2025-07-22", "2025-08-11"), "2025.07.22 ~ 2025.08.11");
-  assert.equal(p("2025-09-01", "2025-09-25"), "2025.09.01 ~ 2025.09.25");
-  assert.equal(p("2025-07-01", null), "2025.07 ~ 진행 중");
-  assert.equal(p("2025-07-15", null), "2025.07.15 ~ 진행 중");
+  assert.equal(p("2023-06-12", "2023-08-25"), "2023.06.12 ~ 2023.08.25");
+  assert.equal(p("2023-04-01", "2023-04-20"), "2023.04.01 ~ 2023.04.20");
+  assert.equal(p("2023-05-01", null), "2023.05 ~ 진행 중");
+  assert.equal(p("2023-05-15", null), "2023.05.15 ~ 진행 중");
 });
 
 const TEXT = `커리어 정리 (2024.03 ~ 2026.10)
@@ -61,6 +61,16 @@ test("빠진 줄 — 마크다운 머리글·글머리표", () => {
 
 test("빠진 줄 — 표 칸을 ' · ' 로 이어 붙여도 들어간 것으로 본다", () => {
   assert.deepEqual(unusedLines("2025.08\t정보처리기사\t합격", [{ title: "정보처리기사", raw: "정보처리기사 · 합격", skills: [] }]), []);
+});
+
+test("빠진 줄 — 표 첫 줄(머리)은 칸이 넷 이상이어도 빼고, 표 가운데 글자만 있는 줄은 확인", () => {
+  const t = "구분\t기관\t취득일\t비고\n자격증\t한국산업인력공단\t2024.06\t필기 면제\n어학\tOPIc\tIH\t회화";
+  const got = [{ title: "자격증", raw: "자격증 · 한국산업인력공단 · 2024.06 · 필기 면제", skills: [] }];
+  assert.deepEqual(unusedLines(t, got), ["어학\tOPIc\tIH\t회화"]);
+});
+
+test("자르기는 글자 단위", () => {
+  assert.equal(cutChars(`${"가".repeat(59)}🏆더`, 60), `${"가".repeat(59)}🏆`);
 });
 
 test("비교용 글자 — 띄어쓰기·문장부호·대소문자 무시", () => {

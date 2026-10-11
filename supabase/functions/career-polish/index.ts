@@ -74,11 +74,12 @@ Deno.serve(async (req) => {
     });
     await finish(db, slot, res.model ?? MODEL, res.usage);
     if (res.stop_reason === "refusal") return json({ error: "refused" }, 422);
-    if (res.stop_reason === "max_tokens") return json({ error: "too_long" }, 422);
+    // 나누기에서 답이 끝까지 못 나온 것은 글자 수 한도와 다른 문제(항목이 너무 많음) — 앱이 '반씩 나눠서'로 안내
+    if (res.stop_reason === "max_tokens") return json({ error: importing ? "output_too_long" : "too_long" }, 422);
     const out = res.content.find((b) => b.type === "text");
     if (!out || out.type !== "text") return json({ error: "no_output" }, 502);
     const parsed = JSON.parse(out.text);
-    if (importing) return json({ entries: cleanImport(parsed, today) });
+    if (importing) return json({ entries: cleanImport(parsed, today, String(body.text).trim()) });
     return json(cleanPolished(parsed as Polished));
   } catch (e) {
     if (unbilled(e)) await release(db, slot);
