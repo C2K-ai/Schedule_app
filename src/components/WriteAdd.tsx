@@ -8,13 +8,14 @@ import { shrinkPhoto, type Photo } from "@/lib/photo";
 import { SHARED_KEY } from "@/lib/share";
 import { getSupabase } from "@/lib/supabase";
 import { dayKey, fmtTime, parseDayKey, WEEKDAYS } from "@/lib/time";
-import type { Habit, Task } from "@/lib/types";
+import { deleteMark } from "@/lib/marks";
+import type { Habit, Mark, Task } from "@/lib/types";
 import { applyRemovals, RemovalList, toRemovalDrafts, type RemovalDraft } from "./AiRemovals";
 import { usePlanner } from "./PlannerProvider";
 import { Button, cx, inputCls, Modal } from "./ui";
 
 /** 넣은 것 한 줄 — 일정이면 task, 반복이면 habit */
-type Added = { key: string; task?: Task; habit?: Habit };
+type Added = { key: string; task?: Task; habit?: Habit; mark?: Mark };
 /** 지난 시각이라 바로 넣지 않고 물어보는 것 */
 type Held = { key: string; item: ParsedItem };
 
@@ -27,6 +28,8 @@ const habitDays = (days: number[]) =>
   days.length === 7 ? "매일" : `매주 ${[...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => WEEKDAYS[d]).join("·")}`;
 
 function whenOf(a: Added): string {
+  if (a.mark)
+    return `표시 · ${dayLabel(a.mark.day)}${a.mark.end_day ? ` ~ ${dayLabel(a.mark.end_day)}` : ""}${a.mark.yearly ? " · 매년" : ""}`;
   if (a.habit)
     return `${habitDays(a.habit.days)} ${a.habit.start_time}${a.habit.end_day ? ` · ~${dayLabel(a.habit.end_day)}까지` : ""}`;
   const t = a.task!;
@@ -43,7 +46,7 @@ export function WriteAdd() {
 }
 
 function WriteBody() {
-  const { openSheet, openEditor, store, settings, snap, session } = usePlanner();
+  const { openSheet, openEditor, openMark, store, settings, snap, session } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   // 카톡 등에서 공유받은 글이 있으면 채워서 연다(ReminderEngine 이 넘겨줌)
   const [shared] = useState(() => {
@@ -83,8 +86,13 @@ function WriteBody() {
   const [removals, setRemovals] = useState<RemovalDraft[]>([]);
   const close = () => openSheet(null);
 
-  const keep = (r: { tasks: Task[]; habits: Habit[] }) =>
-    setAdded((list) => [...r.tasks.map((t) => ({ key: t.id, task: t })), ...r.habits.map((h) => ({ key: h.id, habit: h })), ...list]);
+  const keep = (r: { tasks: Task[]; habits: Habit[]; marks: Mark[] }) =>
+    setAdded((list) => [
+      ...r.marks.map((m) => ({ key: m.id, mark: m })),
+      ...r.tasks.map((t) => ({ key: t.id, task: t })),
+      ...r.habits.map((h) => ({ key: h.id, habit: h })),
+      ...list,
+    ]);
 
   const submit = async () => {
     const t = text.trim();
@@ -123,6 +131,7 @@ function WriteBody() {
   const remove = (a: Added) => {
     if (a.task) deleteTask(store, a.task.id);
     if (a.habit) deleteHabit(store, a.habit.id);
+    if (a.mark) deleteMark(store, a.mark.id);
     setAdded((list) => list.filter((x) => x.key !== a.key));
   };
 
@@ -262,13 +271,14 @@ function WriteBody() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-semibold">
                       {a.habit && <Repeat size={12} className="mr-1 inline text-muted" />}
-                      {a.task?.title ?? a.habit?.title}
+                      {a.mark && <span className="mr-1">{a.mark.emoji ?? "📌"}</span>}
+                      {a.task?.title ?? a.habit?.title ?? a.mark?.title}
                     </span>
                     <span className="mt-0.5 block font-mono text-xs text-muted tabular-nums">{whenOf(a)}</span>
                   </span>
                   <button
                     type="button"
-                    onClick={() => (a.task ? openEditor({ taskId: a.task.id }) : openSheet("habits"))}
+                    onClick={() => (a.mark ? openMark({ markId: a.mark.id }) : a.task ? openEditor({ taskId: a.task.id }) : openSheet("habits"))}
                     className="shrink-0 text-xs font-bold text-accent-text hover:underline"
                   >
                     고치기

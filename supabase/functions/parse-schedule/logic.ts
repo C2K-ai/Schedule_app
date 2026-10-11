@@ -4,7 +4,7 @@ export const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 export interface RawItem {
   title: string;
-  kind: "timed" | "day" | "someday";
+  kind: "timed" | "day" | "someday" | "mark";
   date: string | null;
   start: string | null;
   duration_min: number | null;
@@ -15,6 +15,12 @@ export interface RawItem {
   starred: boolean;
   reminders_min: number[] | null;
   notes: string | null;
+  /** 표시(mark): 여러 날이면 마지막 날 */
+  end_date?: string | null;
+  /** 표시(mark): 매년 같은 날(생일·기념일) */
+  yearly?: boolean;
+  /** 표시(mark): 그림 하나 */
+  emoji?: string | null;
 }
 
 const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
@@ -29,10 +35,10 @@ export const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "kind", "date", "start", "duration_min", "repeat_days", "repeat_until", "category", "starred", "reminders_min", "notes"],
+        required: ["title", "kind", "date", "start", "duration_min", "repeat_days", "repeat_until", "category", "starred", "reminders_min", "notes", "end_date", "yearly", "emoji"],
         properties: {
           title: { type: "string" },
-          kind: { type: "string", enum: ["timed", "day", "someday"] },
+          kind: { type: "string", enum: ["timed", "day", "someday", "mark"] },
           date: nullable({ type: "string", format: "date" }),
           start: nullable({ type: "string" }),
           duration_min: nullable({ type: "integer" }),
@@ -42,6 +48,9 @@ export const SCHEMA = {
           starred: { type: "boolean" },
           reminders_min: nullable({ type: "array", items: { type: "integer" } }),
           notes: nullable({ type: "string" }),
+          end_date: nullable({ type: "string", format: "date" }),
+          yearly: { type: "boolean" },
+          emoji: nullable({ type: "string" }),
         },
       },
     },
@@ -62,16 +71,20 @@ Return every distinct thing they want to do as one item. Never invent items they
 Fields:
 - title: short, natural Korean task name (e.g. "치과 예약", "보고서 제출"). Drop the date/time words from the title. If they give only a date/time with no task name at all (e.g. "29일 1시부터 2시"), still return ONE item with title "일정".
 - kind: "timed" when a clock time is given or clearly implied; "day" when only a day is given; "someday" when no day at all ("언젠가", "나중에", "시간 날 때", or nothing said about when).
+  "mark" for a day to remember rather than something to do — a birthday ("내일 내 생일", "엄마 생신 15일"), an anniversary or 기념일, a holiday, a trip or vacation period, an exam day or a D-day without a clock time ("다음 주 수요일 토익 시험", "20일부터 23일까지 제주 여행"). A mark has no time: start null, duration_min null, repeat_days [], reminders_min null. If they give a clock time for it ("토익 9시"), it is a "timed" item instead. A thing they must do on that day ("생일 선물 사기") is a normal item, not a mark.
 - date: YYYY-MM-DD for timed/day items, null for someday. Resolve relative words using the calendar table in the user message — do not do date arithmetic yourself. 이번 주 = the Monday–Sunday week containing today; 다음 주 = the following Monday–Sunday. A bare weekday ("금요일에", "금요일까지") means the nearest such day from today — usually the one marked 이번 주, which can be tomorrow (today itself if it is that weekday and the time has not passed); use 다음 주 only when they say 다음 주 or this week's one has already passed. "주말" = the coming Saturday. "~까지" deadlines go on that day.
   A bare day of the month ("29일", "29일에", "다음 달 3일") means the next date with that day number from today: this month if it has not passed yet, otherwise next month — pick that exact row from the calendar table (it covers six weeks). "N월 N일" means that date this year (next year only if it is more than a month in the past). Never shift a date the user stated explicitly.
 - start: "HH:MM" 24-hour for timed items, else null. Korean hours without 오전/오후: 1–6 → afternoon (13–18), 7–11 → morning unless context says evening ("저녁 7시" → 19:00), 12 → 12:00. 아침 ≈ 08:00, 점심 ≈ 12:00, 오후 ≈ 15:00, 저녁 ≈ 19:00, 밤 ≈ 21:00, 새벽 ≈ 06:00 when no exact time. "반" = :30. If a timed item has no day and that time has already passed today, use tomorrow.
 - duration_min: minutes if they say how long ("한 시간", "30분 동안", "3시부터 5시까지" → 120), else null.
 - repeat_days: for repeating routines ("매일", "평일마다", "주말마다", "매주 월수금") the weekdays as numbers 0=일 1=월 2=화 3=수 4=목 5=금 6=토; empty array otherwise. A repeating item must be "timed" — if no time is said, use a sensible one (매일 아침 → 08:00, otherwise 09:00) and set date to its first occurrence.
 - repeat_until: only for repeating items whose period is limited — the LAST date (YYYY-MM-DD) they should repeat: "이번 달 매일" → the last day of this month, "이번 주 매일" → this Sunday, "11월까지" → 11월 30일, "2주 동안" → first date + 13 days, "시험(10월 24일) 전까지" → the day before. Pick it from the calendar table when it is in range. Null when no end is said ("매일", "평일마다" with no period) and for non-repeating items. "이번 달 매일 …" is ONE repeating item with repeat_days [0,1,2,3,4,5,6] and repeat_until — never list the days as separate items.
-- category: exactly one of the category names listed in the user message when the item clearly fits one (생일 → a birthday category, 사고 싶은 것 → a wishlist category), else null.
+- category: exactly one of the category names listed in the user message when the item clearly fits one (사고 싶은 것 → a wishlist category), else null. Always null for marks.
 - starred: true only when they stress importance ("중요", "꼭", "절대 잊으면 안 돼", "별표").
 - reminders_min: minutes-before reminders only if they ask ("30분 전에 알려줘" → [30], "정각에" → [0]); null otherwise.
 - notes: extra details worth keeping (place, things to bring, people) that do not belong in the title; else null.
+- end_date: marks only — the last day of a mark that spans several days ("20일부터 23일까지 여행" → the 23rd), else null.
+- yearly: marks only — true for things that come back every year (birthdays, 생신, wedding or relationship anniversaries, "매년"); false otherwise and for all non-marks. A yearly mark is one day (end_date null).
+- emoji: marks only — one fitting emoji: 🎂 birthday, 💍 wedding anniversary, ❤️ couple anniversary, 🎉 celebration or holiday, ✈️ trip or vacation, 📝 exam, 🏥 hospital, ⭐ anything else; null for non-marks.
 
 Deleting and moving existing items:
 The user may ask to delete or cancel things already in their planner ("치과 취소해줘", "내일 3시 회의 지워", "오늘 일정 다 빼줘", "운동 습관 그만할래"). Then the user message lists their existing items as lines "ref | when | title".
@@ -150,6 +163,29 @@ export function calendarTable(today: string): string {
 export function clean(raw: RawItem, categories: { id: string; name: string }[], today: string) {
   const title = String(raw.title ?? "").trim().slice(0, 120);
   if (!title) return null;
+  if (raw.kind === "mark") {
+    // 표시: 날짜만(시각·반복·알림·카테고리 없음). 매년이면 하루짜리, 여러 날이면 끝 날이 시작보다 뒤일 때만
+    const date = isDate(raw.date) ? raw.date : today;
+    const yearly = raw.yearly === true;
+    const end = !yearly && isDate(raw.end_date) && raw.end_date > date ? raw.end_date : null;
+    const emoji = typeof raw.emoji === "string" && raw.emoji.trim() ? [...raw.emoji.trim()].slice(0, 2).join("").slice(0, 8) : null;
+    return {
+      title,
+      kind: "mark" as const,
+      date,
+      start: null,
+      duration_min: null,
+      repeat_days: [],
+      repeat_until: null,
+      category_id: null,
+      starred: false,
+      reminders_min: null,
+      notes: raw.notes?.trim() ? raw.notes.trim().slice(0, 500) : null,
+      end_date: end,
+      yearly,
+      emoji,
+    };
+  }
   let kind = raw.kind;
   const repeat = [...new Set((raw.repeat_days ?? []).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))].sort();
   let start = isTime(raw.start) ? raw.start : null;
@@ -184,6 +220,9 @@ export function clean(raw: RawItem, categories: { id: string; name: string }[], 
     starred: Boolean(raw.starred),
     reminders_min: reminders && reminders.length ? reminders : null,
     notes: raw.notes?.trim() ? raw.notes.trim().slice(0, 500) : null,
+    end_date: null,
+    yearly: false,
+    emoji: null,
   };
 }
 

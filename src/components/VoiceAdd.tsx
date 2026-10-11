@@ -15,10 +15,12 @@ import { Button, cx, inputCls, Modal, Segmented } from "./ui";
 
 type Draft = ParsedItem & { key: number; on: boolean };
 
-const KIND_OPTIONS: { value: ScheduleKind; label: string }[] = [
+const KIND_OPTIONS: { value: ScheduleKind | "mark"; label: string }[] = [
   { value: "timed", label: "시간" },
   { value: "day", label: "날짜만" },
   { value: "someday", label: "언젠가" },
+  // 표시: 생일·기념일·여행 — 할 일이 아니라 캘린더에 날짜만
+  { value: "mark", label: "표시" },
 ];
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180];
@@ -208,6 +210,7 @@ function DraftCard({
   const now = useNow(30_000);
   const repeating = d.repeat_days.length > 0;
   const past = !repeating && d.kind === "timed" && d.date && d.start && atTime(parseDayKey(d.date), d.start).getTime() < now;
+  const mark = !repeating && d.kind === "mark";
   return (
     <li className={cx("rounded-2xl border border-line bg-surface-2/60 p-3 transition", !d.on && "opacity-45")}>
       <div className="flex items-center gap-2">
@@ -228,14 +231,18 @@ function DraftCard({
           className="min-w-0 flex-1 bg-transparent text-[15px] font-semibold outline-none"
           aria-label="제목"
         />
-        <button
-          type="button"
-          aria-label="별표"
-          onClick={() => onChange({ starred: !d.starred })}
-          className={cx("grid size-8 place-items-center rounded-lg", d.starred ? "text-warn" : "text-faint hover:text-muted")}
-        >
-          <Star size={18} fill={d.starred ? "currentColor" : "none"} />
-        </button>
+        {mark ? (
+          d.emoji && <span className="grid size-8 place-items-center text-lg">{d.emoji}</span>
+        ) : (
+          <button
+            type="button"
+            aria-label="별표"
+            onClick={() => onChange({ starred: !d.starred })}
+            className={cx("grid size-8 place-items-center rounded-lg", d.starred ? "text-warn" : "text-faint hover:text-muted")}
+          >
+            <Star size={18} fill={d.starred ? "currentColor" : "none"} />
+          </button>
+        )}
       </div>
 
       {d.on && (
@@ -296,6 +303,31 @@ function DraftCard({
                     onChange={(e) => e.target.value && onChange({ date: e.target.value })}
                     className={cx(inputCls, "h-9 w-auto! py-1 text-sm")}
                   />
+                  {mark && !d.yearly && (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted">
+                      ~
+                      <input
+                        type="date"
+                        value={d.end_date ?? ""}
+                        min={d.date ?? undefined}
+                        onChange={(e) => onChange({ end_date: e.target.value || null })}
+                        aria-label="끝나는 날(여러 날이면)"
+                        className={cx(inputCls, "h-9 w-auto! py-1 text-sm")}
+                      />
+                    </span>
+                  )}
+                  {mark && (
+                    <button
+                      type="button"
+                      onClick={() => onChange({ yearly: !d.yearly, end_date: null })}
+                      className={cx(
+                        "inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold transition",
+                        d.yearly ? "border-transparent bg-fg text-bg" : "border-line text-muted hover:text-fg",
+                      )}
+                    >
+                      <Repeat size={12} /> 매년
+                    </button>
+                  )}
                   {d.kind === "timed" && (
                     <>
                       <input
@@ -325,7 +357,7 @@ function DraftCard({
               {past && <p className="text-xs font-semibold text-warn">이미 지난 시각이에요 — 날짜나 시간을 확인하세요.</p>}
             </>
           )}
-          {!repeating && categories.length > 0 && (
+          {!repeating && !mark && categories.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {categories.map((c) => (
                 <button

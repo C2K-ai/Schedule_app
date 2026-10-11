@@ -5,12 +5,14 @@ import { CAREER_IMPORT_MAX, type ImportedCareer } from "./career";
 import { createHabit, createTask, isTimed, liveHabits, liveTasks } from "./planner";
 import type { PlannerStore } from "./store";
 import { addDays, atTime, dayKey, fmtTime, MIN, parseDayKey, startOfDay, toHHMM, WEEKDAYS } from "./time";
-import type { Category, DB, Habit, ScheduleKind, Settings, Task } from "./types";
+import { saveMark } from "./marks";
+import type { Category, DB, Habit, Mark, ScheduleKind, Settings, Task } from "./types";
 
 /** parse-schedule 함수가 돌려주는 한 항목 (서버 logic.ts 의 clean() 결과와 같은 모양) */
 export interface ParsedItem {
   title: string;
-  kind: ScheduleKind;
+  /** mark = 표시(생일·기념일·여행 — 날짜만, 할 일 아님) */
+  kind: ScheduleKind | "mark";
   date: string | null;
   start: string | null;
   duration_min: number | null;
@@ -21,6 +23,11 @@ export interface ParsedItem {
   starred: boolean;
   reminders_min: number[] | null;
   notes: string | null;
+  /** 표시: 여러 날이면 마지막 날 */
+  end_date?: string | null;
+  /** 표시: 매년 같은 날 */
+  yearly?: boolean;
+  emoji?: string | null;
 }
 
 const MESSAGES: Record<string, string> = {
@@ -146,10 +153,26 @@ export function saveParsed(
   settings: Settings,
   categories: Category[],
   opts: { strict?: boolean } = {},
-): { tasks: Task[]; habits: Habit[] } {
+): { tasks: Task[]; habits: Habit[]; marks: Mark[] } {
   const tasks: Task[] = [];
   const habits: Habit[] = [];
+  const marks: Mark[] = [];
   for (const it of items) {
+    if (it.kind === "mark") {
+      // 표시: 생일·기념일·여행 — 할 일이 아니라 캘린더에 날짜만
+      marks.push(
+        saveMark(store, {
+          title: it.title,
+          notes: it.notes,
+          day: it.date ?? dayKey(new Date()),
+          end_day: !it.yearly && it.end_date && it.date && it.end_date > it.date ? it.end_date : null,
+          yearly: Boolean(it.yearly),
+          emoji: it.emoji ?? null,
+          color: "pink",
+        }),
+      );
+      continue;
+    }
     const color = categories.find((c) => c.id === it.category_id)?.color ?? "lime";
     const reminders = it.reminders_min ?? undefined;
     const dur = it.duration_min ?? 30;
@@ -194,7 +217,7 @@ export function saveParsed(
       tasks.push(createTask(store, { ...common, schedule: "someday" }, settings));
     }
   }
-  return { tasks, habits };
+  return { tasks, habits, marks };
 }
 
 /** 서버에 AI 키가 들어 있는지만 확인(Claude 는 부르지 않음) */

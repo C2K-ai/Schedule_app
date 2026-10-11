@@ -99,3 +99,20 @@ Deno.test("기간 있는 반복: 끝나는 날은 반복일 때만, 첫날보다
   assertEquals(clean({ ...base, repeat_days: [1], repeat_until: "2026-10-01" }, cats, "2026-10-07")!.repeat_until, null);
   assertEquals(clean({ ...base, repeat_days: [1], repeat_until: "다음달" }, cats, "2026-10-07")!.repeat_until, null);
 });
+
+Deno.test("표시(mark): 생일은 매년 하루, 여행은 여러 날, 시각·반복·카테고리는 버림", () => {
+  const cats = [{ id: "c1", name: "생일" }];
+  const bday = clean({ ...base, title: "내 생일", kind: "mark", date: "2026-10-12", start: "09:00", repeat_days: [1], category: "생일", yearly: true, end_date: "2026-10-13", emoji: "🎂" }, cats, "2026-10-11");
+  assertEquals(
+    [bday?.kind, bday?.date, bday?.start, bday?.repeat_days, bday?.category_id, bday?.yearly, bday?.end_date, bday?.emoji],
+    ["mark", "2026-10-12", null, [], null, true, null, "🎂"],
+  );
+  const trip = clean({ ...base, title: "제주 여행", kind: "mark", date: "2026-10-20", end_date: "2026-10-23", yearly: false, emoji: "✈️" }, [], "2026-10-11");
+  assertEquals([trip?.date, trip?.end_date, trip?.yearly], ["2026-10-20", "2026-10-23", false]);
+  const bad = clean({ ...base, title: "시험", kind: "mark", date: null, end_date: "2020-01-01", emoji: "" }, [], "2026-10-11");
+  assertEquals([bad?.date, bad?.end_date, bad?.emoji], ["2026-10-11", null, null]);
+  // 일정은 표시 칸이 비어 있다
+  const task = clean({ ...base, title: "치과", kind: "day", date: "2026-10-12" }, [], "2026-10-11");
+  assertEquals([task?.end_date, task?.yearly, task?.emoji], [null, false, null]);
+  assertEquals((SCHEMA.properties.items.items.properties.kind as { enum: string[] }).enum.includes("mark"), true);
+});

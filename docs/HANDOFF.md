@@ -3,9 +3,9 @@
 > 새 계정·새 세션에서 이 앱을 이어서 고칠 때 **이 파일부터** 읽으세요. 기능별 자세한 기록은 `docs/REVAMP-HANDOFF.md`,
 > 구조는 `docs/ARCHITECTURE.md`, 알림은 `docs/PWA-NOTIFICATIONS.md`, 서버 처음 설정은 `docs/SETUP-SUPABASE.md`.
 
-## 0. ⚠️ 지금 상태 — 2026-10-10 갱신 (여기부터 읽기)
+## 0. ⚠️ 지금 상태 — 2026-10-11 갱신 (여기부터 읽기)
 
-**브랜치**: `ui-revamp` = `main`(2026-10-10 밤: 커리어 '한 번에 넣기' → 구글 캘린더 구독까지 배포). 끝난 일은 8절.
+**브랜치**: `ui-revamp` = `main`(2026-10-11: 표시(생일·기념일) + Write/말로 추가에서 표시로까지 배포). 끝난 일은 8절.
 
 ### 0-0. 일기 책 애니메이션 — 다듬기 배포함(2026-10-10), **사용자 폰 확인 대기**
 사용자 지적 두 가지(닫기가 너무 짧음 · 폰에서 심하게 버벅임)를 고쳐 배포함. 사용자가 써 보고 말하면 그 부분만 고친다(큰 진단·심사 다시 돌리지 말 것).
@@ -40,14 +40,14 @@
   단 Claude 가 `.claude/settings.json` 권한을 스스로 넓히는 건 자동 모드 분류기가 막음(자기 수정) — 승인 창은 사용자가 '항상 허용'.
 - **사용자가 직접 확인할 것**(배포는 끝남): ① 폰에서 일기 책 애니메이션 끊김(0-0) ② 아이폰에서 애니메이션 모양 ③ 카톡 메시지 '공유 → DREAM'
   (홈 화면에 설치한 안드로이드 앱만) ④ Write 사진 버튼으로 시간표 사진 넣기(로그인 필요, 실제 AI 호출은 아직 안 해 봄) ⑤ PC 캘린더 탭 주/일 → 오른쪽 인박스 끌어 놓기.
-  ⑥ Voice/Write 로 "내일 치과 취소해줘"(지우기 확인 창) ⑦ "이번 달 매일 …" → 달 끝까지 들어가는지(8절 23·24).
+  ⑥ Voice/Write 로 "내일 치과 취소해줘"(지우기 확인 창) ⑦ "이번 달 매일 …" → 달 끝까지 들어가는지(8절 23·24) ⑧ Write 에 "내일 내 생일"·"20일부터 23일까지 제주 여행" → 일정이 아니라 표시로(8절 30, 모델은 시험 통과 — 폰 화면에서 한 번).
 - 잠금화면 카드가 사용자 폰에서 안 보이는 문제(7절 '이어서 할 것') — 사용자가 "나중에" 하자고 함.
 - 도구: Deno 는 `npm i --no-save deno`(또는 스크래치에), Playwright 는 `npm i playwright-core@1.56.1` + `executablePath: '/opt/pw-browsers/chromium'`.
   화면 확인: `npx next build` → `cd out && python3 -m http.server 3201`(루트로 서빙) → Playwright. 캘린더 탭 → '주' 에서 시간표·인박스.
 - 사용자 방식: 오래 걸리는 일은 진행률을 알려 주길 원함(1분마다 보고 요청한 적 있음), 완료되면 PushNotification.
 - 이 세션은 Opus 5.5·노력 xhigh·울트라코드 켜짐이었음(프로젝트 기본 Sonnet 설정은 새 세션부터). 큰 워크플로는 한도에 걸린 적 있으니 작게.
 
-### 0-5. 다음에 만들 기능 — **5개 모두 끝(8절 18~23)**. 새 요청을 기다림.
+### 0-5. 다음에 만들 기능 — **5개 모두 끝(8절 18~21·27)**. 새 요청을 기다림.
 - 사용자(2026-10-10 밤): "폰에서 일기 애니메이션이 깨진다"(화질 올려도 여전히) → **폰은 녹화 영상으로 바꿈**: 세로 터치 화면이면
   `public/diary/open.mp4`·`close.mp4`(엔진을 `quality: "high"` 로 장면마다 찍은 H.264 1080x2336 60fps, 1.3/1.1MB)를 틀고 끝에 진짜 화면으로 페이드.
   영상은 앱이 한가할 때 blob 으로 받아 둠(못 받았거나 1.5초 안에 못 틀면 엔진). 다시 만드는 법 `scripts/diary-video/README.md`
@@ -89,7 +89,8 @@
 | 껍데기(탭·☰ 메뉴·PC 왼쪽 메뉴 숨기기) | `Shell.tsx`, `Header.tsx`(TopBar·전체 화면 버튼·PC 제목 줄) |
 | 한 일 기록(계획 없이 이미 한 일) | `ActivityEditor.tsx`(입력 창·한 줄·버튼), `lib/planner.ts`(`liveActivities`·`saveActivity`), 표 `activities` |
 | 작업·캘린더·타이머·프로필 탭 | `TasksTab.tsx`, `CalendarTab.tsx`, `TimerTab.tsx`/`Study.tsx`, `MeTab.tsx` |
-| 말로 일정 넣기(AI) | `VoiceAdd.tsx`, `lib/ai.ts`, `lib/speech.ts`, Edge `parse-schedule` |
+| 말로·적어서 일정 넣기(AI) | `VoiceAdd.tsx`, `WriteAdd.tsx`, `lib/ai.ts`(`saveParsed`), `lib/speech.ts`, Edge `parse-schedule`(`logic.ts`) |
+| 표시(생일·기념일·여행) | `MarkEditor.tsx`(MarkEditor·MarkChip), `lib/marks.ts`, 표 `marks` |
 | 커리어 기록 + AI 다듬기 | `Career.tsx`, Edge `career-polish` |
 | 알림(앱 안 알람·서버 푸시) | `ReminderEngine.tsx`, `lib/reminders.ts`, `lib/push.ts`, `public/sw.js`, Edge `send-due-notifications`·`notification-action` |
 | 폰 잠금화면 일정 카드 | `lib/lockCard.ts`, `LockCardSync.tsx`, `public/sw.js`(lock-card) |
@@ -104,11 +105,11 @@
 
 ## 4. 서버(Supabase) 현재 상태
 
-- **적용된 마이그레이션**: `20261005000000_init` ~ `20261013000000_habit_range` 전부.
+- **적용된 마이그레이션**: `20261005000000_init` ~ `20261015000000_marks` 전부.
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v8(Haiku 5.5) · `career-polish` v3(Sonnet 5.5) · `admin` v4 ·
+- **Edge Functions**(배포 버전): `parse-schedule` v9(Haiku 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v1(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
   `signup` v3(**JWT 검증 끔**) · `send-due-notifications` v4 · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
@@ -217,22 +218,27 @@
 
 25. **☰ 드라이브에도 '새 노트'**(2026-10-10) — 파일이 0개여도 📒 Study 칸이 보이고, '파일 올리기' 옆 '새 노트'(Study 폴더에 만듦).
 
-22. **커리어 '한 번에 넣기'**(2026-10-10) — 커리어 기록 → '한 번에 넣기' → 붙여 넣기 → Edge `career-polish` **v4** mode "import"(Sonnet 5.5 effort low,
+26. **커리어 '한 번에 넣기'**(2026-10-10) — 커리어 기록 → '한 번에 넣기' → 붙여 넣기 → Edge `career-polish` **v4** mode "import"(Sonnet 5.5 effort low,
    구조화 출력)가 항목별로 나눔(글은 그대로, 날짜·종류·기술만) → 미리보기(체크·이미 있음·날짜 확인·'넣지 않은 줄'·칸마다 고치기) → 고른 것만 저장.
    화면 `CareerImport.tsx`, 공용 `src/lib/career.ts`, 서버 `career-polish/import.ts`(`cleanImported` 가 부분 날짜 → 첫날·말일).
    모델 시험: Haiku 는 항목 빠뜨림 → Sonnet(2,459자 22항목 완전, 약 13초·43원). 시험용 임시 Edge `career-import-eval` 은 v2 로 닫음(항상 410, JWT 필요).
    이전 계정이 돌린 검토 2명 결과는 기록이 없어 다음 계정이 코드를 직접 점검함(큰 문제 없음, 기다림 안내만 '1분쯤'으로).
 
-23. **구글 캘린더에서 보기**(2026-10-10) — 사용자: "일단 구글 캘린더까지만". 표 `calendar_feeds`(마이그레이션 `20261014000000`, RLS 본인만) +
+27. **구글 캘린더에서 보기**(2026-10-10) — 사용자: "일단 구글 캘린더까지만". 표 `calendar_feeds`(마이그레이션 `20261014000000`, RLS 본인만) +
    Edge `calendar-feed` v1(verify_jwt **끔**, `?token=` 으로 주인, 지난 30일~180일 ICS, 날짜만 = 종일·끝낸 건 ✓, `calendar-feed/logic.ts` + Deno 시험) +
    설정 '구글 캘린더에서 보기'(`src/lib/calendarFeed.ts`: 만들기·복사·구글 URL로 추가 바로가기·새 주소·끄기). pg_net 으로 200·일정 33개 확인.
    같이: 카톡 등 앱 안 브라우저 안내 `InAppNotice` 를 모든 탭 맨 위로(작업 탭 카드에선 뺌).
 
-24. **공부 타이머 계속 재기**(2026-10-10) — 사용자: 열품타처럼 잡지 말고 나가 있어도 계속. '자리 비우면 멈춤' 기본 꺼짐, 설정 키를 `studyAwayStop` 으로 바꿔
+28. **공부 타이머 계속 재기**(2026-10-10) — 사용자: 열품타처럼 잡지 말고 나가 있어도 계속. '자리 비우면 멈춤' 기본 꺼짐, 설정 키를 `studyAwayStop` 으로 바꿔
    예전 `studyAutoPause`(켜짐) 저장값은 버림. 시간은 원래 시작 시각 기준이라 앱을 꺼도 계속 감.
-25. **표시(생일·기념일·시험·여행)**(2026-10-11) — 표 `marks`(마이그레이션 `20261015000000`), `src/lib/marks.ts`(매년 반복·여러 날·다가오는 표시),
+29. **표시(생일·기념일·시험·여행)**(2026-10-11) — 표 `marks`(마이그레이션 `20261015000000`), `src/lib/marks.ts`(매년 반복·여러 날·다가오는 표시),
    `MarkEditor.tsx`. 캘린더 칸·날짜 칸·작업 탭 '다가오는 표시'·메뉴 '표시 남기기'. 할 일·한 일과 달리 체크·알림 없음.
-   다음에 할 만한 것: Write/말로 추가에서 "내일 내 생일" → 표시로(지금은 일정으로 들어감), 주·일 시간표 머리에도 표시.
+   다음에 할 만한 것: 주·일 시간표 머리에도 표시.
+30. **Write·말로 추가 → 표시**(2026-10-11, 사용자: "Write에서도 표시로") — parse-schedule **v9**: kind `mark` + `end_date`(여러 날)·`yearly`(매년)·`emoji`.
+   생일·기념일·여행·시각 없는 시험·D-day 는 표시, 그날 할 일("생일 선물 사기")·시각이 있으면 일정. `clean()` 이 표시는 시각·반복·알림·카테고리 비움.
+   앱: `saveParsed` 가 표시는 `saveMark`(분홍), Write '넣은 일정'에 🎂 표시 · 날짜 · 매년, '고치기' → MarkEditor. 말로 추가 미리보기에 '표시' 칸·매년·끝나는 날.
+   확인: Deno 시험 12개, 가짜 로그인 + 가짜 AI 답으로 Playwright(표시 2·일정 1 저장), 실제 Haiku 5.5(pg_net) 한 문장에 7개 —
+   표시 5(내 생일·엄마 생신·결혼기념일 매년, 제주 여행 20~23일, 토익 다음 주 수) + 일정 2(선물 사기 금, 치과 토 15:00) 모두 맞음, 약 1원.
 
 ## 9. 테마·배경 구조
 
