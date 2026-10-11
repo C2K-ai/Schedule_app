@@ -33,6 +33,7 @@ export const TABLES: TableName[] = [
   "study_sessions",
   "career_entries",
   "activities",
+  "marks",
 ];
 type AnyTable = TableName | "profiles";
 
@@ -67,6 +68,7 @@ const emptyDb = (): DB => ({
   study_sessions: {},
   career_entries: {},
   activities: {},
+  marks: {},
   profile: null,
 });
 
@@ -421,6 +423,7 @@ export class PlannerStore {
       "study_sessions",
       "career_entries",
       "activities",
+      "marks",
     ];
     const sorted = [...groups].sort(
       ([a], [b]) => order.indexOf(a.split("|")[0] as AnyTable) - order.indexOf(b.split("|")[0] as AnyTable),

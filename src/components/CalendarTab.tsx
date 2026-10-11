@@ -1,12 +1,15 @@
 "use client";
 
-import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Bookmark, Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { activitiesOnDay, activityMinutes, dayNoteFor, isSomeday, liveCategories, saveDayNote } from "@/lib/planner";
 import { addDays, dayKey, fmtDate, fmtSpan, MIN, sameDay, startOfDay, WEEKDAYS } from "@/lib/time";
+import { marksOnDay } from "@/lib/marks";
+import { COLOR_HEX } from "@/lib/types";
 import { useMedia } from "@/lib/useMedia";
 import { ActivityRow, DidButton } from "./ActivityEditor";
 import { Board, type View } from "./Board";
+import { MarkChip } from "./MarkEditor";
 import { usePlanner } from "./PlannerProvider";
 import { TaskRow } from "./TasksTab";
 import { Button, Card, cx, IconButton, Segmented } from "./ui";
@@ -95,7 +98,7 @@ function DayNote({ day }: { day: Date }) {
 }
 
 function DayPanel({ day }: { day: Date }) {
-  const { tasks, activities, snap, openEditor, openActivity } = usePlanner();
+  const { tasks, activities, marks, snap, openEditor, openActivity, openMark } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const key = dayKey(day);
   const list = tasks
@@ -103,6 +106,7 @@ function DayPanel({ day }: { day: Date }) {
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
   const did = activitiesOnDay(activities, key);
   const didMin = did.reduce((n, a) => n + activityMinutes(a), 0);
+  const dayMarks = marksOnDay(marks, key);
   return (
     <Card className="p-4 md:p-5">
       <div className="flex items-center justify-between gap-2">
@@ -113,6 +117,19 @@ function DayPanel({ day }: { day: Date }) {
           </Button>
           <DidButton onClick={() => openActivity({ day: key })} />
         </div>
+      </div>
+      {/* 표시(생일·기념일·여행) — 할 일·한 일과 따로, 체크 없이 */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {dayMarks.map((m) => (
+          <MarkChip key={m.id} m={m} onClick={() => openMark({ markId: m.id })} />
+        ))}
+        <button
+          type="button"
+          onClick={() => openMark({ day: key })}
+          className="inline-flex items-center gap-1 rounded-xl border border-dashed border-[#f472b6]/60 px-2.5 py-1.5 text-[13px] font-semibold text-[#f472b6] hover:bg-[#f472b6]/10"
+        >
+          <Bookmark size={13} /> 표시{dayMarks.length === 0 && <span className="font-normal text-muted"> · 생일·기념일</span>}
+        </button>
       </div>
       {list.length === 0 ? (
         <p className="py-4 text-sm text-muted">이날 일정이 없어요.</p>
@@ -156,8 +173,9 @@ function DayPanel({ day }: { day: Date }) {
 }
 
 function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date; onSelect: (d: Date) => void }) {
-  const { tasks, activities, snap } = usePlanner();
+  const { tasks, activities, marks: markList, snap } = usePlanner();
   const cells = useMemo(() => monthCells(month), [month]);
+  const flags = useMemo(() => new Map(cells.map((d) => [dayKey(d), marksOnDay(markList, dayKey(d))])), [cells, markList]);
   const marks = useMemo(() => {
     const m = new Map<string, { open: number; done: number }>();
     for (const t of tasks) {
@@ -222,6 +240,17 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
                 {d.getDate()}
               </span>
               {nt?.mood && <span className="text-[12px] leading-none md:text-base">{MOODS[nt.mood - 1].e}</span>}
+              {(flags.get(k)?.length ?? 0) > 0 && (
+                <span className="mt-0.5 flex max-w-full items-center gap-0.5 px-0.5 text-[10px] leading-tight font-semibold md:text-[11px]">
+                  {flags.get(k)![0].emoji ? (
+                    <span>{flags.get(k)![0].emoji}</span>
+                  ) : (
+                    <span className="size-1.5 shrink-0 rounded-full" style={{ background: COLOR_HEX[flags.get(k)![0].color] }} />
+                  )}
+                  <span className="truncate max-md:hidden">{flags.get(k)![0].title}</span>
+                  {flags.get(k)!.length > 1 && <span className="opacity-70">+{flags.get(k)!.length - 1}</span>}
+                </span>
+              )}
 
               <span className="absolute bottom-1 flex items-center gap-1 md:bottom-1.5">
                 {mk && mk.open > 0 && <span className={cx("size-1.5 rounded-full", sel ? "bg-accent-fg" : "bg-accent")} />}

@@ -2,6 +2,7 @@
 
 import {
   BookHeart,
+  Bookmark,
   Brain,
   BriefcaseBusiness,
   HardDrive,
@@ -31,6 +32,7 @@ import { MIN } from "@/lib/time";
 import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
 import { ActivityEditor } from "./ActivityEditor";
+import { MarkEditor } from "./MarkEditor";
 import { AdminSheet } from "./AdminSheet";
 import { DriveSheet } from "./DriveSheet";
 import { StudyNotesSync } from "./StudyNotes";
@@ -372,6 +374,12 @@ export function Shell() {
           >
             <Check size={17} strokeWidth={2.75} /> 한 일 기록
           </button>
+          <button
+            onClick={() => (p.openMark({}), setDrawer(false))}
+            className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#f472b6]/60 text-sm font-bold text-[#f472b6] hover:bg-[#f472b6]/10"
+          >
+            <Bookmark size={17} /> 표시 남기기 <span className="text-xs font-normal text-muted">생일·기념일</span>
+          </button>
           <div className="mt-2 border-t border-line pt-2">{menu}</div>
         </div>
       </aside>
@@ -477,6 +485,7 @@ export function Shell() {
       <WriteAdd />
       <TaskEditor />
       <ActivityEditor />
+      <MarkEditor />
       <PostponeDialog />
       <RescheduleDialog />
       <HabitsSheet />

@@ -2,6 +2,7 @@
 
 import { Check, ChevronDown, ChevronRight, CircleDashed, Cloud, Plus, Repeat, Settings2, Share, SlidersHorizontal, Star, TriangleAlert, X } from "lucide-react";
 import { useMemo, useState, type ReactNode, type RefObject } from "react";
+import { upcomingMarks } from "@/lib/marks";
 import { isIOS, isStandalone } from "@/lib/notify";
 import {
   completeTask,
@@ -22,10 +23,26 @@ import { AuthForm } from "./AuthForm";
 import { BriefingCard } from "./Briefing";
 import { NowStrip } from "./NowBar";
 import { IN_APP } from "./InAppNotice";
+import { MarkChip } from "./MarkEditor";
 import { usePlanner } from "./PlannerProvider";
 import { Card, cx, Empty } from "./ui";
 
 export type TaskFilter = { kind: "all" } | { kind: "starred" } | { kind: "category"; id: string };
+
+/** 다가오는 표시(생일·기념일·여행) — 오늘부터 7일 안. 누르면 고치기 */
+function UpcomingMarks() {
+  const { marks, openMark } = usePlanner();
+  const now = useNow(60_000);
+  const list = useMemo(() => upcomingMarks(marks, dayKey(new Date(now)), 7), [marks, now]);
+  if (!list.length) return null;
+  return (
+    <div className="fade-up flex flex-wrap gap-1.5" aria-label="다가오는 표시">
+      {list.map((u) => (
+        <MarkChip key={u.mark.id} m={u.mark} when={u.inDays} onClick={() => openMark({ markId: u.mark.id })} className="bg-surface" />
+      ))}
+    </div>
+  );
+}
 
 function InstallHint() {
   const { openSheet } = usePlanner();
@@ -323,6 +340,7 @@ export function TasksTab({
     <div className="space-y-5">
       <CloudLoginCard />
       <InstallHint />
+      <UpcomingMarks />
       <BriefingCard />
       <div ref={nowRef}>
         <NowStrip />

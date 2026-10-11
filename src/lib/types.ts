@@ -93,6 +93,21 @@ export interface Activity extends Row {
 }
 
 /** 공부 타이머 과목(열품타 방식) */
+/** 표시 — 생일·기념일·시험·여행처럼 날짜만 있는 것. 할 일도 한 일도 아니라 체크·알림이 없다 */
+export interface Mark extends Row {
+  title: string;
+  notes: string | null;
+  /** 시작 날 YYYY-MM-DD(현지) */
+  day: string;
+  /** 여러 날이면 마지막 날(포함), 하루면 null */
+  end_day: string | null;
+  /** 매년 같은 날(생일·기념일) — 하루짜리만 */
+  yearly: boolean;
+  emoji: string | null;
+  color: ColorKey;
+  created_at: string;
+}
+
 export interface Subject extends Row {
   name: string;
   color: ColorKey;
@@ -267,7 +282,8 @@ export type TableName =
   | "subjects"
   | "study_sessions"
   | "career_entries"
-  | "activities";
+  | "activities"
+  | "marks";
 
 export interface DB {
   tasks: Record<string, Task>;
@@ -280,6 +296,7 @@ export interface DB {
   study_sessions: Record<string, StudySession>;
   career_entries: Record<string, CareerEntry>;
   activities: Record<string, Activity>;
+  marks: Record<string, Mark>;
   profile: Profile | null;
 }
 

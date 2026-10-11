@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -876,6 +876,35 @@ await db.exec(`reset role;`);
   ok(!anonSee, "캘린더 구독: 로그인 안 하면 표를 못 읽음");
   r = await as(A, `delete from public.calendar_feeds returning user_id`);
   ok(r.length === 1, "캘린더 구독: 끄기(내 행 지우기)");
+}
+
+// ── 표시(생일·기념일) ──
+{
+  const as = async (uid, sql, params) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql, params);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const throws = async (uid, sql, params) => {
+    try {
+      await as(uid, sql, params);
+      return false;
+    } catch (e) {
+      return String(e.message);
+    }
+  };
+  const M1 = "dddddddd-0000-4000-8000-0000000000a1";
+  let r = await as(A, `insert into public.marks (id, title, day, yearly, emoji, updated_at) values ($1, '내 생일', '2026-10-11', true, '🎂', now()) returning user_id, color`, [M1]);
+  ok(r.length === 1 && r[0].user_id === A && r[0].color === "pink", "표시: 내 표시 만들기(주인·기본 색)");
+  ok(await throws(A, `insert into public.marks (title, day, end_day) values ('여행', '2026-10-12', '2026-10-10')`), "표시: 끝 날이 시작보다 앞이면 막힘");
+  ok(await throws(A, `insert into public.marks (title, day, end_day, yearly) values ('x', '2026-10-12', '2026-10-13', true)`), "표시: 매년 반복은 하루짜리만");
+  ok((await as(B, `select count(*)::int n from public.marks`))[0].n === 0, "RLS: B 는 A 의 표시를 못 봄");
+  ok((await as(B, `update public.marks set title = 'x' returning id`)).length === 0, "RLS: 남의 표시를 못 고침");
+  const pub = (await q(`select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'marks'`)).length;
+  ok(pub === 1, "표시: 실시간 알림에 들어감");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

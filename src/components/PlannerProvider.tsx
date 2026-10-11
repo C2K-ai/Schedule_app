@@ -19,7 +19,8 @@ import { PlannerStore, type Snapshot } from "@/lib/store";
 import { clearRecovery, inRecovery, linkErrorMessage, markRecovery, RECOVERY_EVENT } from "@/lib/authLinks";
 import { cloudEnabled, getSupabase } from "@/lib/supabase";
 import { addDays, startOfDay, uuid } from "@/lib/time";
-import type { Activity, AlarmKind, Habit, ScheduleKind, Settings, Task } from "@/lib/types";
+import { liveMarks } from "@/lib/marks";
+import type { Activity, AlarmKind, Habit, Mark, ScheduleKind, Settings, Task } from "@/lib/types";
 
 export interface Toast {
   id: string;
@@ -54,6 +55,13 @@ export interface EditorState {
   title?: string;
 }
 
+/** 표시 창(생일·기념일) — id 가 있으면 고치기, 없으면 그날로 새로 */
+export interface MarkEditorState {
+  markId?: string;
+  /** YYYY-MM-DD */
+  day?: string;
+}
+
 /** 한 일 기록 창 — id 가 있으면 고치기, 없으면 새로 */
 export interface ActivityEditorState {
   activityId?: string;
@@ -83,6 +91,10 @@ interface Ctx {
   activityEditor: ActivityEditorState | null;
   openActivity: (e: ActivityEditorState) => void;
   closeActivity: () => void;
+  marks: Mark[];
+  markEditor: MarkEditorState | null;
+  openMark: (e: MarkEditorState) => void;
+  closeMark: () => void;
   /** 못 한 일정 '다시 잡기' 창 */
   reschedule: string | null;
   openReschedule: (taskId: string) => void;
@@ -199,6 +211,8 @@ function Inner({
   const tasks = useMemo(() => liveTasks(snap.db), [snap.db]);
   const habits = useMemo(() => liveHabits(snap.db), [snap.db]);
   const activities = useMemo(() => liveActivities(snap.db), [snap.db]);
+  const marks = useMemo(() => liveMarks(snap.db), [snap.db]);
+  const [markEditor, setMarkEditor] = useState<MarkEditorState | null>(null);
 
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [activityEditor, setActivityEditor] = useState<ActivityEditorState | null>(null);
@@ -312,6 +326,10 @@ function Inner({
     activityEditor,
     openActivity: setActivityEditor,
     closeActivity: () => setActivityEditor(null),
+    marks,
+    markEditor,
+    openMark: setMarkEditor,
+    closeMark: () => setMarkEditor(null),
     reschedule,
     openReschedule: setReschedule,
     closeReschedule: () => setReschedule(null),
