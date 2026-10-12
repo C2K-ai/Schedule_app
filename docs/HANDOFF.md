@@ -30,6 +30,14 @@
   PC 표지가 위로 잘림 등. 금박 책배 줄무늬(모아레)는 완화함.
 - **아이폰**: WebKit 이 없어 직접 못 봄. 섞기 모드를 줄여 Safari 쪽 위험은 줄었지만 사용자(또는 아이폰 가진 사람) 확인 필요.
 
+### 0-6. **진행 중: 시간표 보기 + 에타 캡처로 넣기**(2026-10-12, 사용자가 에브리타임 조사 자료 보고 "1번이랑 2번 같이")
+- 계획: ① habits 에 `in_timetable`(시간표에 보이기, null 허용·기본 false — 섞인 upsert 에서 null 이 와도 안 깨지게)·`place`(강의실) 칸
+  (마이그레이션 `20261016000000_timetable`) ② 캘린더 탭 '시간표' 보기(`TimetableView.tsx`, 순수 계산 `src/lib/timetable.ts`):
+  월~금(토·일 수업 있으면 그 칸도), 학기(=수업들의 start_day~end_day) 고르기·학기 기간 한 번에 바꾸기, 칸 누르면 수업 편집
+  ③ '캡처로 넣기'(`TimetableImport.tsx`): 학기 기간(이번 학기 짐작: 3/2·9/1 부터 16주) → parse-schedule `mode: "timetable"`
+  (전용 프롬프트·스키마 `TIMETABLE_SYSTEM`/`cleanClass`: 과목·요일·시작·끝·강의실) → 미리보기에서 고치고 → 습관으로 저장(학기 기간, 강제 모드 끔).
+- 진행: (여기에 단계마다 적기)
+
 ### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
 - 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf
 - 진행률 페이지: https://claude.ai/artifact/6sH8vdW4FcEFsLpnzu9xec
