@@ -1,6 +1,6 @@
 // deno test parse-schedule/logic.test.ts
 import { assertEquals } from "jsr:@std/assert@1";
-import { calendarTable, checkExisting, checkImage, clean, cleanRemove, MAX_IMAGE_B64, realDate, SCHEMA, type RawItem } from "./logic.ts";
+import { calendarTable, checkExisting, checkImage, clean, cleanClass, cleanRemove, MAX_IMAGE_B64, mergeClasses, realDate, SCHEMA, TIMETABLE_SCHEMA, type RawItem } from "./logic.ts";
 
 const base: RawItem = {
   title: "치과",
@@ -140,4 +140,22 @@ Deno.test("지우기·옮기기: 표시(m1…)도 목록에 들어간다", () =>
   const ex = checkExisting([{ ref: "m1", when: "10/20(화)~10/23(금) (표시)", title: "제주 여행" }, { ref: "t1", when: "a", title: "치과" }]);
   assertEquals(ex.map((e) => e.ref), ["m1", "t1"]);
   assertEquals(cleanRemove(["m1", "m2"], ex), ["m1"]);
+});
+
+Deno.test("시간표: 수업 하나 정리 — 요일·시각이 이상하면 버리고, 길이는 끝 - 시작", () => {
+  const c = cleanClass({ block: "10:30-11:45", title: " 자료구조 ", days: [3, 1, 1, 9], start: "10:30", end: "11:45", place: "  공학관   301 " });
+  assertEquals(c, { title: "자료구조", days: [1, 3], start: "10:30", duration_min: 75, place: "공학관 301" });
+  assertEquals(cleanClass({ title: "x", days: [], start: "10:00", end: "11:00", place: null }), null);
+  assertEquals(cleanClass({ title: "x", days: [1], start: "11:00", end: "10:00", place: null }), null);
+  assertEquals(cleanClass({ title: "x", days: [1], start: "25:00", end: "26:00", place: null }), null);
+  assertEquals(cleanClass({ title: "", days: [1], start: "10:00", end: "11:00", place: null }), null);
+  assertEquals(cleanClass({ title: "x", days: [1], start: "10:00", end: "11:00", place: "" })?.place, null);
+  // 모델이 요일마다 따로 적어도 하나로
+  const m = mergeClasses([
+    cleanClass({ title: "운영체제", days: [2], start: "13:30", end: "14:45", place: "공학관 505" })!,
+    cleanClass({ title: "운영체제", days: [4], start: "13:30", end: "14:45", place: "공학관 505" })!,
+    cleanClass({ title: "운영체제", days: [5], start: "15:00", end: "16:15", place: "공학관 505" })!,
+  ]);
+  assertEquals(m.map((x) => [x.days, x.start]), [[[2, 4], "13:30"], [[5], "15:00"]]);
+  assertEquals(TIMETABLE_SCHEMA.properties.classes.items.required.includes("block"), true);
 });

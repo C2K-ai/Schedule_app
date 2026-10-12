@@ -254,3 +254,87 @@ export function clean(raw: RawItem, categories: { id: string; name: string }[], 
   };
 }
 
+
+// ───────────────────────── 시간표 사진(mode: "timetable") ─────────────────────────
+// 에브리타임·학교 포털·종이 시간표·학원 시간표 사진 → 수업 목록(과목·요일·시작·끝·강의실). 학기 기간은 앱이 정해서 습관으로 저장한다.
+
+export interface RawClass {
+  /** 모델이 시각을 정하기 전에 적는 '읽은 칸'(예: "6-7교시", "10:30-11:45") — 확인용, 저장 안 함 */
+  block?: string;
+  title: string;
+  days: number[];
+  start: string;
+  end: string;
+  place: string | null;
+}
+
+export const TIMETABLE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["classes", "reply"],
+  properties: {
+    classes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        // 키는 이름 순(block → days → end …)으로 나와서, block(읽은 칸)을 먼저 적고 시각을 정하게 된다
+        required: ["block", "title", "days", "start", "end", "place"],
+        properties: {
+          block: { type: "string" },
+          title: { type: "string" },
+          days: { type: "array", items: { type: "integer" } },
+          start: { type: "string" },
+          end: { type: "string" },
+          place: nullable({ type: "string" }),
+        },
+      },
+    },
+    reply: { type: "string" },
+  },
+};
+
+export const TIMETABLE_SYSTEM = `You read a photo or screenshot of a weekly timetable and list every class or fixed weekly slot in it, so a planner app can repeat them every week of the semester.
+It can be anything: the 에브리타임 (Everytime) app, a school portal (수강신청 확인·개인 시간표), a printed or handwritten timetable, a 학원 or lesson schedule, a part-time work schedule, or a plain list of classes.
+
+Common layouts:
+- Grid: weekday columns (월 화 수 목 금, sometimes 토 일) and time rows, one colored block per class with the course name and often the room. Hour labels are often 9 10 11 12 1 2 3 4 5 6 — after 12 they mean the afternoon (1 → 13:00, 2 → 14:00 …).
+- Period (교시) grid or list: rows 1교시, 2교시 … If the image shows each 교시's clock time, use those times. If it does not, assume 1교시 starts at 09:00 and each 교시 is one hour with 50 minutes of class (n교시 = (8+n):00–(8+n):50; consecutive 교시 of one class are one block, e.g. 3–4교시 → 11:00–12:50) unless the user's text says otherwise, and say in reply that the times were guessed from 교시.
+- List: lines such as "자료구조 월 10:30-11:45 공학관 301", "화목 9:00~10:15" or "월3,4 수5".
+
+Rules:
+- block: write first what you see for this class before deciding the times — for a 교시 table the exact period range the block covers, counting the rows from its top border to its bottom border ("6-7교시" for a block over the 6교시 and 7교시 rows) — the course name is usually centered in the block, so never judge the rows by where the text sits; for a time grid the hour lines its top and bottom edges sit on ("10:30-11:45"); for text, the text itself.
+- One entry per course and time slot. If a course meets on several days at the same start and end time, put all those days in "days". If its times differ by day, make separate entries with the same title.
+- days: 0=일 1=월 2=화 3=수 4=목 5=금 6=토 — use the column or day the class is under.
+- start / end: "HH:MM" 24-hour. In a grid, read them from where the block's top and bottom edges sit against the time lines. Classes usually start and end on :00, :15, :30, :45 or :50 (e.g. 10:30–11:45, 13:00–14:50, 09:00–10:15) — pick the nearest such time. Text times in the image always win.
+- title: the course name exactly as shown (no professor name, no room, no course code or section number unless it is part of the name).
+- place: the room or building shown with the class ("공학관 301", "온라인", "B102"), else null.
+- Include personal blocks (동아리, 알바, 학원 …) the same way. Ignore everything that is not a class: app titles and menus, buttons, ads, empty cells, credit (학점) totals, the semester name, professor names.
+- If the user also typed text, follow it (e.g. which classes to skip, when 1교시 starts).
+- If the image is not a timetable, return no classes and say so in reply.
+
+reply: one short, friendly Korean sentence (e.g. "수업 7개를 찾았어요.").`;
+
+/** 모델이 읽은 수업 하나 정리 — 요일·시각이 이상하면 버린다. 길이는 끝 - 시작(5분~12시간) */
+export function cleanClass(raw: RawClass) {
+  const title = String(raw?.title ?? "").trim().slice(0, 120);
+  if (!title) return null;
+  const days = [...new Set((Array.isArray(raw.days) ? raw.days : []).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))].sort();
+  if (!days.length || !isTime(raw.start) || !isTime(raw.end)) return null;
+  const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const duration = mins(raw.end) - mins(raw.start);
+  if (duration < 5 || duration > 720) return null;
+  const place = typeof raw.place === "string" && raw.place.trim() ? raw.place.trim().replace(/\s+/g, " ").slice(0, 60) : null;
+  return { title, days, start: raw.start, duration_min: duration, place };
+}
+
+/** 같은 과목·시각이 겹쳐 나오면 요일을 합친다(모델이 요일마다 따로 적을 때) */
+export function mergeClasses(list: NonNullable<ReturnType<typeof cleanClass>>[]) {
+  const out: typeof list = [];
+  for (const c of list) {
+    const same = out.find((o) => o.title === c.title && o.start === c.start && o.duration_min === c.duration_min && o.place === c.place);
+    if (same) same.days = [...new Set([...same.days, ...c.days])].sort();
+    else out.push({ ...c, days: [...c.days] });
+  }
+  return out;
+}

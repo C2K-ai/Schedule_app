@@ -36,7 +36,13 @@
   월~금(토·일 수업 있으면 그 칸도), 학기(=수업들의 start_day~end_day) 고르기·학기 기간 한 번에 바꾸기, 칸 누르면 수업 편집
   ③ '캡처로 넣기'(`TimetableImport.tsx`): 학기 기간(이번 학기 짐작: 3/2·9/1 부터 16주) → parse-schedule `mode: "timetable"`
   (전용 프롬프트·스키마 `TIMETABLE_SYSTEM`/`cleanClass`: 과목·요일·시작·끝·강의실) → 미리보기에서 고치고 → 습관으로 저장(학기 기간, 강제 모드 끔).
-- 진행: (여기에 단계마다 적기)
+- 사용자 추가 요청: "에타 없는 사람도 다른 시간표 캡처로" → 프롬프트를 에타·학교 포털·종이·학원 시간표·글 목록 모두로(교시만 있으면 1교시 9시·50분 수업으로 짐작하고 reply 에 알림).
+- 진행: ✅ 마이그레이션 적용(서버 + `npm run test:db`) ✅ 타입(Habit.in_timetable·place, createHabit 이 늘 채움)
+  ✅ 서버 `mode: "timetable"` — 모델 **Sonnet 5.5 effort low**(가짜 에타 캡처: Haiku 끝 시각 16개 중 7개 틀림 / Sonnet 다 맞음),
+  스키마 키가 이름 순으로 나오는 걸 이용해 `block`(읽은 칸 "6-7교시")을 먼저 적게 함 → 종이 시간표(교시만) 다 맞음,
+  포털(교시+시각) 4개 중 1개(6-7교시 → 6교시)는 low·medium 둘 다 틀림 → 미리보기에서 고치게. 시험 이미지 `parse-schedule/testdata/*.jpg`(가짜),
+  raw.githubusercontent URL 로 pg_net 에서 image url 호출. Deno 15개 통과. **아직 배포 안 함**(v11 예정).
+  ✅ `src/lib/timetable.ts` + `tests/timetable.test.mjs`. ⏳ 화면(TimetableView·TimetableImport·습관 편집 칸) → 빌드·화면 확인 → 검토 → 배포.
 
 ### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
 - 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf

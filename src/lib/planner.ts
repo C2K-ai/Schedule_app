@@ -585,6 +585,9 @@ export interface HabitInput {
   /** 기간이 있는 반복 — 시작·끝 날짜(YYYY-MM-DD). 없으면 계속 */
   start_day?: string | null;
   end_day?: string | null;
+  /** 시간표에 보이기·강의실 */
+  in_timetable?: boolean;
+  place?: string | null;
 }
 
 /** 습관 회차를 미리 만드는 날 수 — 기간 없는 반복은 7일, 끝나는 날이 있으면 그날까지(최대 62일) */
@@ -610,6 +613,9 @@ export function createHabit(store: PlannerStore, input: HabitInput): Habit {
   const now = nowIso();
   const h: Habit = {
     id: uuid(),
+    // 새 행은 시간표 칸을 늘 채운다 — 옛 행과 한 번에 올라갈 때 빈 칸이 기본값으로 덮이지 않게
+    in_timetable: false,
+    place: null,
     ...input,
     title: input.title.trim(),
     active: true,

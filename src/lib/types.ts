@@ -162,6 +162,10 @@ export interface Habit extends Row {
   /** 기간이 있는 반복("이번 달 매일") — 이 날짜(YYYY-MM-DD, 현지)부터·까지만. 없으면 계속 */
   start_day?: string | null;
   end_day?: string | null;
+  /** 캘린더 '시간표' 보기에 보이기(수업·알바·동아리). 없거나 null 이면 안 보임 */
+  in_timetable?: boolean | null;
+  /** 강의실·장소 — 시간표 칸에 같이 보임(60자까지) */
+  place?: string | null;
   created_at: string;
 }
 

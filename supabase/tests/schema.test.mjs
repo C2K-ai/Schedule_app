@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -905,6 +905,28 @@ await db.exec(`reset role;`);
   ok((await as(B, `update public.marks set title = 'x' returning id`)).length === 0, "RLS: 남의 표시를 못 고침");
   const pub = (await q(`select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'marks'`)).length;
   ok(pub === 1, "표시: 실시간 알림에 들어감");
+}
+
+// ── 시간표: 습관에 '시간표에 보이기'·강의실 ──
+{
+  const H9 = "c0ffee09-1234-4abc-8def-000000000009";
+  const r = await q(
+    `insert into public.habits (id, user_id, title, days, start_time, duration_min, start_day, end_day, in_timetable, place)
+     values ($1, $2, '자료구조', '{1,3}', '10:30', 75, '2026-09-01', '2026-12-21', true, '공학관 301') returning in_timetable, place`,
+    [H9, A],
+  );
+  ok(r[0].in_timetable === true && r[0].place === "공학관 301", "시간표: 수업(요일·학기 기간·강의실) 저장");
+  const d = await q(`insert into public.habits (user_id, title, days, start_time, duration_min) values ($1, '운동', '{1}', '07:00', 30) returning in_timetable, place`, [A]);
+  ok(d[0].in_timetable === false && d[0].place === null, "시간표: 예전처럼 만든 습관은 시간표에 안 보임(기본 false)");
+  const n = await q(`insert into public.habits (user_id, title, days, start_time, duration_min, in_timetable) values ($1, 'x', '{1}', '07:00', 30, null) returning in_timetable`, [A]);
+  ok(n[0].in_timetable === null, "시간표: null 도 받음(섞인 upsert 가 거절되지 않게)");
+  let long = false;
+  try {
+    await q(`insert into public.habits (user_id, title, days, start_time, duration_min, place) values ($1, 'x', '{1}', '07:00', 30, $2)`, [A, "가".repeat(61)]);
+  } catch {
+    long = true;
+  }
+  ok(long, "시간표: 강의실은 60자까지");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");
