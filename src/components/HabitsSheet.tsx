@@ -33,6 +33,8 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
           strict: initial.strict,
           start_day: initial.start_day ?? null,
           end_day: initial.end_day ?? null,
+          in_timetable: Boolean(initial.in_timetable),
+          place: initial.place ?? null,
         }
       : {
           title: "",
@@ -52,10 +54,11 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
     if (!f.title.trim()) return setErr("이름을 적어 주세요");
     if (!f.days.length) return setErr("요일을 하나 이상 고르세요");
     if (f.start_day && f.end_day && f.end_day < f.start_day) return setErr("끝나는 날이 시작하는 날보다 앞이에요");
+    const place = f.in_timetable ? f.place?.trim().slice(0, 60) || null : (f.place ?? null);
     if (initial) {
-      updateHabit(store, initial.id, { ...f, title: f.title.trim() });
+      updateHabit(store, initial.id, { ...f, title: f.title.trim(), place });
     } else {
-      createHabit(store, f);
+      createHabit(store, { ...f, place });
     }
     onDone();
   };
@@ -166,6 +169,22 @@ function HabitForm({ initial, onDone }: { initial: Habit | null; onDone: () => v
         <ColorPicker value={f.color} onChange={(color) => set({ color })} />
       </div>
       <Switch checked={f.strict} onChange={(strict) => set({ strict })} label="강제 모드" desc="안 하면 경고창 + 사유 입력" />
+      <Switch
+        checked={Boolean(f.in_timetable)}
+        onChange={(in_timetable) => set({ in_timetable })}
+        label="시간표에 보이기"
+        desc="캘린더 → 시간표에 수업처럼 보여요(알바·동아리·학원)"
+      />
+      {f.in_timetable && (
+        <input
+          value={f.place ?? ""}
+          onChange={(e) => set({ place: e.target.value })}
+          placeholder="장소·강의실 (선택)"
+          aria-label="장소·강의실"
+          maxLength={60}
+          className={inputCls}
+        />
+      )}
       {err && <p className="text-sm font-semibold text-danger">{err}</p>}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onDone}>
@@ -224,6 +243,7 @@ export function HabitsSheet() {
                       {h.days.length === 7 ? "매일" : ORDER.filter((x) => h.days.includes(x)).map((x) => WEEKDAYS[x]).join("·")} ·{" "}
                       <span className="font-mono tabular-nums">{h.start_time}</span> · {h.duration_min}분
                       {h.end_day && ` · ${habitRangeLabel(h)}`}
+                      {h.in_timetable && " · 시간표"}
                       {!h.active && " · 일시중지"}
                     </p>
                   </div>

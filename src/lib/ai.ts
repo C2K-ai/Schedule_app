@@ -86,6 +86,41 @@ export async function parseSchedule(
   return { items: out.items, reply: out.reply, remove };
 }
 
+/** 시간표 사진(또는 글)에서 읽은 수업 하나 — 서버 logic.ts cleanClass() 결과 */
+export interface ParsedClass {
+  title: string;
+  /** 0=일 … 6=토 */
+  days: number[];
+  /** "HH:MM" */
+  start: string;
+  duration_min: number;
+  /** 강의실 */
+  place: string | null;
+}
+
+/** 시간표 사진·캡처(에타·학교 포털·종이·학원)나 글 → 수업 목록. 사진은 Sonnet 이 읽어서 10~30초 걸린다 */
+export async function parseTimetable(
+  client: SupabaseClient,
+  input: { image?: { media_type: string; data: string }; text?: string },
+): Promise<{ classes: ParsedClass[]; reply: string }> {
+  const now = new Date();
+  const { data, error } = await client.functions.invoke("parse-schedule", {
+    body: {
+      mode: "timetable",
+      text: input.text ?? "",
+      ...(input.image ? { image: { media_type: input.image.media_type, data: input.image.data } } : {}),
+      today: dayKey(now),
+      time: toHHMM(now),
+    },
+  });
+  if (error) {
+    const { code, limit } = await errorBody(error);
+    throw new Error(message(code, limit) ?? (navigator.onLine ? "시간표를 읽지 못했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
+  }
+  const out = data as { classes?: ParsedClass[]; reply?: string };
+  return { classes: out.classes ?? [], reply: out.reply ?? "" };
+}
+
 /** AI 가 지우자고 고른 기존 일정 하나 */
 export interface AiRemoval {
   kind: "task" | "habit" | "mark";

@@ -12,6 +12,7 @@ import { Board, type View } from "./Board";
 import { MarkChip } from "./MarkEditor";
 import { usePlanner } from "./PlannerProvider";
 import { TaskRow } from "./TasksTab";
+import { TimetableView } from "./TimetableView";
 import { Button, Card, cx, IconButton, Segmented } from "./ui";
 
 export const MOODS = [
@@ -281,7 +282,7 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
 }
 
 export function CalendarTab() {
-  const [mode, setMode] = useState<"month" | View>("month");
+  const [mode, setMode] = useState<"month" | View | "timetable">("month");
   const [selected, setSelected] = useState(() => startOfDay(new Date()));
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const wide = useMedia("(min-width: 1024px)");
@@ -300,6 +301,7 @@ export function CalendarTab() {
             { value: "month", label: "월" },
             { value: "week", label: "주" },
             { value: "day", label: "일" },
+            { value: "timetable", label: "시간표" },
           ]}
         />
         {mode === "month" && (
@@ -320,7 +322,9 @@ export function CalendarTab() {
         )}
       </div>
 
-      {mode === "month" ? (
+      {mode === "timetable" ? (
+        <TimetableView />
+      ) : mode === "month" ? (
         <div className={cx("grid items-start gap-4", wide && "grid-cols-[minmax(0,1fr)_400px]")}>
           <Card className="p-3 md:p-4">
             <MonthGrid month={month} selected={selected} onSelect={pick} />

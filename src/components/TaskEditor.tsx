@@ -175,7 +175,13 @@ function EditorBody({ editor }: { editor: EditorState }) {
       open
       onClose={closeEditor}
       title={task ? "일정 편집" : "새 일정"}
-      subtitle={task?.habit_id ? "습관에서 만들어진 회차입니다 — 반복 설정은 '습관'에서 바꿉니다." : undefined}
+      subtitle={
+        task?.habit_id
+          ? snap.db.habits[task.habit_id]?.in_timetable
+            ? "시간표 수업의 한 회차예요 — 요일·시간·강의실은 캘린더 → 시간표에서 바꿔요."
+            : "습관에서 만들어진 회차입니다 — 반복 설정은 '습관'에서 바꿉니다."
+          : undefined
+      }
       footer={
         <div className="flex items-center gap-2">
           {task && (
