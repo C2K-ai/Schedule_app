@@ -159,7 +159,9 @@ export function existingForAi(db: DB, now = new Date()): ExistingForAi {
     .sort((a, b) => Math.abs(Date.parse(a.starts_at) - now.getTime()) - Math.abs(Date.parse(b.starts_at) - now.getTime()))
     .slice(0, 220)
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-  const habits = liveHabits(db).filter((h) => h.active).slice(0, 30);
+  const habits = liveHabits(db)
+    .filter((h) => h.active && !h.in_timetable)
+    .slice(0, 30);
   const lines: ExistingForAi["lines"] = [];
   const byRef = new Map<string, AiRemoval>();
   tasks.forEach((t, i) => {

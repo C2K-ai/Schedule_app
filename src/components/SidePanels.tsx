@@ -27,7 +27,7 @@ export function HabitMini() {
     for (const t of tasks) if (t.habit_id && t.occurrence_date) m.set(`${t.habit_id}:${t.occurrence_date}`, t);
     return m;
   }, [tasks]);
-  const active = habits.filter((h) => h.active);
+  const active = habits.filter((h) => h.active && !h.in_timetable);
 
   return (
     <Card>

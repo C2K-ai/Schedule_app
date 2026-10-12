@@ -22,13 +22,12 @@ import {
 } from "@/lib/timetable";
 import { dayKey, WEEKDAYS } from "@/lib/time";
 import { COLOR_HEX, type ColorKey, type Habit } from "@/lib/types";
+import { useMedia } from "@/lib/useMedia";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
 import { DayPicker, PeriodInputs, TimetableImport } from "./TimetableImport";
 import { Button, Card, ColorPicker, cx, Empty, inputCls, Label, Modal } from "./ui";
 
-/** 한 시간 높이(px) */
-const HOUR = 54;
 
 /** 캘린더 탭 '시간표' — 수업(시간표에 보이는 반복)을 학기별 주간 칸으로. 칸을 누르면 고치기 */
 export function TimetableView() {
@@ -122,7 +121,7 @@ export function TimetableView() {
           />
         </Card>
       )}
-      <p className="text-xs text-faint">수업은 반복 일정으로 들어가서 주·일 보기와 알림에도 나와요. 습관(☰ → 습관)에서 &lsquo;시간표에 보이기&rsquo;를 켜면 알바·동아리도 여기 보여요.</p>
+      <p className="text-xs text-faint">시간표는 캘린더 일정과 따로예요 — 수업은 여기에만 보이고 주·일 보기·알림에는 들어가지 않아요. 알바·동아리도 &lsquo;수업&rsquo;으로 넣으면 같이 보여요.</p>
 
       {editing && (
         <ClassEditor initial={editing === "new" ? null : editing} sem={sem} askPeriod={!group?.start || !group?.end} onClose={() => setEditing(null)} />
@@ -145,6 +144,8 @@ export function TimetableView() {
 }
 
 function Grid({ group, today, now, onPick }: { group: SemesterGroup; today: string; now: number; onPick: (h: Habit) => void }) {
+  const wide = useMedia("(min-width: 768px)");
+  const HOUR = wide ? 60 : 54;
   const days = gridDays(group.habits);
   const { from, to } = hourRange(group.habits);
   const blocks = blocksFor(group.habits, days);
@@ -152,7 +153,11 @@ function Grid({ group, today, now, onPick }: { group: SemesterGroup; today: stri
   const d = new Date(now);
   const todayDow = d.getDay();
   const nowMin = d.getHours() * 60 + d.getMinutes();
-  const cols = `2rem repeat(${days.length}, minmax(0, 1fr))`;
+  const showNow = live && days.includes(todayDow) && nowMin >= from * 60 && nowMin <= to * 60;
+  const nowTop = ((nowMin - from * 60) / 60) * HOUR;
+  // 수업 없는 요일(공강)은 좁게 — 빈 세로 띠가 화면을 크게 차지하지 않게
+  const busy = new Set(blocks.map((b) => b.day));
+  const cols = `2.5rem ${days.map((x) => (busy.has(x) ? "minmax(0, 1fr)" : "minmax(0, 0.45fr)")).join(" ")}`;
   return (
     <div className="select-none">
       <div className="grid border-b border-line" style={{ gridTemplateColumns: cols }}>
@@ -169,45 +174,71 @@ function Grid({ group, today, now, onPick }: { group: SemesterGroup; today: stri
           </span>
         ))}
       </div>
-      <div className="grid" style={{ gridTemplateColumns: cols, height: (to - from) * HOUR }}>
-        <div className="relative">
-          {Array.from({ length: to - from }, (_, i) => (
-            <span key={i} className="absolute right-1.5 font-mono text-[10px] text-faint tabular-nums" style={{ top: i * HOUR + 2 }}>
+      {/* 위·아래 끝 시각 글자가 잘리지 않게 위아래로 조금 띄운다 */}
+      <div className="grid py-2" style={{ gridTemplateColumns: cols }}>
+        {/* 시각 칸: 숫자를 시각 선 높이에 맞춘다(선 = 그 시각) */}
+        <div className="relative" style={{ height: (to - from) * HOUR }}>
+          {Array.from({ length: to - from + 1 }, (_, i) => (
+            <span
+              key={i}
+              className="absolute right-2 -translate-y-1/2 font-mono text-[10px] leading-none text-faint tabular-nums"
+              style={{ top: i * HOUR }}
+            >
               {from + i}
             </span>
           ))}
+          {showNow && (
+            <span
+              className="absolute right-1 z-10 -translate-y-1/2 rounded-md bg-danger px-1 py-0.5 font-mono text-[9px] leading-none font-bold text-white tabular-nums"
+              style={{ top: nowTop }}
+            >
+              {toHHMM(nowMin)}
+            </span>
+          )}
         </div>
         {days.map((x) => (
-          <div key={x} className={cx("relative border-l border-line", live && x === todayDow && "bg-accent/5")}>
-            {Array.from({ length: to - from - 1 }, (_, i) => (
-              <span key={i} className="absolute inset-x-0 border-t border-line/60" style={{ top: (i + 1) * HOUR }} />
+          <div key={x} className={cx("relative border-l border-line", live && x === todayDow && "bg-accent/5")} style={{ height: (to - from) * HOUR }}>
+            {Array.from({ length: to - from + 1 }, (_, i) => (
+              <span key={i} className="absolute inset-x-0 border-t border-line/60" style={{ top: i * HOUR }} />
             ))}
+            {!busy.has(x) && (
+              <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[11px] font-semibold tracking-[0.3em] text-faint [writing-mode:vertical-rl]">
+                공강
+              </span>
+            )}
             {blocks
               .filter((b) => b.day === x)
-              .map((b) => (
-                <button
-                  key={b.habit.id}
-                  type="button"
-                  onClick={() => onPick(b.habit)}
-                  title={`${b.habit.title} ${toHHMM(b.start)}–${toHHMM(b.start + b.habit.duration_min)}${b.habit.place ? ` · ${b.habit.place}` : ""}`}
-                  className="absolute overflow-hidden rounded-lg px-1 py-0.5 text-left text-[#111] shadow-sm transition hover:brightness-95 active:scale-[0.98]"
-                  style={{
-                    top: ((b.start - from * 60) / 60) * HOUR + 1,
-                    height: Math.max(18, ((b.end - b.start) / 60) * HOUR - 2),
-                    left: `calc(${(b.lane / b.lanes) * 100}% + 1px)`,
-                    width: `calc(${100 / b.lanes}% - 2px)`,
-                    background: COLOR_HEX[b.habit.color],
-                  }}
-                >
-                  <span className="line-clamp-3 text-[11px] leading-tight font-bold break-all">{b.habit.title}</span>
-                  {b.habit.place && <span className="mt-0.5 line-clamp-2 text-[10px] leading-tight opacity-75 break-all">{b.habit.place}</span>}
-                  {b.start + b.habit.duration_min > 24 * 60 && (
-                    <span className="mt-0.5 block text-[10px] leading-tight font-semibold opacity-75">→ 다음 날 {toHHMM(b.start + b.habit.duration_min)}</span>
-                  )}
-                </button>
-              ))}
-            {live && x === todayDow && nowMin >= from * 60 && nowMin <= to * 60 && (
-              <span className="pointer-events-none absolute inset-x-0 z-10 h-0.5 bg-danger" style={{ top: ((nowMin - from * 60) / 60) * HOUR }} />
+              .map((b) => {
+                const c = COLOR_HEX[b.habit.color];
+                return (
+                  <button
+                    key={b.habit.id}
+                    type="button"
+                    onClick={() => onPick(b.habit)}
+                    title={`${b.habit.title} ${toHHMM(b.start)}–${toHHMM(b.start + b.habit.duration_min)}${b.habit.place ? ` · ${b.habit.place}` : ""}`}
+                    // 모든 칸 같은 모서리(10px)·여백. 색은 테마 바탕에 섞은 은은한 칸 + 왼쪽 색 띠 — 글자는 늘 테마 글자색이라 잘 읽힌다
+                    className="absolute overflow-hidden rounded-[10px] px-1.5 py-1 text-left text-fg transition hover:brightness-110 active:scale-[0.98] md:px-2.5 md:py-2"
+                    style={{
+                      top: ((b.start - from * 60) / 60) * HOUR + 1.5,
+                      height: Math.max(20, ((b.end - b.start) / 60) * HOUR - 3),
+                      left: `calc(${(b.lane / b.lanes) * 100}% + 2px)`,
+                      width: `calc(${100 / b.lanes}% - 4px)`,
+                      background: `color-mix(in oklab, ${c} 30%, var(--bg))`,
+                      boxShadow: `inset 3px 0 0 ${c}, inset 0 0 0 1px color-mix(in oklab, ${c} 45%, transparent)`,
+                    }}
+                  >
+                    <span className="line-clamp-3 text-[11px] leading-snug font-bold [word-break:keep-all] [overflow-wrap:anywhere] md:text-[13px]">{b.habit.title}</span>
+                    {b.habit.place && <span className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-muted [word-break:keep-all] [overflow-wrap:anywhere] md:mt-1 md:text-xs">{b.habit.place}</span>}
+                    {b.start + b.habit.duration_min > 24 * 60 && (
+                      <span className="mt-0.5 block text-[10px] leading-tight font-semibold text-muted">→ 다음 날 {toHHMM(b.start + b.habit.duration_min)}</span>
+                    )}
+                  </button>
+                );
+              })}
+            {showNow && x === todayDow && (
+              <span className="pointer-events-none absolute inset-x-0 z-10 h-0.5 bg-danger" style={{ top: nowTop }}>
+                <span className="absolute -top-[3px] -left-[4px] size-2 rounded-full bg-danger" />
+              </span>
             )}
           </div>
         ))}
@@ -218,7 +249,7 @@ function Grid({ group, today, now, onPick }: { group: SemesterGroup; today: stri
 
 /** 수업 하나 넣기·고치기 — 이름·강의실·요일·시작·끝·색. 학기 기간은 학기 전체에서 같이 바꾼다 */
 function ClassEditor({ initial, sem, askPeriod, onClose }: { initial: Habit | null; sem: Semester; askPeriod: boolean; onClose: () => void }) {
-  const { store, settings } = usePlanner();
+  const { store } = usePlanner();
   const [title, setTitle] = useState(initial?.title ?? "");
   const [place, setPlace] = useState(initial?.place ?? "");
   const [days, setDays] = useState<number[]>(initial?.days ?? [1]);
@@ -239,7 +270,8 @@ function ClassEditor({ initial, sem, askPeriod, onClose }: { initial: Habit | nu
     else
       createHabit(store, {
         ...fields,
-        reminder_offsets: settings.defaultOffsets,
+        // 수업은 일정(회차)·알림을 만들지 않는다 — 시간표에만
+        reminder_offsets: [],
         sound_id: null,
         strict: false,
         start_day: range.start || null,
@@ -254,7 +286,7 @@ function ClassEditor({ initial, sem, askPeriod, onClose }: { initial: Habit | nu
       open
       onClose={onClose}
       title={initial ? "수업 고치기" : "수업 넣기"}
-      subtitle={askPeriod ? undefined : `${periodText(sem.start, sem.end)} 동안 매주 반복돼요`}
+      subtitle={askPeriod ? undefined : `${periodText(sem.start, sem.end)} 학기 시간표에 들어가요`}
       footer={
         <div className="flex gap-2">
           {initial && (
@@ -299,7 +331,7 @@ function ClassEditor({ initial, sem, askPeriod, onClose }: { initial: Habit | nu
         {toMin(end) < toMin(start) && <p className="-mt-2 text-xs font-semibold text-muted">다음 날 {end}까지예요 (밤새 하는 일)</p>}
         {askPeriod && (
           <div>
-            <Label>학기 기간 — 이 동안 매주 반복돼요</Label>
+            <Label>학기 기간(개강 ~ 종강)</Label>
             <PeriodInputs value={range} onChange={setRange} />
           </div>
         )}
@@ -330,7 +362,7 @@ function PeriodEditor({ group, onClose, onSaved }: { group: SemesterGroup; onClo
       onClose={onClose}
       size="sm"
       title="학기 기간"
-      subtitle={`수업 ${group.own.length}개가 이 기간 동안만 매주 반복돼요. 종강하면 알아서 멈춰요.`}
+      subtitle={`수업 ${group.own.length}개가 이 학기(개강 ~ 종강) 시간표로 보여요.`}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>

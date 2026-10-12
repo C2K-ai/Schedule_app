@@ -84,7 +84,12 @@ function WriteBody() {
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   // 복사한 사진 붙여넣기 — 창이 떠 있는 동안 Ctrl+V(폰은 입력칸에 붙여넣기), 또는 '붙여넣기' 버튼
-  usePasteImage((f) => void pick(f));
+  const bodyRef = useRef<HTMLDivElement>(null);
+  usePasteImage((f) => {
+    if (busy) return false;
+    void pick(f);
+    return true;
+  }, bodyRef);
   const pasteButton = async () => {
     setErr(null);
     try {
@@ -171,7 +176,7 @@ function WriteBody() {
         </div>
       }
     >
-      <div className="space-y-4">
+      <div ref={bodyRef} className="space-y-4">
         {shared && <p className="mb-2 text-sm text-muted">다른 앱에서 공유받은 글이에요. 날짜·시간이 들어 있는지 보고 넣으세요.</p>}
         <form
           className="flex gap-2"
@@ -219,8 +224,10 @@ function WriteBody() {
             <img src={photo.preview} alt="넣을 사진" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
             <div className="min-w-0 flex-1 text-sm text-muted">
               <p>사진 속 일정을 찾아 넣어요. 카톡 캡처면 약속 날짜·시간을 읽어요.</p>
+              {/* 읽는 중엔 숨김 — 지금 읽는 결과가 들어간 뒤 같은 사진을 시간표로 또 넣으면 수업이 두 번 생긴다 */}
               <button
                 type="button"
+                hidden={busy}
                 onClick={() => {
                   openSheet(null);
                   openTimetable({ import: true, photo });

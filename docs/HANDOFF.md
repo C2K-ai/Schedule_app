@@ -93,7 +93,7 @@
 | 작업·캘린더·타이머·프로필 탭 | `TasksTab.tsx`, `CalendarTab.tsx`, `TimerTab.tsx`/`Study.tsx`, `MeTab.tsx` |
 | 말로·적어서 일정 넣기(AI) | `VoiceAdd.tsx`, `WriteAdd.tsx`, `lib/ai.ts`(`saveParsed`), `lib/speech.ts`, Edge `parse-schedule`(`logic.ts`) |
 | 표시(생일·기념일·여행) | `MarkEditor.tsx`(MarkEditor·MarkChip), `lib/marks.ts`, 표 `marks` |
-| 시간표(학기별 주간 칸·사진으로 넣기) | `TimetableView.tsx`(칸·수업 고치기·학기 기간), `TimetableImport.tsx`(사진/글 → 미리보기), `lib/timetable.ts`, 습관 `in_timetable`·`place`, Edge `parse-schedule` mode "timetable" |
+| 시간표(학기별 주간 칸·사진으로 넣기, **일정·알림과 따로**) | `TimetableView.tsx`(칸·수업 고치기·학기 기간), `TimetableImport.tsx`(사진/글 → 미리보기), `lib/timetable.ts`, 습관 `in_timetable`·`place`(회차 안 만듦 — `planner.ts` `isClass`·`dropClassOccurrences`), Edge `parse-schedule` mode "timetable", 디자인 값 `docs/design/timetable-ui-guide.md` |
 | 커리어 기록 + AI 다듬기 | `Career.tsx`, Edge `career-polish` |
 | 알림(앱 안 알람·서버 푸시) | `ReminderEngine.tsx`, `lib/reminders.ts`, `lib/push.ts`, `public/sw.js`, Edge `send-due-notifications`·`notification-action` |
 | 폰 잠금화면 일정 카드 | `lib/lockCard.ts`, `LockCardSync.tsx`, `public/sw.js`(lock-card) |
@@ -108,11 +108,11 @@
 
 ## 4. 서버(Supabase) 현재 상태
 
-- **적용된 마이그레이션**: `20261005000000_init` ~ `20261016000000_timetable` 전부.
+- **적용된 마이그레이션**: `20261005000000_init` ~ `20261017000000_timetable_no_tasks` 전부.
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v11(Haiku 5.5, 시간표 사진은 Sonnet 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v1(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
+- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v1(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
   `signup` v3(**JWT 검증 끔**) · `send-due-notifications` v4 · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
@@ -269,6 +269,18 @@
    예전 GET(?text=)도 그대로 받음. Write 사진에서 '시간표에 넣기' → 캘린더 시간표 + 사진으로 넣기 창(그 사진 그대로), ☰ 메뉴 '시간표'
    (`OPEN_TIMETABLE` 이벤트 + `pendingTimetable`). 위쪽 '배경만 보기' 아이콘은 사진 넣기로 헷갈려 눈 모양으로.
    Playwright: 사진 버튼 → Write, Write → 시간표, ☰ 시간표, 붙여넣기 이벤트, 서비스 워커 공유(POST → ?shared=1 → 사진·글) 다 확인.
+
+33. **시간표는 시간표만 + 칸 디자인 다듬기 + 카톡 캡처 정확도**(2026-10-12) —
+   사용자: "시간표는 시간표야, 캘린더 일정에 넣으면 더러워져 — 수강계획을 일정으로 넣지 마". → 수업(`in_timetable` 습관)은 **회차(일정)·알림·'했나요?'를
+   만들지 않음**: 앱 `materializeHabits` 가 수업을 건너뛰고 `dropClassOccurrences` 로 예전 수업 회차를 지운 표시, `updateHabit` 의 habitOn 도 수업은 false,
+   서버 `materialize_habits` 도 건너뜀 + 이미 있던 수업 회차 88개 지운 표시(마이그레이션 `20261017000000_timetable_no_tasks`, UPDATE 만).
+   ☰ 습관 목록·습관 패널·AI 지우기 목록에서 수업 뺌(`routineHabits`), 습관 편집의 '시간표에 보이기' 스위치 없앰(시간표는 캘린더 → 시간표에서만).
+   Write 에 시간표 사진을 넣으면 일정 대신 "시간표 사진 같아요 — '시간표에 넣기'"로 안내(프롬프트).
+   칸 디자인(사용자가 붙인 5가지 지적 — `docs/design/timetable-ui-guide.md`): 모서리 10px 하나, 시각 숫자를 선 높이에 + 지금 시각 배지(선 위치는 원래 맞았음),
+   칸 여백 폰 6/4px·PC 10/8px, 색은 테마 바탕에 30% 섞은 칸 + 왼쪽 색 띠(글자는 테마 글자색), 수업 없는 평일은 좁게 + '공강', 낱말 단위 줄바꿈.
+   붙여넣기 검토 반영: 글도 같이 있으면(엑셀 셀 등) 글 붙여넣기를 그대로, 받을 때만 막음, 위에 뜬 다른 창 입력칸은 안 건드림. Write 가 사진을 읽는 중엔 '시간표에 넣기' 숨김.
+   **parse-schedule v12**: 사진(카톡 캡처 등)도 **Sonnet 5.5 effort low**(가짜 카톡 캡처에서 Haiku 는 "다음 주 수요일까지"를 이번 주로, Sonnet 맞음), 글은 Haiku 그대로.
+   카톡 규칙: 마지막에 정한 시각, 짧은 대답은 앞 메시지 전체 뜻으로, 대화 날짜줄 기준, '~까지'는 날짜 일정(언젠가 아님). 시험 이미지 `testdata/kakao-sample.jpg`(가짜).
 
 ## 9. 테마·배경 구조
 

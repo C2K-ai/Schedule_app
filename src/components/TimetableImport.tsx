@@ -35,7 +35,7 @@ export function TimetableImport({
   /** 넣은 학기 key(start~end) */
   onSaved: (key: string) => void;
 }) {
-  const { store, settings, session } = usePlanner();
+  const { store, session } = usePlanner();
   const [range, setRange] = useState<Semester>(sem);
   const [photo, setPhoto] = useState<Photo | null>(initialPhoto ?? null);
   const [text, setText] = useState("");
@@ -58,9 +58,12 @@ export function TimetableImport({
   };
 
   // 복사한 사진 붙여넣기(Ctrl+V 또는 버튼) — 미리보기 단계에선 무시
+  const bodyRef = useRef<HTMLDivElement>(null);
   usePasteImage((f) => {
-    if (!drafts && !busy) void pick(f);
-  });
+    if (drafts || busy) return false;
+    void pick(f);
+    return true;
+  }, bodyRef);
   const pasteButton = async () => {
     setErr(null);
     try {
@@ -107,7 +110,7 @@ export function TimetableImport({
         days: [...d.days].sort(),
         start_time: d.start,
         duration_min: spanMin(d.start, d.end),
-        reminder_offsets: settings.defaultOffsets,
+        reminder_offsets: [],
         sound_id: null,
         strict: false,
         start_day: used.start,
@@ -125,7 +128,7 @@ export function TimetableImport({
       onClose={busy ? undefined : onClose}
       size="lg"
       title="시간표 사진으로 넣기"
-      subtitle={drafts ? `${periodText(used.start, used.end)} 동안 매주 반복돼요. 틀린 건 고치고 넣으세요.` : "에브리타임·학교 포털 캡처, 종이 시간표 사진, 학원 시간표 다 돼요."}
+      subtitle={drafts ? `${periodText(used.start, used.end)} 시간표에 들어가요(캘린더 일정·알림과는 따로). 틀린 건 고치고 넣으세요.` : "에브리타임·학교 포털 캡처, 종이 시간표 사진, 학원 시간표 다 돼요."}
       footer={
         drafts ? (
           <div className="flex gap-2">
@@ -183,7 +186,7 @@ export function TimetableImport({
           </ul>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div ref={bodyRef} className="space-y-4">
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pick(e.target.files?.[0]).finally(() => (e.target.value = ""))} />
           {photo ? (
             <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface-2 p-2">
@@ -229,7 +232,7 @@ export function TimetableImport({
             />
           </div>
           <div>
-            <Label>학기 기간 — 이 동안 매주 반복돼요</Label>
+            <Label>학기 기간(개강 ~ 종강)</Label>
             <PeriodInputs value={range} onChange={setRange} disabled={busy} />
           </div>
           {err && (

@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql", "20261017000000_timetable_no_tasks.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -927,6 +927,18 @@ await db.exec(`reset role;`);
     long = true;
   }
   ok(long, "시간표: 강의실은 60자까지");
+  // 수업은 서버가 회차를 만들지 않는다(매일 수업 하나 + 같은 조건의 보통 습관 하나)
+  const C1 = "c0ffee10-1234-4abc-8def-000000000010";
+  const R1 = "c0ffee11-1234-4abc-8def-000000000011";
+  await q(
+    `insert into public.habits (id, user_id, title, days, start_time, duration_min, in_timetable, created_at, updated_at)
+     values ($1, $3, '매일 수업', '{0,1,2,3,4,5,6}', '23:59', 50, true, now() - interval '2 day', now()),
+            ($2, $3, '매일 습관', '{0,1,2,3,4,5,6}', '23:59', 50, false, now() - interval '2 day', now())`,
+    [C1, R1, A],
+  );
+  await q(`select public.materialize_habits()`);
+  const cnt = async (id) => (await q(`select count(*)::int n from public.tasks where habit_id = $1 and deleted_at is null`, [id]))[0].n;
+  ok((await cnt(C1)) === 0 && (await cnt(R1)) > 0, `시간표: 수업은 회차를 안 만듦(수업 ${await cnt(C1)}, 습관 ${await cnt(R1)})`);
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

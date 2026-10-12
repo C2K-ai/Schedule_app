@@ -28,6 +28,8 @@ const MODEL = "claude-haiku-5-5";
 // 시간표 사진은 칸의 위·아래 끝으로 시각을 읽어야 해서 Sonnet — 시험에서 Haiku 는 끝 시각을 16개 중 7개 틀림, Sonnet 은 다 맞음.
 // 한 학기에 한두 번이라 비용은 괜찮다
 const TIMETABLE_MODEL = "claude-sonnet-5-5";
+// 사진(카톡 캡처·공지)도 Sonnet — 가짜 카톡 캡처 시험에서 Haiku 는 "다음 주 수요일까지"를 이번 주로 넣음, Sonnet 은 맞음. 글만 오면 Haiku
+const PHOTO_MODEL = "claude-sonnet-5-5";
 const MAX_TEXT = 2000;
 
 interface Body {
@@ -79,7 +81,7 @@ Deno.serve(async (req) => {
     .slice(0, 50);
   const timetable = body.mode === "timetable";
   const existing = timetable ? [] : checkExisting(body.existing);
-  const model = timetable ? TIMETABLE_MODEL : MODEL;
+  const model = timetable ? TIMETABLE_MODEL : image ? PHOTO_MODEL : MODEL;
 
   let apiKey: string;
   try {
@@ -144,26 +146,31 @@ Deno.serve(async (req) => {
   ].join("\n\n");
 
   try {
-    const res = await client.messages.create({
-      model: MODEL,
-      max_tokens: 8000,
-      // 날짜 표를 보고 옮겨 적는 일이라 생각 단계 없이도 정확하다(시험 결과) — 더 빠르고 싸다
-      thinking: { type: "disabled" },
-      output_config: { format: { type: "json_schema", schema: SCHEMA } },
-      system: SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: image
-            ? [
-                { type: "image", source: { type: "base64", media_type: image.media_type, data: image.data } },
-                { type: "text", text: userMsg },
-              ]
-            : userMsg,
-        },
-      ],
-    });
-    await finish(db, slot, res.model ?? MODEL, res.usage);
+    const format = { type: "json_schema" as const, schema: SCHEMA };
+    const res = await client.messages.create(
+      {
+        model,
+        max_tokens: 8000,
+        // 글: 날짜 표를 보고 옮겨 적는 일이라 Haiku 가 생각 단계 없이도 정확하다(시험 결과) — 더 빠르고 싸다. 사진: Sonnet 이 조금만 생각
+        ...(model === MODEL
+          ? { thinking: { type: "disabled" as const }, output_config: { format } }
+          : { output_config: { effort: "low" as const, format } }),
+        system: SYSTEM,
+        messages: [
+          {
+            role: "user",
+            content: image
+              ? [
+                  { type: "image", source: { type: "base64", media_type: image.media_type, data: image.data } },
+                  { type: "text", text: userMsg },
+                ]
+              : userMsg,
+          },
+        ],
+      },
+      { timeout: image ? 90_000 : 45_000 },
+    );
+    await finish(db, slot, res.model ?? model, res.usage);
     if (res.stop_reason === "refusal") return json({ error: "refused" }, 422);
     if (res.stop_reason === "max_tokens") return json({ error: "too_long" }, 422);
     const out = res.content.find((b) => b.type === "text");

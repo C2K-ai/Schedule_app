@@ -30,6 +30,12 @@ export function liveTasks(db: DB): Task[] {
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 }
 
+/** 시간표 수업인가 — 시간표에만 보이고 일정(회차)·알림·습관 목록엔 안 들어간다(사용자: "시간표는 시간표") */
+export const isClass = (h: Pick<Habit, "in_timetable">) => Boolean(h.in_timetable);
+
+/** 습관 목록·습관 패널·AI 지우기 목록에 쓰는 반복 — 시간표 수업은 뺀다 */
+export const routineHabits = (list: Habit[]) => list.filter((h) => !isClass(h));
+
 export function liveHabits(db: DB): Habit[] {
   return Object.values(db.habits)
     .filter((h) => !h.deleted_at)
@@ -602,7 +608,7 @@ export const inHabitRange = (h: Pick<Habit, "start_day" | "end_day">, key: strin
 export function habitHorizon(habits: Habit[], today: Date): number {
   let n = HABIT_AHEAD;
   for (const h of habits) {
-    if (!h.active || h.deleted_at || !h.end_day) continue;
+    if (!h.active || h.deleted_at || !h.end_day || isClass(h)) continue;
     const days = Math.round((parseDayKey(h.end_day).getTime() - startOfDay(today).getTime()) / DAY) + 1;
     n = Math.max(n, Math.min(HABIT_MAX_AHEAD, days));
   }
@@ -629,7 +635,8 @@ export function createHabit(store: PlannerStore, input: HabitInput): Habit {
 }
 
 /** 이 날(YYYY-MM-DD)에 이 습관 회차가 있어야 하나 — 켜져 있고, 그 요일이고, 기간 안 */
-const habitOn = (h: Habit, key: string) => h.active && !h.deleted_at && h.days.includes(parseDayKey(key).getDay()) && inHabitRange(h, key);
+const habitOn = (h: Habit, key: string) =>
+  !isClass(h) && h.active && !h.deleted_at && h.days.includes(parseDayKey(key).getDay()) && inHabitRange(h, key);
 
 /**
  * 습관을 고치면 오늘 이후 아직 시작 안 한 회차도 같이 고친다.
@@ -689,6 +696,18 @@ export function updateHabit(store: PlannerStore, id: string, patch: Partial<Habi
   materializeHabits(store, [startOfDay(new Date())]);
 }
 
+/**
+ * 시간표 수업으로 만들어졌던 회차를 지운다(지운 표시만 — 되돌릴 수 있게). 예전엔 수업도 일정으로 들어가서
+ * 주·일 보기·알림·'했나요?'가 수업으로 가득 찼다. 이제 수업은 시간표에만 보인다.
+ */
+export function dropClassOccurrences(store: PlannerStore) {
+  const classes = new Set(Object.values(store.db.habits).filter(isClass).map((h) => h.id));
+  if (!classes.size) return;
+  for (const t of Object.values(store.db.tasks)) {
+    if (t.habit_id && classes.has(t.habit_id) && !t.deleted_at) store.patch("tasks", t.id, { deleted_at: nowIso() });
+  }
+}
+
 export function deleteHabit(store: PlannerStore, id: string) {
   updateHabit(store, id, { deleted_at: nowIso(), active: false });
 }
@@ -696,7 +715,8 @@ export function deleteHabit(store: PlannerStore, id: string) {
 /** 보이는 날짜(오늘 이후)에 습관 회차를 만든다. 지난 날짜는 소급하지 않는다. */
 export function materializeHabits(store: PlannerStore, days: Date[]) {
   const today = startOfDay(new Date());
-  const habits = Object.values(store.db.habits).filter((h) => h.active && !h.deleted_at);
+  dropClassOccurrences(store);
+  const habits = Object.values(store.db.habits).filter((h) => h.active && !h.deleted_at && !isClass(h));
   if (!habits.length) return;
   const openUntil = addDays(today, HABIT_AHEAD - 1);
   for (const day of days) {
