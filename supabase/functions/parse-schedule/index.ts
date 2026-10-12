@@ -8,6 +8,7 @@ import {
   calendarTable,
   checkExisting,
   checkCategories,
+  MAX_ITEMS,
   checkImage,
   clean,
   cleanClass,
@@ -79,7 +80,8 @@ Deno.serve(async (req) => {
   const today = body.today;
   const categories = checkCategories(body.categories);
   const timetable = body.mode === "timetable";
-  const existing = timetable ? [] : checkExisting(body.existing);
+  // 사진·시간표엔 기존 일정 목록을 쓰지 않는다(앱도 안 보냄) — 비싼 모델(Sonnet)에 큰 목록을 붙여 비용을 키우지 못하게
+  const existing = timetable || image ? [] : checkExisting(body.existing);
   const model = timetable ? TIMETABLE_MODEL : image ? PHOTO_MODEL : MODEL;
 
   let apiKey: string;
@@ -100,7 +102,8 @@ Deno.serve(async (req) => {
     return json({ error: "quota_check" }, 503);
   }
 
-  const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 45_000 });
+  // Sonnet(사진·시간표)은 다시 시도하지 않는다 — 한 번 예약으로 두 번 청구되지 않게
+  const client = new Anthropic({ apiKey, maxRetries: model === MODEL ? 1 : 0, timeout: 45_000 });
   if (timetable) {
     const msg = image
       ? `사용자가 시간표 사진을 보냈어요.${text ? `\n사용자가 덧붙인 말:\n"""\n${text}\n"""` : ""}`
@@ -175,7 +178,7 @@ Deno.serve(async (req) => {
     const out = res.content.find((b) => b.type === "text");
     if (!out || out.type !== "text") return json({ error: "no_output" }, 502);
     const parsed = JSON.parse(out.text) as { items: RawItem[]; remove?: unknown; reply: string };
-    const items = parsed.items.map((r) => clean(r, categories, today)).filter((x) => x !== null);
+    const items = parsed.items.map((r) => clean(r, categories, today)).filter((x) => x !== null).slice(0, MAX_ITEMS);
     return json({ items, remove: cleanRemove(parsed.remove, existing), reply: parsed.reply });
   } catch (e) {
     return await failed(e, db, slot);

@@ -106,6 +106,15 @@ export interface ExistingItem {
 }
 
 /** 앱이 보낸 기존 일정 목록 검사 — 꼴이 맞는 것만, 최대 300개 */
+/** 글자(코드 포인트) 단위로 자르기 — UTF-16 으로 자르다 이모지 반쪽이 남으면 DB 가 그 줄(과 같이 보낸 줄들)을 거절한다 */
+export const cut = (s: string, max: number) => (s.length <= max ? s : Array.from(s).slice(0, max).join(""));
+
+/** 기존 일정 목록 전체 글자 예산 — 줄 수(300)만 묶으면 한 번 호출이 너무 커질 수 있다(2026-10-12 보안 점검) */
+export const EXISTING_BUDGET = 20000;
+/** 한 번에 받는 일정 수·일정 하나의 알림 수 상한 — 사진 속 글이 알림 수천 개짜리 반복을 만들지 못하게 */
+export const MAX_ITEMS = 40;
+export const MAX_REMINDERS = 10;
+
 /**
  * 앱이 보낸 카테고리 — 이름 40자·50개까지. 길이 제한이 없으면 이름 칸에 아주 긴 글을 넣어
  * 한 번의 호출 비용을 수백 배로 키울 수 있다(하루 한도는 횟수만 셈) — 2026-10-11 보안 점검
@@ -126,13 +135,17 @@ export function checkExisting(x: unknown): ExistingItem[] {
   if (!Array.isArray(x)) return [];
   const out: ExistingItem[] = [];
   const seen = new Set<string>();
+  let used = 0;
   for (const e of x) {
     const o = e as { ref?: unknown; when?: unknown; title?: unknown };
     if (!o || typeof o.ref !== "string" || !/^[thm]\d{1,4}$/.test(o.ref) || seen.has(o.ref)) continue;
     if (typeof o.title !== "string" || typeof o.when !== "string") continue;
     const clip = (s: string, n: number) => s.replace(/[\r\n|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
     seen.add(o.ref);
-    out.push({ ref: o.ref, when: clip(o.when, 40), title: clip(o.title, 120) || "(제목 없음)" });
+    const item = { ref: o.ref, when: clip(o.when, 40), title: clip(o.title, 120) || "(제목 없음)" };
+    used += item.ref.length + item.when.length + item.title.length + 6;
+    if (used > EXISTING_BUDGET) break;
+    out.push(item);
     if (out.length >= 300) break;
   }
   return out;
@@ -204,7 +217,7 @@ export function calendarTable(today: string): string {
 }
 
 export function clean(raw: RawItem, categories: { id: string; name: string }[], today: string) {
-  const title = String(raw.title ?? "").trim().slice(0, 120);
+  const title = cut(String(raw.title ?? "").trim(), 120);
   if (!title) return null;
   if (raw.kind === "mark") {
     // 표시: 날짜만(시각·반복·알림·카테고리 없음). 매년이면 하루짜리, 여러 날이면 끝 날이 시작보다 뒤일 때만
@@ -251,7 +264,7 @@ export function clean(raw: RawItem, categories: { id: string; name: string }[], 
   const untilDay = realDate(raw.repeat_until);
   const until = repeat.length && untilDay && date && untilDay >= date ? untilDay : null;
   const reminders = Array.isArray(raw.reminders_min)
-    ? [...new Set(raw.reminders_min.filter((x) => Number.isInteger(x) && x >= 0 && x <= 1440))].sort((a, b) => b - a)
+    ? [...new Set(raw.reminders_min.filter((x) => Number.isInteger(x) && x >= 0 && x <= 1440))].sort((a, b) => b - a).slice(0, MAX_REMINDERS)
     : null;
   return {
     title,
@@ -334,7 +347,7 @@ reply: one short, friendly Korean sentence (e.g. "수업 7개를 찾았어요.")
 
 /** 모델이 읽은 수업 하나 정리 — 요일·시각이 이상하면 버린다. 길이는 끝 - 시작(5분~12시간, 끝이 이르면 다음 날까지: 밤 알바 22:00~02:00) */
 export function cleanClass(raw: RawClass) {
-  const title = String(raw?.title ?? "").trim().slice(0, 120);
+  const title = cut(String(raw?.title ?? "").trim(), 120);
   if (!title) return null;
   const days = [...new Set((Array.isArray(raw.days) ? raw.days : []).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))].sort();
   if (!days.length || !isTime(raw.start) || !isTime(raw.end)) return null;
@@ -342,7 +355,7 @@ export function cleanClass(raw: RawClass) {
   const diff = mins(raw.end) - mins(raw.start);
   const duration = diff < 0 ? diff + 1440 : diff;
   if (duration < 5 || duration > 720) return null;
-  const place = typeof raw.place === "string" && raw.place.trim() ? raw.place.trim().replace(/\s+/g, " ").slice(0, 60) : null;
+  const place = typeof raw.place === "string" && raw.place.trim() ? cut(raw.place.trim().replace(/\s+/g, " "), 60) : null;
   return { title, days, start: raw.start, duration_min: duration, place };
 }
 

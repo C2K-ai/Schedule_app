@@ -59,7 +59,8 @@ self.addEventListener("fetch", (event) => {
         const form = await req.formData();
         const cache = await caches.open(SHARE);
         await cache.delete(`${BASE}/__shared/image`);
-        const file = form.getAll("image").find((f) => typeof f !== "string" && f.size > 0 && /^image\//.test(f.type));
+        // 사진 한 장, 20MB 까지만(다른 사이트가 큰 파일을 밀어 넣어 기기 저장 공간을 채우지 못하게)
+        const file = form.getAll("image").find((f) => typeof f !== "string" && f.size > 0 && f.size <= 20 * 1024 * 1024 && /^image\//.test(f.type));
         if (file) await cache.put(`${BASE}/__shared/image`, new Response(file, { headers: { "content-type": file.type } }));
         const text = {};
         for (const k of ["title", "text", "url"]) {

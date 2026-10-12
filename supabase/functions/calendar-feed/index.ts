@@ -22,7 +22,12 @@ Deno.serve(async (req) => {
 
   const now = new Date();
   // 정지된 사람의 주소는 닫는다(관리자가 정지하면 주소도 지우지만, 그 전에 퍼진 주소까지)
-  const { data: who } = await db.auth.admin.getUserById(feed.user_id);
+  const { data: who, error: e1 } = await db.auth.admin.getUserById(feed.user_id);
+  // 확인 자체가 실패하면 잠깐 오류(캘린더 앱이 나중에 다시 읽음) — 404 면 구독이 지워진 것처럼 보인다
+  if (e1) {
+    console.error(e1.message);
+    return text("error", 503);
+  }
   const banned = (who?.user as { banned_until?: string | null } | undefined)?.banned_until;
   if (!who?.user || (banned && new Date(banned).getTime() > now.getTime())) return text("not found", 404);
   const { data: prof } = await db.from("profiles").select("timezone").eq("id", feed.user_id).maybeSingle();

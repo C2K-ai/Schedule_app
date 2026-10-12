@@ -838,8 +838,12 @@ await db.exec(`reset role;`);
 
 // ── 구글 캘린더 구독 주소 ──
 {
+  // 살아 있는 로그인 세션(접속 토큰의 session_id) — 구독 주소는 살아 있는 세션에서만 만들고 바꿈(보안 점검)
+  const SID = {};
+  for (const u of [A, B]) SID[u] = (await q(`insert into auth.sessions (user_id) values ($1) returning id`, [u]))[0].id;
   const as = async (uid, sql, params) => {
-    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    const claims = JSON.stringify({ sub: uid, session_id: SID[uid] });
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false); select set_config('request.jwt.claims', '${claims}', false);`);
     try {
       return await q(sql, params);
     } finally {
@@ -876,6 +880,10 @@ await db.exec(`reset role;`);
   ok(!anonSee, "캘린더 구독: 로그인 안 하면 표를 못 읽음");
   r = await as(A, `delete from public.calendar_feeds returning user_id`);
   ok(r.length === 1, "캘린더 구독: 끄기(내 행 지우기)");
+  // '모든 기기 로그아웃'(세션 끝냄) 뒤 남은 접속 토큰으로는 새 주소를 못 만듦
+  await q(`update auth.sessions set not_after = now() - interval '1 second' where id = $1`, [SID[A]]);
+  ok(String(await throws(A, `insert into public.calendar_feeds (token) values ($1)`, ["x".repeat(43)])).includes("live session"), "보안: 로그아웃된 세션의 토큰으로는 구독 주소를 못 만듦");
+  await db.exec(`select set_config('request.jwt.claims', '', false)`);
 }
 
 // ── 표시(생일·기념일) ──
@@ -991,6 +999,10 @@ await db.exec(`reset role;`);
   const adm = (await q(`select bytes from public.must_admin_drive() where user_id = '${B}'`))[0];
   await db.exec(`reset role;`);
   ok(Number(adm.bytes) >= 3 * big, "보안: 관리자 화면 드라이브 사용량도 실제 바이트");
+  // 용량을 넘은 상태에서도 같은 파일을 줄여 고쳐 쓰는 건 됨(공부 노트 저장), 늘리는 건 막힘
+  const shrink = await throws(B, `update storage.objects set metadata = '{"size": 1000}'::jsonb where name = '${B}/${ids[1]}' returning id`);
+  ok(shrink === "", `보안: 용량을 넘어도 파일을 줄여 쓰기는 됨 (${shrink.slice(0, 40)})`);
+  ok((await throws(B, `update storage.objects set metadata = '{"size": ${big * 2}}'::jsonb where name = '${B}/${ids[1]}' returning id`)).includes("drive_quota"), "보안: 늘려서 용량을 넘기는 막힘");
   await db.exec(`update public.must_app_settings set drive_quota_mb = 150`);
 
   // 3. 반복 시각 '25:00' 은 못 넣음
@@ -1011,6 +1023,30 @@ await db.exec(`reset role;`);
   const have = Number((await q(`select count(*)::int n from public.push_subscriptions where user_id = '${A}'`))[0].n);
   for (let i = have; i < 20; i++) await as(A, `insert into public.push_subscriptions (endpoint, p256dh, auth) values ('https://fcm.googleapis.com/wp/n${i}', 'k', 'a') returning id`);
   ok((await throws(A, `insert into public.push_subscriptions (endpoint, p256dh, auth) values ('https://fcm.googleapis.com/wp/n21', 'k', 'a')`)).includes("push_limit"), "보안: 알림 기기 21번째는 막힘");
+  const re = await throws(A, `insert into public.push_subscriptions (endpoint, p256dh, auth) values ('https://fcm.googleapis.com/wp/n19', 'k2', 'a2')
+    on conflict (endpoint) do update set p256dh = excluded.p256dh returning id`);
+  ok(re === "", `보안: 20개여도 이미 있는 기기 다시 저장(upsert)은 됨 (${re.slice(0, 40)})`);
+
+  // 8. 일정·반복 하나의 알림은 10개까지
+  ok((await throws(A, `insert into public.tasks (title, starts_at, ends_at, reminder_offsets) values ('x', now(), now() + interval '1 hour', (select array_agg(g) from generate_series(1, 11) g))`)).includes("reminders_max"), "보안: 알림 11개짜리 일정은 막힘");
+  ok((await as(A, `insert into public.tasks (title, starts_at, ends_at, reminder_offsets) values ('x', now() + interval '3 days', now() + interval '3 days 1 hour', '{30,10,0}') returning id`)).length === 1, "보안: 알림 3개 일정은 됨");
+
+  // 6. 알림 꺼내기 — 한 사람이 일정을 잔뜩 만들어도 한 번에 10건까지, 다른 사람 알림이 함께 나감
+  const tb = (await q(`insert into public.tasks (user_id, title, starts_at, ends_at, reminder_offsets) values ($1, '알림 폭탄', now() + interval '2 days', now() + interval '2 days 1 hour', '{}') returning id`, [B]))[0].id;
+  const ta = (await q(`insert into public.tasks (user_id, title, starts_at, ends_at, reminder_offsets) values ($1, '내 알림', now() + interval '2 days', now() + interval '2 days 1 hour', '{}') returning id`, [A]))[0].id;
+  await q(`insert into public.notification_jobs (user_id, task_id, kind, seq, fire_at)
+           select $1, $2, 'before', g, now() - interval '1 minute' from generate_series(1, 50) g`, [B, tb]);
+  const jb = (await q(`select count(*)::int n from public.notification_jobs where user_id = $1 and sent_at is null and fire_at <= now()`, [B]))[0].n;
+  if (jb >= 50) {
+    await q(`insert into public.notification_jobs (user_id, task_id, kind, seq, fire_at) values ($1, $2, 'before', 1, now() - interval '30 seconds')`, [A, ta]);
+    await db.exec(`set role service_role;`);
+    const got = await q(`select user_id from public.claim_due_notification_jobs(300)`);
+    await db.exec(`reset role;`);
+    const fromB = got.filter((g) => g.user_id === B).length;
+    ok(fromB === 10 && got.some((g) => g.user_id === A), `보안: 알림은 한 사람 한 번에 10건까지 + 다른 사람 것도 같이 (B ${fromB}건)`);
+  } else {
+    ok(false, `알림 공정성 시험 준비 실패(${jb})`);
+  }
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

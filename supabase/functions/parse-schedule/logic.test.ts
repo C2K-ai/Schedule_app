@@ -160,3 +160,21 @@ Deno.test("시간표: 수업 하나 정리 — 요일·시각이 이상하면 �
   assertEquals(m.map((x) => [x.days, x.start]), [[[2, 4], "13:30"], [[5], "15:00"]]);
   assertEquals(TIMETABLE_SCHEMA.properties.classes.items.required.includes("block"), true);
 });
+
+Deno.test("보안 점검(2026-10-12) — 기존 목록 글자 예산·알림 수·글자 단위 자르기·카테고리 이름", async () => {
+  const { checkExisting, checkCategories, clean, cut, EXISTING_BUDGET, MAX_REMINDERS } = await import("./logic.ts");
+  const long = Array.from({ length: 300 }, (_, i) => ({ ref: `t${i + 1}`, when: "1".repeat(40), title: "가".repeat(120) }));
+  const ex = checkExisting(long);
+  const size = ex.reduce((n, e) => n + e.ref.length + e.when.length + e.title.length + 6, 0);
+  if (!(ex.length < 300 && size <= EXISTING_BUDGET)) throw new Error(`budget ${ex.length} ${size}`);
+  const cats = checkCategories([{ id: "c1", name: "x".repeat(100000) }, { id: "c2", name: "  " }]);
+  if (cats.length !== 1 || cats[0].name.length !== 40) throw new Error("categories");
+  const it = clean(
+    { title: "공부", kind: "timed", date: "2026-10-13", start: "09:00", duration_min: 60, repeat_days: [], repeat_until: null, category: null, starred: false,
+      reminders_min: Array.from({ length: 1441 }, (_, i) => i), notes: null, end_date: null, yearly: false, emoji: null } as never,
+    [],
+    "2026-10-12",
+  );
+  if (!it || (it.reminders_min ?? []).length !== MAX_REMINDERS) throw new Error(`reminders ${it?.reminders_min?.length}`);
+  if (/[\ud800-\udbff]$/.test(cut(`${"가".repeat(119)}🏆`, 120))) throw new Error("cut");
+});

@@ -6,6 +6,9 @@
 --   3. 반복(습관) 시각: '25:00' 같은 값을 막고, 서버 회차 만들기는 이상한 줄을 건너뛴다(한 사람 때문에 모두 멈추지 않게)
 --   4. 시간대: 이름이 있는 시간대(Asia/Seoul 등)만 — 'UTC+3' 같은 값은 알림 함수(Intl)가 못 읽어 그 묶음이 멈췄다
 --   5. 푸시 구독: 알려진 푸시 서버 주소만, 한 사람 20개까지(아무 주소나 넣어 알림 발송을 붙잡지 못하게)
+--   6. 알림 꺼내기: 한 사람 한 번(1분)에 10건까지 — 일정을 잔뜩 만들어 다른 사람 알림을 밀어내지 못하게
+--   7. 캘린더 구독 주소: 살아 있는 로그인에서만 만들고 바꿈 — '모든 기기 로그아웃' 뒤 남은 접속 토큰(최대 1시간)으로 새 주소를 못 만들게
+--   8. 일정·반복 하나의 알림은 10개까지 — 알림 작업을 잔뜩 만들어 매분 발송을 무겁게 하지 못하게
 --  지우는 문 없이, 다시 돌려도 안전.
 -- ════════════════════════════════════════════════════════════════════
 
@@ -132,6 +135,11 @@ begin
   if not (new.metadata->>'size' ~ '^[0-9]{1,15}$') then
     return null; -- 크기를 아직 모름(올리는 중) — 크기가 적힐 때 다시 확인
   end if;
+  -- 같은 파일을 같거나 작은 크기로 고쳐 쓰는 건 늘 됨(이미 용량을 넘었어도 노트를 줄여 저장할 수 있게)
+  if tg_op = 'UPDATE' and old.metadata->>'size' ~ '^[0-9]{1,15}$'
+     and (new.metadata->>'size')::bigint <= (old.metadata->>'size')::bigint then
+    return null;
+  end if;
   v_user := v_owner::uuid;
   perform pg_advisory_xact_lock(hashtextextended('must_drive:' || v_user::text, 0));
   v_quota := coalesce((select s.drive_quota_mb from public.must_app_settings s where s.id), 150)::bigint * 1048576;
@@ -193,12 +201,23 @@ revoke all on function public.materialize_habits(uuid) from public, anon, authen
 grant execute on function public.materialize_habits(uuid) to service_role;
 
 -- ───────────── 4. 시간대 ─────────────
+-- 'Asia/Seoul'·'America/Argentina/Buenos_Aires'·'Etc/GMT+3'·'UTC' 꼴만 + Postgres 가 읽을 수 있어야 함. 'UTC+3'·'<X>-9' 같은 POSIX 꼴은 서울로.
+-- (pg_timezone_names 를 뒤지면 한 번에 0.1~0.8초 — 프로필 저장마다 부담이라 쓰지 않음. 안 바뀌면 검사하지 않음)
 create or replace function public.must_valid_timezone() returns trigger
 language plpgsql set search_path = '' as $$
 begin
-  if new.timezone is null or not exists (select 1 from pg_catalog.pg_timezone_names z where z.name = new.timezone) then
-    new.timezone := 'Asia/Seoul';
+  if tg_op = 'UPDATE' and new.timezone is not distinct from old.timezone then
+    return new;
   end if;
+  if new.timezone is null or not (new.timezone = 'UTC' or new.timezone ~ '^[A-Za-z]+(/[A-Za-z0-9_+-]+){1,2}$') then
+    new.timezone := 'Asia/Seoul';
+    return new;
+  end if;
+  begin
+    perform now() at time zone new.timezone;
+  exception when others then
+    new.timezone := 'Asia/Seoul';
+  end;
   return new;
 end $$;
 revoke all on function public.must_valid_timezone() from public, anon, authenticated;
@@ -218,6 +237,10 @@ create or replace function public.must_push_limit() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   perform pg_advisory_xact_lock(hashtextextended('must_push:' || new.user_id::text, 0));
+  -- 이미 있는 주소를 다시 저장(앱의 upsert)하는 건 새 기기가 아니다
+  if exists (select 1 from public.push_subscriptions s where s.endpoint = new.endpoint) then
+    return new;
+  end if;
   if (select count(*) from public.push_subscriptions s where s.user_id = new.user_id) >= 20 then
     raise exception 'push_limit: 알림 받는 기기가 너무 많아요' using errcode = 'P0001';
   end if;
@@ -226,3 +249,70 @@ end $$;
 revoke all on function public.must_push_limit() from public, anon, authenticated;
 create or replace trigger push_subscriptions_limit before insert on public.push_subscriptions
   for each row execute function public.must_push_limit();
+
+-- ───────────── 6. 알림 꺼내기 — 한 사람 한 번에 10건까지 ─────────────
+create or replace function public.claim_due_notification_jobs(p_limit int default 200)
+returns setof public.notification_jobs
+language sql security definer set search_path = public as $$
+  update notification_jobs j
+     set claimed_at = now(), attempts = j.attempts + 1
+   where j.id in (
+     select n.id from notification_jobs n
+      where n.id in (
+        select x.id from (
+          select c.id, c.fire_at, row_number() over (partition by c.user_id order by c.fire_at, c.id) as rn
+            from notification_jobs c
+           where c.sent_at is null
+             and c.fire_at <= now()
+             and c.fire_at >  now() - interval '30 minutes'        -- 너무 늦은 알림은 보내지 않음
+             and c.attempts < 5
+             and (c.claimed_at is null or c.claimed_at < now() - interval '2 minutes')
+        ) x
+        where x.rn <= 10
+        order by x.fire_at
+        limit p_limit)
+        and (n.claimed_at is null or n.claimed_at < now() - interval '2 minutes')
+      for update skip locked)
+  returning j.*;
+$$;
+revoke all on function public.claim_due_notification_jobs(int) from public, anon, authenticated;
+grant execute on function public.claim_due_notification_jobs(int) to service_role;
+
+-- ───────────── 7. 캘린더 구독 주소 — 살아 있는 로그인에서만 ─────────────
+-- 접속 토큰(JWT)은 로그아웃해도 만료(최대 1시간)까지 쓸 수 있어, 세션이 아직 살아 있는지 auth.sessions 로 확인한다
+create or replace function public.must_session_alive() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from auth.sessions s
+     where s.id = (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'session_id')::uuid
+       and s.user_id = (select auth.uid())
+       and (s.not_after is null or s.not_after > now())
+  );
+$$;
+revoke all on function public.must_session_alive() from public, anon;
+grant execute on function public.must_session_alive() to authenticated;
+
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'calendar_feeds' and policyname = 'feed needs live session (insert)') then
+    create policy "feed needs live session (insert)" on public.calendar_feeds as restrictive for insert to authenticated
+      with check (public.must_session_alive());
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'calendar_feeds' and policyname = 'feed needs live session (update)') then
+    create policy "feed needs live session (update)" on public.calendar_feeds as restrictive for update to authenticated
+      using (public.must_session_alive()) with check (public.must_session_alive());
+  end if;
+end $$;
+
+-- ───────────── 8. 일정·반복 하나의 알림 10개까지 ─────────────
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'tasks_reminders_max') then
+    alter table public.tasks add constraint tasks_reminders_max check (cardinality(reminder_offsets) <= 10) not valid;
+    alter table public.tasks validate constraint tasks_reminders_max;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'habits_reminders_max') then
+    alter table public.habits add constraint habits_reminders_max check (cardinality(reminder_offsets) <= 10) not valid;
+    alter table public.habits validate constraint habits_reminders_max;
+  end if;
+end $$;
