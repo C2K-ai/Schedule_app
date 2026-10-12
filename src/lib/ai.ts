@@ -285,6 +285,7 @@ export async function importCareer(client: SupabaseClient, text: string, today: 
     if (code === "empty") throw new Error("붙여 넣은 글이 없어요.");
     if (code === "too_long") throw new Error(`글이 너무 길어요. ${CAREER_IMPORT_MAX.toLocaleString()}자씩 나눠서 넣어 주세요.`);
     if (code === "timeout") throw new Error("AI 가 너무 오래 걸렸어요. 글을 반씩 나눠서 넣어 주세요.");
+    if (code === "output_too_long") throw new Error("항목이 너무 많아 한 번에 다 못 나눴어요. 글을 반씩 나눠서 넣어 주세요.");
     throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 나누기에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
   }
   return (data as { entries?: ImportedCareer[] }).entries ?? [];

@@ -3,7 +3,7 @@
 import { Check, ChevronDown, ChevronUp, Loader2, Plus, Sparkles, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { importCareer } from "@/lib/ai";
-import { CAREER_IMPORT_MAX, CAREER_KINDS, careerPeriod, kindLabel, toDrafts, unusedLines, type ImportDraft } from "@/lib/career";
+import { CAREER_IMPORT_MAX, CAREER_KINDS, careerPeriod, cutChars, kindLabel, toDrafts, unusedLines, type ImportDraft } from "@/lib/career";
 import { liveCareer, saveCareer } from "@/lib/planner";
 import { getSupabase } from "@/lib/supabase";
 import { dayKey, uuid } from "@/lib/time";
@@ -146,10 +146,15 @@ export function CareerImport({ onDone }: { onDone: () => void }) {
           <li>· 넣기 전에 하나씩 확인하고 고칠 수 있어요. 나중에 기록마다 &lsquo;AI로 다듬기&rsquo;도 돼요.</li>
         </ul>
         {err && <ErrorLine text={err} />}
-        <Button variant="primary" onClick={split} disabled={busy || !text.trim()} className="w-full">
-          {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {busy ? "항목별로 나누는 중… (글이 길면 1분쯤 걸려요)" : "AI로 나누기"}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={onDone} disabled={busy}>
+            취소
+          </Button>
+          <Button variant="primary" onClick={split} disabled={busy || !text.trim()} className="flex-1">
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            {busy ? "항목별로 나누는 중… (글이 길면 1분쯤 걸려요)" : "AI로 나누기"}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -167,7 +172,7 @@ export function CareerImport({ onDone }: { onDone: () => void }) {
     const key = `u-${uuid()}`;
     setDrafts([
       ...drafts,
-      { key, title: line.slice(0, 60), kind: "etc", start_day: today, end_day: today, raw: line, skills: [], date_guess: true, on: true, dup: false },
+      { key, title: cutChars(line, 60), kind: "etc", start_day: today, end_day: today, raw: line, skills: [], date_guess: true, on: true, dup: false },
     ]);
     setUnused(unused.filter((x) => x !== line));
     reveal(key);
@@ -182,7 +187,7 @@ export function CareerImport({ onDone }: { onDone: () => void }) {
     for (const d of picked) {
       saveCareer(store, {
         id: uuid(),
-        title: d.title.trim().slice(0, 120),
+        title: cutChars(d.title.trim(), 120),
         kind: d.kind,
         start_day: d.start_day,
         end_day: d.end_day,
