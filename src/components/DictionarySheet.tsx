@@ -197,6 +197,8 @@ function DictionaryBody({ onClose }: { onClose: () => void }) {
                 src={src}
                 onLoad={() => setLoading(false)}
                 referrerPolicy="no-referrer-when-downgrade"
+                // 사전 페이지(광고 등)가 앱 창 전체를 다른 곳(가짜 로그인 화면)으로 옮기지 못하게 — 새 창 열기는 됨
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
                 className="absolute inset-0 h-full w-full"
               />
               {loading && <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 animate-pulse bg-accent" />}

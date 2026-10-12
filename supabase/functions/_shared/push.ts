@@ -49,6 +49,15 @@ export interface PushTarget {
   auth: string;
 }
 
+/**
+ * 알려진 푸시 서버 주소만(DB 의 push_subscriptions_endpoint_host 검사와 같은 규칙) — 아무 주소나 넣어
+ * 응답 없는 서버로 보내게 해 매분 발송 전체를 붙잡지 못하게(2026-10-11 보안 점검)
+ */
+export const PUSH_HOST =
+  /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|web\.push\.apple\.com|[a-z0-9-]+(\.[a-z0-9-]+)*\.notify\.windows\.com)\//;
+/** 기기 하나에 보내는 데 기다리는 최대 시간 */
+export const PUSH_TIMEOUT_MS = 8000;
+
 /** 기기 하나로 보낸다. 만료된 구독(404/410)이면 지우고 "removed" */
 export async function sendToSubscription(
   db: SupabaseClient,
@@ -56,14 +65,21 @@ export async function sendToSubscription(
   payload: PushPayload,
   ttlSec = 900,
 ): Promise<"sent" | "removed" | string> {
+  if (!PUSH_HOST.test(s.endpoint)) return "bad endpoint";
   await ensureVapid();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await webpush.sendNotification(
-      { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-      JSON.stringify(payload),
-      // urgency high: 안드로이드 절전(Doze) 중에도 바로 깨워서 보낸다
-      { TTL: ttlSec, urgency: "high" },
-    );
+    await Promise.race([
+      webpush.sendNotification(
+        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+        JSON.stringify(payload),
+        // urgency high: 안드로이드 절전(Doze) 중에도 바로 깨워서 보낸다. timeout: 푸시 서버가 답이 없으면 끊는다
+        { TTL: ttlSec, urgency: "high", timeout: PUSH_TIMEOUT_MS },
+      ),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("push timeout")), PUSH_TIMEOUT_MS + 2000);
+      }),
+    ]);
     return "sent";
   } catch (e) {
     const code = (e as { statusCode?: number }).statusCode;
@@ -72,6 +88,19 @@ export async function sendToSubscription(
       return "removed";
     }
     return `${code ?? "?"} ${(e as Error).message}`.slice(0, 200);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Intl 이 읽을 수 있는 시간대인지 — 아니면 서울(DB 도 이름 있는 시간대만 받지만 예전 값·흉내 값에 대비) */
+export function safeTz(tz: unknown): string {
+  if (typeof tz !== "string" || !tz) return "Asia/Seoul";
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return tz;
+  } catch {
+    return "Asia/Seoul";
   }
 }
 

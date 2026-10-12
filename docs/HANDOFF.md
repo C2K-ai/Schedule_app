@@ -30,7 +30,7 @@
   PC 표지가 위로 잘림 등. 금박 책배 줄무늬(모아레)는 완화함.
 - **아이폰**: WebKit 이 없어 직접 못 봄. 섞기 모드를 줄여 Safari 쪽 위험은 줄었지만 사용자(또는 아이폰 가진 사람) 확인 필요.
 
-### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
+### 0-3. 사용자에게 준 링크(사용자 claude.ai 계정 소유 Artifact)
 - 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf
 - 진행률 페이지: https://claude.ai/artifact/6sH8vdW4FcEFsLpnzu9xec
 - 다른 계정에선 공유받지 않으면 못 열고, 고쳐 올리려면 편집 권한이 필요 — 안 되면 새 Artifact 로 올리고 사용자에게 새 링크를 줄 것.
@@ -65,7 +65,7 @@
 - 저장소: `C2K-ai/schedule_app` · 작업 브랜치 `ui-revamp` → 배포 브랜치 `main`
   (`bg-fetch`·`bg-results` 는 배경 사진 받기용 보조 브랜치, 지워도 됨 — 프록시가 원격 브랜치 삭제를 막아 남아 있음)
 - 서버: Supabase 프로젝트 **`gcnosxcojuefkaaxefug`** (DB·Auth·Storage·Edge Functions·pg_cron·pg_net·Vault)
-- 관리자(주인): `gstop508@gmail.com` (첫 가입자 = 자동 관리자)
+- 관리자(주인): 첫 가입자 = 자동 관리자(공개 저장소라 메일 주소는 적지 않음 — 2026-10-11 보안 점검)
 
 ## 2. 사용자와 일하는 방식 (중요)
 

@@ -21,6 +21,10 @@ Deno.serve(async (req) => {
   if (!feed) return text("not found", 404);
 
   const now = new Date();
+  // 정지된 사람의 주소는 닫는다(관리자가 정지하면 주소도 지우지만, 그 전에 퍼진 주소까지)
+  const { data: who } = await db.auth.admin.getUserById(feed.user_id);
+  const banned = (who?.user as { banned_until?: string | null } | undefined)?.banned_until;
+  if (!who?.user || (banned && new Date(banned).getTime() > now.getTime())) return text("not found", 404);
   const { data: prof } = await db.from("profiles").select("timezone").eq("id", feed.user_id).maybeSingle();
   const tz = validTz(prof?.timezone) ? prof.timezone : "Asia/Seoul";
   const { data: tasks, error: e2 } = await db

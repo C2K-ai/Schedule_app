@@ -46,6 +46,20 @@ export interface Material {
 }
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+/** 줄 목록을 글자 수 예산 안에서만(넘치면 뒤를 버림) — 한 번 호출 비용을 묶어 둔다(2026-10-11 보안 점검) */
+export function fitLines(lines: string[], budget: number): string[] {
+  const out: string[] = [];
+  let used = 0;
+  for (const l of lines) {
+    used += l.length + 1;
+    if (used > budget) break;
+    out.push(l);
+  }
+  return out;
+}
+export const EVENTS_BUDGET = 20000;
+export const NOTES_BUDGET = 20000;
 const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
 /** 앱이 보낸 재료를 프롬프트로 — 너무 길면 자른다 */
@@ -68,6 +82,8 @@ export function buildPrompt(m: Material): string | null {
     })
     .filter(Boolean);
   if (!raw && !events.length && !notes.length) return null;
+  const ev = fitLines(events as string[], EVENTS_BUDGET);
+  const nt = fitLines(notes as string[], NOTES_BUDGET);
   const kind = KINDS.includes(m.kind as (typeof KINDS)[number]) ? KIND_LABEL[m.kind as (typeof KINDS)[number]] : "기타";
   const period = isDay(m.start_day) ? `${m.start_day} ~ ${isDay(m.end_day) ? m.end_day : "진행 중"}` : "기간 미정";
   return [
@@ -75,8 +91,8 @@ export function buildPrompt(m: Material): string | null {
     `기간: ${period}`,
     `내가 붙인 제목: ${str(m.title, 120) || "(없음)"}`,
     `내가 적은 메모:\n"""\n${raw || "(없음)"}\n"""`,
-    `이 기간에 끝낸 일정:\n${events.length ? events.join("\n") : "(없음)"}`,
-    `이 기간의 하루 노트:\n${notes.length ? notes.join("\n") : "(없음)"}`,
+    `이 기간에 끝낸 일정:\n${ev.length ? ev.join("\n") : "(없음)"}`,
+    `이 기간의 하루 노트:\n${nt.length ? nt.join("\n") : "(없음)"}`,
   ].join("\n\n");
 }
 

@@ -7,6 +7,7 @@ import { admin, cors, json, setting } from "../_shared/env.ts";
 import {
   calendarTable,
   checkExisting,
+  checkCategories,
   checkImage,
   clean,
   cleanClass,
@@ -76,9 +77,7 @@ Deno.serve(async (req) => {
   if (text.length > MAX_TEXT) return json({ error: "too_long", max: MAX_TEXT }, 400);
   if (!isDate(body.today) || !isTime(body.time)) return json({ error: "bad_clock" }, 400);
   const today = body.today;
-  const categories = (Array.isArray(body.categories) ? body.categories : [])
-    .filter((c): c is { id: string; name: string } => typeof c?.id === "string" && typeof c?.name === "string")
-    .slice(0, 50);
+  const categories = checkCategories(body.categories);
   const timetable = body.mode === "timetable";
   const existing = timetable ? [] : checkExisting(body.existing);
   const model = timetable ? TIMETABLE_MODEL : image ? PHOTO_MODEL : MODEL;

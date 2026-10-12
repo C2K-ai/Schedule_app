@@ -8,7 +8,16 @@ export const ITERATIONS = 600_000;
 export const HEADER = 36;
 /** 암호화하면 늘어나는 크기(머리 + GCM 태그) */
 export const OVERHEAD = HEADER + 16;
-export const MIN_PASSWORD = 6;
+export const MIN_PASSWORD = 8;
+/**
+ * 잠금 비밀번호로 쓰면 안 되는 것 — 숫자만(생일·전화번호 같은 PIN)은 암호문을 가진 사람이 금방 맞힌다(2026-10-11 보안 점검).
+ * 짧으면(MIN_PASSWORD 미만)도 안 됨. 그 밖에 약한 것(10자 미만·한 종류 글자)은 경고만.
+ */
+export function lockPasswordProblem(pw: string): string | null {
+  if (pw.length < MIN_PASSWORD) return `${MIN_PASSWORD}자 이상으로 해 주세요.`;
+  if (/^\d+$/.test(pw)) return "숫자만으로는 안 돼요 — 글자를 섞어 주세요.";
+  return null;
+}
 
 export class WrongPassword extends Error {
   constructor() {

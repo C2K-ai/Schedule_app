@@ -5,6 +5,12 @@
 import { admin, cors, json, setting } from "../_shared/env.ts";
 import { BAN_FOREVER, emailMatches, guard, parseAction } from "./logic.ts";
 
+// 정지·모든 기기 로그아웃 때 구글 캘린더 구독 주소도 끊는다 — 빼앗긴 계정으로 만든 주소가 계속 일정을 보여 주지 않게(2026-10-11 보안 점검)
+async function dropFeeds(db: ReturnType<typeof admin>, userId: string) {
+  const { error } = await db.from("calendar_feeds").delete().eq("user_id", userId);
+  if (error) console.error("admin drop calendar feed", error.message);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method" }, 405);
@@ -103,6 +109,7 @@ Deno.serve(async (req) => {
         // 로그인 세션도 바로 끊는다(남은 접속 토큰은 길어야 1시간). 실패해도 정지는 됐고, 다음 토큰 갱신 때 막힌다
         const { data: n, error: soErr } = await db.rpc("must_admin_signout", { p_user: a.user_id });
         if (soErr) console.error("admin ban signout", soErr.message);
+        await dropFeeds(db, a.user_id);
         return json({ ok: true, sessions: soErr ? null : (n ?? 0) });
       }
       case "unban": {
@@ -113,6 +120,7 @@ Deno.serve(async (req) => {
       case "signout": {
         const { data: n, error } = await db.rpc("must_admin_signout", { p_user: a.user_id });
         if (error) throw error;
+        await dropFeeds(db, a.user_id);
         return json({ ok: true, sessions: n ?? 0 });
       }
       case "recovery_link": {

@@ -106,6 +106,22 @@ export interface ExistingItem {
 }
 
 /** 앱이 보낸 기존 일정 목록 검사 — 꼴이 맞는 것만, 최대 300개 */
+/**
+ * 앱이 보낸 카테고리 — 이름 40자·50개까지. 길이 제한이 없으면 이름 칸에 아주 긴 글을 넣어
+ * 한 번의 호출 비용을 수백 배로 키울 수 있다(하루 한도는 횟수만 셈) — 2026-10-11 보안 점검
+ */
+export function checkCategories(x: unknown): { id: string; name: string }[] {
+  if (!Array.isArray(x)) return [];
+  const out: { id: string; name: string }[] = [];
+  for (const c of x) {
+    if (typeof c?.id !== "string" || typeof c?.name !== "string" || c.id.length > 64) continue;
+    const name = c.name.replace(/\s+/g, " ").trim().slice(0, 40);
+    if (name) out.push({ id: c.id, name });
+    if (out.length >= 50) break;
+  }
+  return out;
+}
+
 export function checkExisting(x: unknown): ExistingItem[] {
   if (!Array.isArray(x)) return [];
   const out: ExistingItem[] = [];

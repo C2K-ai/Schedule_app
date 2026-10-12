@@ -41,7 +41,8 @@ import {
 } from "@/lib/drive";
 import { getSupabase } from "@/lib/supabase";
 import { uuid } from "@/lib/time";
-import { MIN_PASSWORD, WrongPassword } from "@/lib/vault";
+import { weakPassword } from "@/lib/diaryCrypto";
+import { lockPasswordProblem, MIN_PASSWORD, WrongPassword } from "@/lib/vault";
 import { usePlanner } from "./PlannerProvider";
 import { NoteEditor, useStudyNotes } from "./StudyNotes";
 import { Button, Chip, cx, Empty, IconButton, inputCls, Modal, Switch } from "./ui";
@@ -116,7 +117,7 @@ function DriveBody() {
   const [pw2, setPw2] = useState("");
   const sessionPw = useRef<string | null>(null);
   const [unlocking, setUnlocking] = useState<{ f: DriveFile; mode: "open" | "download" } | null>(null);
-  const lockReady = !lockOn || (pw.length >= MIN_PASSWORD && pw === pw2);
+  const lockReady = !lockOn || (!lockPasswordProblem(pw) && pw === pw2);
 
   const [reload, setReload] = useState(0);
   useEffect(() => {
@@ -151,7 +152,7 @@ function DriveBody() {
   const upload = async (picked: FileList | File[]) => {
     if (!sb) return;
     if (!lockReady) {
-      toast({ text: `잠글 비밀번호를 ${MIN_PASSWORD}자 이상, 두 칸 똑같이 적어 주세요.`, tone: "danger" });
+      toast({ text: lockPasswordProblem(pw) ?? "두 칸에 같은 비밀번호를 적어 주세요.", tone: "danger" });
       return;
     }
     const password = lockOn ? pw : undefined;
@@ -419,13 +420,14 @@ function DriveBody() {
                       className={inputCls}
                     />
                   </div>
-                  {pw.length > 0 && pw.length < MIN_PASSWORD && (
-                    <p className="text-xs font-semibold text-danger">{MIN_PASSWORD}자 이상으로 해 주세요.</p>
+                  {pw.length > 0 && lockPasswordProblem(pw) && <p className="text-xs font-semibold text-danger">{lockPasswordProblem(pw)}</p>}
+                  {pw.length > 0 && !lockPasswordProblem(pw) && weakPassword(pw) && (
+                    <p className="text-xs font-semibold text-warn">조금 약해요 — 10자 이상, 글자·숫자·기호를 섞으면 더 안전해요.</p>
                   )}
                   {pw2.length > 0 && pw !== pw2 && <p className="text-xs font-semibold text-danger">두 비밀번호가 달라요.</p>}
                   <p className="rounded-xl bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
-                    비밀번호를 잊으면 <b>누구도(운영자도) 열 수 없어요</b> — 되찾는 방법이 없으니 꼭 기억할 수 있는 걸로 하세요. 파일 이름·크기는
-                    잠기지 않아요.
+                    비밀번호를 잊으면 <b>누구도(운영자도) 열 수 없어요</b> — 되찾는 방법이 없으니 꼭 기억할 수 있는 걸로 하세요. 잠금은
+                    비밀번호가 강한 만큼만 안전해요(짧거나 쉬우면 풀릴 수 있어요). 파일 이름·크기는 잠기지 않아요.
                   </p>
                 </div>
               )}

@@ -1,6 +1,6 @@
 // 기기별 아침 브리핑 — claim_due_briefings() 가 꺼낸 기기마다 "오늘 할 일 n개 · 다음 HH:MM 무엇 · 미시작 n건"
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { sendToSubscription, VIBRATIONS, type PushPayload } from "../_shared/push.ts";
+import { safeTz, sendToSubscription, VIBRATIONS, type PushPayload } from "../_shared/push.ts";
 
 export interface BriefTask {
   title: string;
@@ -63,56 +63,62 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
   let briefed = 0,
     failed = 0;
   for (const d of (data ?? []) as Due[]) {
-    const { data: tasks } = await db
-      .from("tasks")
-      .select("title, status, starts_at, schedule, strict")
-      .eq("user_id", d.user_id)
-      .is("deleted_at", null)
-      .neq("schedule", "someday")
-      .gte("starts_at", d.day_start)
-      .lt("starts_at", d.day_end);
-    const now = Date.now();
-    const { data: prof } = await db.from("profiles").select("grace_min").eq("id", d.user_id).maybeSingle();
-    const grace = prof?.grace_min ?? 5;
-    const nowIso = new Date(now).toISOString();
-    const [{ count: overdue }, { count: unchecked }] = await Promise.all([
-      // 지금 시간 안의 미시작 강제 일정
-      db
+    // 한 기기에서 난 오류가 뒤 사람들의 브리핑을 막지 않게(보안 점검 2026-10-11)
+    try {
+      const { data: tasks } = await db
         .from("tasks")
-        .select("id", { count: "exact", head: true })
+        .select("title, status, starts_at, schedule, strict")
         .eq("user_id", d.user_id)
         .is("deleted_at", null)
-        .eq("status", "planned")
-        .eq("strict", true)
-        .eq("schedule", "timed")
-        .lt("starts_at", new Date(now - grace * 60_000).toISOString())
-        .gt("ends_at", nowIso),
-      // 끝났는데 체크 안 한 일정(최근 7일) — 실패가 아니라 '했나요?'
-      db
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", d.user_id)
-        .is("deleted_at", null)
-        .eq("status", "planned")
-        .eq("schedule", "timed")
-        .lte("ends_at", nowIso)
-        .gt("ends_at", new Date(now - 7 * 86_400_000).toISOString()),
-    ]);
-    const text = briefingText((tasks ?? []) as BriefTask[], now, d.tz, grace, overdue ?? 0, unchecked ?? 0);
-    const payload: PushPayload = {
-      ...text,
-      tag: `must-briefing-${d.local_day}`,
-      kind: "briefing",
-      url: "/",
-      requireInteraction: false,
-      vibrate: VIBRATIONS.short,
-    };
-    const r = await sendToSubscription(db, d, payload, 3 * 3600);
-    if (r === "sent") briefed++;
-    else if (r !== "removed") {
+        .neq("schedule", "someday")
+        .gte("starts_at", d.day_start)
+        .lt("starts_at", d.day_end);
+      const now = Date.now();
+      const { data: prof } = await db.from("profiles").select("grace_min").eq("id", d.user_id).maybeSingle();
+      const grace = prof?.grace_min ?? 5;
+      const nowIso = new Date(now).toISOString();
+      const [{ count: overdue }, { count: unchecked }] = await Promise.all([
+        // 지금 시간 안의 미시작 강제 일정
+        db
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", d.user_id)
+          .is("deleted_at", null)
+          .eq("status", "planned")
+          .eq("strict", true)
+          .eq("schedule", "timed")
+          .lt("starts_at", new Date(now - grace * 60_000).toISOString())
+          .gt("ends_at", nowIso),
+        // 끝났는데 체크 안 한 일정(최근 7일) — 실패가 아니라 '했나요?'
+        db
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", d.user_id)
+          .is("deleted_at", null)
+          .eq("status", "planned")
+          .eq("schedule", "timed")
+          .lte("ends_at", nowIso)
+          .gt("ends_at", new Date(now - 7 * 86_400_000).toISOString()),
+      ]);
+      const text = briefingText((tasks ?? []) as BriefTask[], now, safeTz(d.tz), grace, overdue ?? 0, unchecked ?? 0);
+      const payload: PushPayload = {
+        ...text,
+        tag: `must-briefing-${d.local_day}`,
+        kind: "briefing",
+        url: "/",
+        requireInteraction: false,
+        vibrate: VIBRATIONS.short,
+      };
+      const r = await sendToSubscription(db, d, payload, 3 * 3600);
+      if (r === "sent") briefed++;
+      else if (r !== "removed") {
+        failed++;
+        // 잠깐의 실패(네트워크·429·5xx)만 다음 분에 다시 — 계속 거절되는 기기는 오늘은 포기(매분 3시간 재시도 방지)
+        if (retryable(r)) await db.from("push_subscriptions").update({ last_briefing_on: null }).eq("id", d.id);
+      }
+    } catch (e) {
       failed++;
-      // 잠깐의 실패(네트워크·429·5xx)만 다음 분에 다시 — 계속 거절되는 기기는 오늘은 포기(매분 3시간 재시도 방지)
-      if (retryable(r)) await db.from("push_subscriptions").update({ last_briefing_on: null }).eq("id", d.id);
+      console.error("briefing", d.id, String(e).slice(0, 200));
     }
   }
   return { briefed, failed };

@@ -65,7 +65,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql", "20261017000000_timetable_no_tasks.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql", "20261017000000_timetable_no_tasks.sql", "20261018000000_security_hardening.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -218,10 +218,10 @@ ok((await q(`select count(*)::int n from public.study_sessions where subject_id 
   const past = fmt(mins - 5);
   const future = fmt(mins + 30);
   await q(`insert into public.push_subscriptions (user_id, endpoint, p256dh, auth, briefing_time) values
-    ($1, 'https://push/a', 'k', 'a', $2), ($1, 'https://push/b', 'k', 'a', $3), ($1, 'https://push/c', 'k', 'a', null)`, [A, past, future]);
+    ($1, 'https://fcm.googleapis.com/wp/a', 'k', 'a', $2), ($1, 'https://fcm.googleapis.com/wp/b', 'k', 'a', $3), ($1, 'https://fcm.googleapis.com/wp/c', 'k', 'a', null)`, [A, past, future]);
   let badTime = false;
   try {
-    await q(`insert into public.push_subscriptions (user_id, endpoint, p256dh, auth, briefing_time) values ($1, 'https://push/x', 'k', 'a', '25:00')`, [A]);
+    await q(`insert into public.push_subscriptions (user_id, endpoint, p256dh, auth, briefing_time) values ($1, 'https://fcm.googleapis.com/wp/x', 'k', 'a', '25:00')`, [A]);
   } catch {
     badTime = true;
   }
@@ -233,7 +233,7 @@ ok((await q(`select count(*)::int n from public.study_sessions where subject_id 
   // 자정 근처(00:00~00:05, 21:00 이후)에는 'past' 가 조건 밖이라 0개가 정상
   const inWindow = mins >= 5 && mins - 5 < 21 * 60;
   ok(
-    inWindow ? first.length === 1 && first[0].endpoint === "https://push/a" : first.length === 0,
+    inWindow ? first.length === 1 && first[0].endpoint === "https://fcm.googleapis.com/wp/a" : first.length === 0,
     `브리핑: 시각이 지난 기기만 꺼냄 (${first.map((r) => r.endpoint).join(",") || "없음"})`,
   );
   ok(second.length === 0, "브리핑: 같은 날 두 번 꺼내지 않음");
@@ -563,7 +563,7 @@ await db.exec(`reset role;`);
   await db.exec(readFileSync(new URL("../migrations/20261009000100_drive.sql", import.meta.url), "utf8"));
   ok((await q(`select count(*)::int n from pg_policies where policyname in ('own drive files', 'drive own folder')`))[0].n === 2, "드라이브 마이그레이션 다시 돌려도 정책 그대로");
   // 처음 드라이브 파일을 다시 돌리면 열 권한이 처음 상태로 돌아가므로, 뒤 마이그레이션도 차례대로 다시
-  for (const f of ["20261009000200_drive_lock.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql"]) await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
+  for (const f of ["20261009000200_drive_lock.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261018000000_security_hardening.sql"]) await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 
   // ── 폴더(Study 공부 노트)·같은 파일 고쳐 쓰기 ──
   const nt = (await as(B, `insert into public.drive_files (filename, size, mime, folder) values ('10월 9일 공부 노트.txt', 20, 'text/plain', 'Study') returning id, folder`))[0];
@@ -939,6 +939,78 @@ await db.exec(`reset role;`);
   await q(`select public.materialize_habits()`);
   const cnt = async (id) => (await q(`select count(*)::int n from public.tasks where habit_id = $1 and deleted_at is null`, [id]))[0].n;
   ok((await cnt(C1)) === 0 && (await cnt(R1)) > 0, `시간표: 수업은 회차를 안 만듦(수업 ${await cnt(C1)}, 습관 ${await cnt(R1)})`);
+}
+
+// ── 보안 점검(2026-10-11) — 20261018000000_security_hardening ──
+{
+  const as = async (uid, sql, params) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql, params);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const throws = async (uid, sql, params) => {
+    try {
+      await as(uid, sql, params);
+      return "";
+    } catch (e) {
+      return String(e.message);
+    }
+  };
+  // 1. ai_usage — 앱 역할은 내 기록 읽기만
+  const g = (await q(`select has_table_privilege('authenticated', 'public.ai_usage', 'insert') i,
+                             has_table_privilege('authenticated', 'public.ai_usage', 'delete') d,
+                             has_table_privilege('anon', 'public.ai_usage', 'select') a,
+                             has_table_privilege('authenticated', 'public.ai_usage', 'select') s`))[0];
+  ok(!g.i && !g.d && !g.a && g.s, "보안: ai_usage 는 앱에서 읽기만(넣기·지우기·익명 권한 없음)");
+
+  // 2. 드라이브 — 크기를 0 이라고 속이고 큰 파일을 올려도 실제 바이트로 센다
+  await db.exec(`update public.must_app_settings set drive_quota_mb = 160`);
+  const big = 50 * 1048576;
+  const ids = [];
+  let blocked = "";
+  for (let i = 0; i < 5 && !blocked; i++) {
+    const f = (await as(B, `insert into public.drive_files (filename, size) values ('속임${i}.bin', 0) returning id`))[0];
+    ids.push(f.id);
+    const m = await throws(B, `insert into storage.objects (bucket_id, name, owner, metadata) values ('drive', '${B}/${f.id}', '${B}', '{"size": ${big}}'::jsonb)`);
+    if (m) blocked = `${i}:${m}`;
+  }
+  ok(blocked.startsWith("3:") && blocked.includes("drive_quota"), `보안: 크기를 0 으로 속여도 실제 바이트로 세어 4번째 50MB 는 막힘 (${blocked.slice(0, 40)})`);
+  const used = Number((await as(B, `select public.must_drive_usage() v`))[0].v.used);
+  ok(used >= 3 * big, `보안: 사용량 = 실제 저장 바이트 (${Math.round(used / 1048576)}MB)`);
+  ok((await throws(B, `insert into public.drive_files (filename, size) values ('더.bin', 10485760)`)).includes("drive_quota"), "보안: 실제 사용량 기준으로 새 파일도 막힘");
+  // 표 줄을 지워도 남은 파일은 계속 셈
+  await as(B, `delete from public.drive_files where id = '${ids[0]}' returning id`);
+  ok(Number((await as(B, `select public.must_drive_usage() v`))[0].v.used) >= 3 * big, "보안: 표 줄만 지운 파일도 사용량에 셈");
+  // 고쳐 쓰기에서 크기를 줄여 적어도 실제 크기로 셈
+  await as(B, `select public.must_drive_rewrite('${ids[1]}', 0)`);
+  ok(Number((await as(B, `select public.must_drive_usage() v`))[0].v.used) >= 3 * big, "보안: 고쳐 쓰기로 크기를 속여도 실제 크기로 셈");
+  await db.exec(`set role service_role;`);
+  const adm = (await q(`select bytes from public.must_admin_drive() where user_id = '${B}'`))[0];
+  await db.exec(`reset role;`);
+  ok(Number(adm.bytes) >= 3 * big, "보안: 관리자 화면 드라이브 사용량도 실제 바이트");
+  await db.exec(`update public.must_app_settings set drive_quota_mb = 150`);
+
+  // 3. 반복 시각 '25:00' 은 못 넣음
+  ok((await throws(A, `insert into public.habits (title, days, start_time, duration_min) values ('x', '{1}', '25:00', 30)`)).includes("habits_start_time"), "보안: 반복 시각 25:00 은 막힘");
+  ok((await as(A, `insert into public.habits (title, days, start_time, duration_min) values ('밤', '{1}', '23:59', 30) returning id`)).length === 1, "보안: 23:59 는 됨");
+
+  // 4. 시간대 — 이름 있는 것만('UTC+3' 같은 건 서울로)
+  await as(A, `update public.profiles set timezone = 'UTC+3', updated_at = now() + interval '3 minutes' where id = '${A}' returning id`);
+  ok((await q(`select timezone from public.profiles where id = '${A}'`))[0].timezone === "Asia/Seoul", "보안: 'UTC+3' 같은 시간대는 서울로");
+  await as(A, `update public.profiles set timezone = 'Europe/Berlin', updated_at = now() + interval '4 minutes' where id = '${A}' returning id`);
+  ok((await q(`select timezone from public.profiles where id = '${A}'`))[0].timezone === "Europe/Berlin", "보안: 이름 있는 시간대는 그대로");
+  await as(A, `update public.profiles set timezone = 'Asia/Seoul', updated_at = now() + interval '5 minutes' where id = '${A}' returning id`);
+
+  // 5. 푸시 구독 — 알려진 푸시 서버만, 한 사람 20개까지
+  ok((await throws(A, `insert into public.push_subscriptions (endpoint, p256dh, auth) values ('https://evil.example/hang', 'k', 'a')`)).includes("endpoint_host"), "보안: 모르는 주소로는 알림 구독 못 함");
+  ok((await throws(A, `insert into public.push_subscriptions (endpoint, p256dh, auth) values ('https://fcm.googleapis.com.evil.example/x', 'k', 'a')`)).includes("endpoint_host"), "보안: 푸시 서버 이름을 흉내 낸 주소도 막힘");
+  ok((await as(A, `insert into public.push_subscriptions (endpoint, p256dh, auth) values ('https://wns2-par02p.notify.windows.com/w/?token=x', 'k', 'a') returning id`)).length === 1, "보안: 윈도우 푸시 주소는 됨");
+  const have = Number((await q(`select count(*)::int n from public.push_subscriptions where user_id = '${A}'`))[0].n);
+  for (let i = have; i < 20; i++) await as(A, `insert into public.push_subscriptions (endpoint, p256dh, auth) values ('https://fcm.googleapis.com/wp/n${i}', 'k', 'a') returning id`);
+  ok((await throws(A, `insert into public.push_subscriptions (endpoint, p256dh, auth) values ('https://fcm.googleapis.com/wp/n21', 'k', 'a')`)).includes("push_limit"), "보안: 알림 기기 21번째는 막힘");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");
