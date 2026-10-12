@@ -42,7 +42,10 @@
   스키마 키가 이름 순으로 나오는 걸 이용해 `block`(읽은 칸 "6-7교시")을 먼저 적게 함 → 종이 시간표(교시만) 다 맞음,
   포털(교시+시각) 4개 중 1개(6-7교시 → 6교시)는 low·medium 둘 다 틀림 → 미리보기에서 고치게. 시험 이미지 `parse-schedule/testdata/*.jpg`(가짜),
   raw.githubusercontent URL 로 pg_net 에서 image url 호출. Deno 15개 통과. **아직 배포 안 함**(v11 예정).
-  ✅ `src/lib/timetable.ts` + `tests/timetable.test.mjs`. ⏳ 화면(TimetableView·TimetableImport·습관 편집 칸) → 빌드·화면 확인 → 검토 → 배포.
+  ✅ `src/lib/timetable.ts` + `tests/timetable.test.mjs` ✅ 화면: 캘린더 '시간표'(`TimetableView.tsx` — 칸·지금 줄·수업 고치기·학기 기간),
+  `TimetableImport.tsx`(사진/글 → 미리보기 → 넣기), 습관 편집 '시간표에 보이기'·장소, 수업 회차 편집 창 안내. 가짜 로그인 + 가짜 AI 답으로
+  Playwright(390·1280): 8개 넣기·강의실 고치기·종강 바꾸기 저장 확인, 작업 탭은 오늘 수업만. 검사 전부 통과(단위 94·DB·Deno 56).
+  ⏳ 검토 워크플로(2명 + 반박 1명씩) → 고치기 → Edge parse-schedule v11 배포 → main 배포.
 
 ### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
 - 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf
