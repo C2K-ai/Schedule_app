@@ -15,7 +15,7 @@ export interface FeedTask {
 export const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
 
 /** ICS 글자 이스케이프: \ ; , 줄바꿈 */
-export const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+export const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 
 /** 2026-10-10T05:00:00.000Z → 20261010T050000Z */
 export const utc = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");

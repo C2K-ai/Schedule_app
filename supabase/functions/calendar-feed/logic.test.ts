@@ -37,7 +37,8 @@ Deno.test("시각 일정은 UTC, 날짜만은 그 사람 시간대의 종일, �
 });
 
 Deno.test("이스케이프·줄 접기(75바이트, 한글 안 쪼갬)", () => {
-  assertEquals(esc("a,b;c\\d\ne"), "a\\,b\;c\\\\d\\ne");
+  // RFC 5545: TEXT 의 ; 도 \; 로(2026-10-12 — 전에는 "\;" 가 그냥 ; 라 빠져 있었음)
+  assertEquals(esc("a,b;c\\d\ne"), "a\\,b\\;c\\\\d\\ne");
   const long = `SUMMARY:${"가".repeat(60)}`;
   const folded = fold(long);
   const enc = new TextEncoder();
