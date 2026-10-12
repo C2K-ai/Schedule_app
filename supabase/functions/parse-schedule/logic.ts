@@ -315,14 +315,15 @@ Rules:
 
 reply: one short, friendly Korean sentence (e.g. "수업 7개를 찾았어요.").`;
 
-/** 모델이 읽은 수업 하나 정리 — 요일·시각이 이상하면 버린다. 길이는 끝 - 시작(5분~12시간) */
+/** 모델이 읽은 수업 하나 정리 — 요일·시각이 이상하면 버린다. 길이는 끝 - 시작(5분~12시간, 끝이 이르면 다음 날까지: 밤 알바 22:00~02:00) */
 export function cleanClass(raw: RawClass) {
   const title = String(raw?.title ?? "").trim().slice(0, 120);
   if (!title) return null;
   const days = [...new Set((Array.isArray(raw.days) ? raw.days : []).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))].sort();
   if (!days.length || !isTime(raw.start) || !isTime(raw.end)) return null;
   const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-  const duration = mins(raw.end) - mins(raw.start);
+  const diff = mins(raw.end) - mins(raw.start);
+  const duration = diff < 0 ? diff + 1440 : diff;
   if (duration < 5 || duration > 720) return null;
   const place = typeof raw.place === "string" && raw.place.trim() ? raw.place.trim().replace(/\s+/g, " ").slice(0, 60) : null;
   return { title, days, start: raw.start, duration_min: duration, place };

@@ -1,7 +1,7 @@
 // 시간표 계산(학기 짐작·묶기·칸 배치). npm run test:unit
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blocksFor, colorFor, gridDays, guessSemester, hourRange, isSameClass, pickGroup, semesterGroups, semesterLabel } from "../src/lib/timetable.ts";
+import { blocksFor, colorFor, gridDays, guessSemester, hourRange, isSameClass, pickGroup, semesterGroups, semesterLabel, spanMin } from "../src/lib/timetable.ts";
 
 const h = (o) => ({ id: o.title, updated_at: "", title: "x", color: "violet", days: [1], start_time: "09:00", duration_min: 75, reminder_offsets: [], sound_id: null, strict: false, active: true, created_at: "", deleted_at: null, start_day: "2026-09-01", end_day: "2026-12-21", in_timetable: true, place: null, ...o });
 
@@ -13,7 +13,7 @@ test("학기 짐작: 2학기 중·방학·연말", () => {
   assert.equal(semesterLabel("2026-09-01"), "2026년 2학기");
   assert.equal(semesterLabel("2026-03-02"), "2026년 1학기");
   assert.equal(semesterLabel("2027-01-04"), "2026년 겨울학기");
-  assert.equal(semesterLabel(null), "기간 없는 시간표");
+  assert.equal(semesterLabel(null), "내 시간표");
 });
 
 test("학기별로 묶고, 오늘이 든 학기 → 다음 학기 → 최근 학기 순으로 고른다", () => {
@@ -28,6 +28,29 @@ test("학기별로 묶고, 오늘이 든 학기 → 다음 학기 → 최근 학
   assert.equal(pickGroup(g, "2026-07-10")?.label, "2026년 2학기"); // 방학 → 다음 학기
   assert.equal(pickGroup(g, "2027-01-10")?.label, "2026년 2학기"); // 다 끝남 → 최근
   assert.equal(pickGroup([], "2026-10-12"), null);
+});
+
+test("기간 없는 알바·동아리는 겹치는 모든 학기 칸에 같이 보이고, 학기 기간 바꾸기엔 안 들어간다", () => {
+  const list = [
+    h({ title: "1학기 수업", start_day: "2026-03-02", end_day: "2026-06-21" }),
+    h({ title: "자료구조" }),
+    h({ title: "알바", start_day: null, end_day: null }),
+    h({ title: "10월까지 학원", start_day: null, end_day: "2026-10-31" }),
+  ];
+  const g = semesterGroups(list);
+  const by = Object.fromEntries(g.map((x) => [x.label, [x.own.map((y) => y.title), x.habits.map((y) => y.title)]]));
+  assert.deepEqual(by["2026년 1학기"], [["1학기 수업"], ["1학기 수업", "알바", "10월까지 학원"]]);
+  assert.deepEqual(by["2026년 2학기"], [["자료구조"], ["자료구조", "알바", "10월까지 학원"]]);
+  // 수업이 하나도 없으면 기간 없는 것끼리 '내 시간표' 하나
+  const only = semesterGroups([h({ title: "알바", start_day: null, end_day: null })]);
+  assert.deepEqual(only.map((x) => [x.label, x.key, x.habits.length]), [["내 시간표", "~", 1]]);
+  assert.equal(pickGroup(only, "2026-10-12")?.key, "~");
+});
+
+test("끝이 시작보다 이르면 다음 날까지(밤 알바)", () => {
+  assert.equal(spanMin("10:30", "11:45"), 75);
+  assert.equal(spanMin("22:00", "02:00"), 240);
+  assert.equal(spanMin("09:00", "09:00"), 0);
 });
 
 test("요일·시간대: 주말 수업이 있으면 그 칸만 늘리고, 이른·늦은 수업이면 시간대를 넓힌다", () => {

@@ -30,23 +30,6 @@
   PC 표지가 위로 잘림 등. 금박 책배 줄무늬(모아레)는 완화함.
 - **아이폰**: WebKit 이 없어 직접 못 봄. 섞기 모드를 줄여 Safari 쪽 위험은 줄었지만 사용자(또는 아이폰 가진 사람) 확인 필요.
 
-### 0-6. **진행 중: 시간표 보기 + 에타 캡처로 넣기**(2026-10-12, 사용자가 에브리타임 조사 자료 보고 "1번이랑 2번 같이")
-- 계획: ① habits 에 `in_timetable`(시간표에 보이기, null 허용·기본 false — 섞인 upsert 에서 null 이 와도 안 깨지게)·`place`(강의실) 칸
-  (마이그레이션 `20261016000000_timetable`) ② 캘린더 탭 '시간표' 보기(`TimetableView.tsx`, 순수 계산 `src/lib/timetable.ts`):
-  월~금(토·일 수업 있으면 그 칸도), 학기(=수업들의 start_day~end_day) 고르기·학기 기간 한 번에 바꾸기, 칸 누르면 수업 편집
-  ③ '캡처로 넣기'(`TimetableImport.tsx`): 학기 기간(이번 학기 짐작: 3/2·9/1 부터 16주) → parse-schedule `mode: "timetable"`
-  (전용 프롬프트·스키마 `TIMETABLE_SYSTEM`/`cleanClass`: 과목·요일·시작·끝·강의실) → 미리보기에서 고치고 → 습관으로 저장(학기 기간, 강제 모드 끔).
-- 사용자 추가 요청: "에타 없는 사람도 다른 시간표 캡처로" → 프롬프트를 에타·학교 포털·종이·학원 시간표·글 목록 모두로(교시만 있으면 1교시 9시·50분 수업으로 짐작하고 reply 에 알림).
-- 진행: ✅ 마이그레이션 적용(서버 + `npm run test:db`) ✅ 타입(Habit.in_timetable·place, createHabit 이 늘 채움)
-  ✅ 서버 `mode: "timetable"` — 모델 **Sonnet 5.5 effort low**(가짜 에타 캡처: Haiku 끝 시각 16개 중 7개 틀림 / Sonnet 다 맞음),
-  스키마 키가 이름 순으로 나오는 걸 이용해 `block`(읽은 칸 "6-7교시")을 먼저 적게 함 → 종이 시간표(교시만) 다 맞음,
-  포털(교시+시각) 4개 중 1개(6-7교시 → 6교시)는 low·medium 둘 다 틀림 → 미리보기에서 고치게. 시험 이미지 `parse-schedule/testdata/*.jpg`(가짜),
-  raw.githubusercontent URL 로 pg_net 에서 image url 호출. Deno 15개 통과. **아직 배포 안 함**(v11 예정).
-  ✅ `src/lib/timetable.ts` + `tests/timetable.test.mjs` ✅ 화면: 캘린더 '시간표'(`TimetableView.tsx` — 칸·지금 줄·수업 고치기·학기 기간),
-  `TimetableImport.tsx`(사진/글 → 미리보기 → 넣기), 습관 편집 '시간표에 보이기'·장소, 수업 회차 편집 창 안내. 가짜 로그인 + 가짜 AI 답으로
-  Playwright(390·1280): 8개 넣기·강의실 고치기·종강 바꾸기 저장 확인, 작업 탭은 오늘 수업만. 검사 전부 통과(단위 94·DB·Deno 56).
-  ⏳ 검토 워크플로(2명 + 반박 1명씩) → 고치기 → Edge parse-schedule v11 배포 → main 배포.
-
 ### 0-3. 사용자에게 준 링크(gstop508@gmail.com 계정 소유 Artifact)
 - 애니메이션 미리보기: https://claude.ai/artifact/3MLTmoRmJuWrRpVNphXwhf
 - 진행률 페이지: https://claude.ai/artifact/6sH8vdW4FcEFsLpnzu9xec
@@ -58,6 +41,7 @@
 - **사용자가 직접 확인할 것**(배포는 끝남): ① 폰에서 일기 책 애니메이션 끊김(0-0) ② 아이폰에서 애니메이션 모양 ③ 카톡 메시지 '공유 → DREAM'
   (홈 화면에 설치한 안드로이드 앱만) ④ Write 사진 버튼으로 시간표 사진 넣기(로그인 필요, 실제 AI 호출은 아직 안 해 봄) ⑤ PC 캘린더 탭 주/일 → 오른쪽 인박스 끌어 놓기.
   ⑥ Voice/Write 로 "내일 치과 취소해줘"(지우기 확인 창) ⑦ "이번 달 매일 …" → 달 끝까지 들어가는지(8절 23·24) ⑧ Write 에 "내일 내 생일"·"20일부터 23일까지 제주 여행" → 일정이 아니라 표시로(8절 30, 모델은 시험 통과 — 폰 화면에서 한 번).
+  ⑨ 캘린더 → 시간표 → '사진으로 넣기'에 실제 에타·포털 캡처(8절 31) — 미리보기에서 시각이 맞는지, 학기 기간이 맞는지.
 - 잠금화면 카드가 사용자 폰에서 안 보이는 문제(7절 '이어서 할 것') — 사용자가 "나중에" 하자고 함.
 - 도구: Deno 는 `npm i --no-save deno`(또는 스크래치에), Playwright 는 `npm i playwright-core@1.56.1` + `executablePath: '/opt/pw-browsers/chromium'`.
   화면 확인: `npx next build` → `cd out && python3 -m http.server 3201`(루트로 서빙) → Playwright. 캘린더 탭 → '주' 에서 시간표·인박스.
@@ -108,6 +92,7 @@
 | 작업·캘린더·타이머·프로필 탭 | `TasksTab.tsx`, `CalendarTab.tsx`, `TimerTab.tsx`/`Study.tsx`, `MeTab.tsx` |
 | 말로·적어서 일정 넣기(AI) | `VoiceAdd.tsx`, `WriteAdd.tsx`, `lib/ai.ts`(`saveParsed`), `lib/speech.ts`, Edge `parse-schedule`(`logic.ts`) |
 | 표시(생일·기념일·여행) | `MarkEditor.tsx`(MarkEditor·MarkChip), `lib/marks.ts`, 표 `marks` |
+| 시간표(학기별 주간 칸·사진으로 넣기) | `TimetableView.tsx`(칸·수업 고치기·학기 기간), `TimetableImport.tsx`(사진/글 → 미리보기), `lib/timetable.ts`, 습관 `in_timetable`·`place`, Edge `parse-schedule` mode "timetable" |
 | 커리어 기록 + AI 다듬기 | `Career.tsx`, Edge `career-polish` |
 | 알림(앱 안 알람·서버 푸시) | `ReminderEngine.tsx`, `lib/reminders.ts`, `lib/push.ts`, `public/sw.js`, Edge `send-due-notifications`·`notification-action` |
 | 폰 잠금화면 일정 카드 | `lib/lockCard.ts`, `LockCardSync.tsx`, `public/sw.js`(lock-card) |
@@ -122,11 +107,11 @@
 
 ## 4. 서버(Supabase) 현재 상태
 
-- **적용된 마이그레이션**: `20261005000000_init` ~ `20261015000000_marks` 전부.
+- **적용된 마이그레이션**: `20261005000000_init` ~ `20261016000000_timetable` 전부.
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v10(Haiku 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v1(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
+- **Edge Functions**(배포 버전): `parse-schedule` v11(Haiku 5.5, 시간표 사진은 Sonnet 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v1(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
   `signup` v3(**JWT 검증 끔**) · `send-due-notifications` v4 · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
@@ -261,6 +246,19 @@
       서버 `realDate`(말일로 당김)·매년 2/29 는 앞 윤년(2024-02-29, 평년엔 앱이 28일에 보임) + 앱 `fixDayKey`(time.ts)로 표시·반복 끝날·시작일 한 번 더.
    ② AI 가 표시를 못 봐서 "제주 여행 25일로 바꿔줘"가 표시를 하나 더 만듦 → `existingForAi` 에 표시(m1…, 매년 것 + 그제 이후, 최대 50)
       + `checkExisting` 이 m ref 받음 + `applyRemovals` 가 `deleteMark`. 실제 모델: 옮기기(m2 지우고 25~28일 새로)·지우기·2/29 모두 맞음.
+
+31. **시간표 보기 + 시간표 사진으로 넣기**(2026-10-12, 사용자: 에브리타임 조사 → "1번이랑 2번", "에타 없는 사람도 다른 캡처로") —
+   습관에 `in_timetable`·`place`(마이그레이션 `20261016000000_timetable`, null 허용). 캘린더 탭 '시간표': 학기(= 수업들의 start_day~end_day)별 주간 칸,
+   토·일은 수업 있을 때만, 지금 시각 줄, 칸 누르면 수업 고치기(밤새 하는 일은 '다음 날'까지), '학기 기간'으로 학기 수업 전부 기간 바꾸기,
+   기간 없는 알바·동아리('시간표에 보이기' 켠 습관)는 겹치는 모든 학기에 같이 보임. '사진으로 넣기': 에타·학교 포털·종이·학원 시간표 사진 또는 글 →
+   parse-schedule **v11** `mode: "timetable"`(**Sonnet 5.5 effort low** — 가짜 에타 캡처에서 Haiku 는 끝 시각 16개 중 7개 틀림, Sonnet 다 맞음;
+   `block` 칸(키가 이름 순으로 나오는 걸 이용해 "6-7교시"를 먼저 적게 함); 교시만 있으면 1교시 9시·50분으로 짐작) → 미리보기(이미 있는 수업은 빼 둠)
+   → 학기 동안 매주 반복(강제 모드 끔, 과목마다 색). 시험 이미지 `parse-schedule/testdata/*.jpg`(가짜), pg_net 에서 raw.githubusercontent URL 로 호출.
+   포털(교시+시각) 사진 하나는 6-7교시를 6교시로 읽음 — 미리보기에서 고치게 함.
+   검토(2명 + 반박 1명씩)로 고친 것: `updateHabit` 이 ① 기간·요일을 줄였다 되돌리거나 멈췄다 다시 시작하면 지워졌던 회차를 되살림(예전엔 영영 안 생김),
+   ② 시각·길이가 바뀔 때만, 옮기거나 미룬 회차는 빼고 시각을 고침(학기 기간만 바꿔도 보강 시각이 돌아가던 문제; 서버 회차의 +00:00 꼴은 숫자로 비교),
+   ③ 밤새 하는 수업(22:00~02:00) 저장·표시 ④ 사진 읽는 동안 학기 기간을 바꿔도 읽기 누른 때 기간으로 저장 ⑤ 기간 없는 항목이 따로 '학기'가 되던 것.
+   시험: 단위 100(`tests/timetable.test.mjs`·`tests/habit-update.test.mjs`), DB, Deno 56, Playwright 가짜 로그인 390·1280.
 
 ## 9. 테마·배경 구조
 

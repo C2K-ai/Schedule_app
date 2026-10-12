@@ -628,29 +628,63 @@ export function createHabit(store: PlannerStore, input: HabitInput): Habit {
   return h;
 }
 
-/** 습관을 고치면 오늘 이후 아직 시작 안 한 회차도 같이 고친다 */
+/** 이 날(YYYY-MM-DD)에 이 습관 회차가 있어야 하나 — 켜져 있고, 그 요일이고, 기간 안 */
+const habitOn = (h: Habit, key: string) => h.active && !h.deleted_at && h.days.includes(parseDayKey(key).getDay()) && inHabitRange(h, key);
+
+/**
+ * 습관을 고치면 오늘 이후 아직 시작 안 한 회차도 같이 고친다.
+ *  · 새 규칙(요일·기간·멈춤)에서 빠지는 날 → 회차를 지운다.
+ *  · 예전 규칙에선 빠져서 지워졌던 날이 새 규칙에 다시 들어오면 → 되살린다(기간을 줄였다 되돌리기, 멈췄다 다시 시작).
+ *    예전 규칙 안에서 사용자가 지운 회차(휴강 등)는 그대로 둔다.
+ *  · 시각·길이는 바뀌었을 때만, 사용자가 옮기거나 미룬 회차는 빼고 고친다(학기 기간·강의실만 바꿨는데 보강 시각이 돌아가지 않게).
+ */
 export function updateHabit(store: PlannerStore, id: string, patch: Partial<Habit>) {
+  const old = store.db.habits[id];
   const h = store.patch("habits", id, patch);
-  if (!h) return;
+  if (!h || !old) return;
   const today = dayKey(new Date());
+  const now = Date.now();
+  const retime = old.start_time !== h.start_time || old.duration_min !== h.duration_min;
+  const restyle =
+    old.title !== h.title ||
+    old.color !== h.color ||
+    old.sound_id !== h.sound_id ||
+    old.strict !== h.strict ||
+    old.reminder_offsets.join() !== h.reminder_offsets.join();
+  const style = {
+    title: h.title,
+    color: h.color,
+    reminder_offsets: h.reminder_offsets,
+    sound_id: h.sound_id,
+    strict: h.strict,
+  };
+  const slot = (hb: Habit, key: string) => {
+    const s = atTime(parseDayKey(key), hb.start_time);
+    return { starts_at: s.toISOString(), ends_at: new Date(s.getTime() + hb.duration_min * MIN).toISOString() };
+  };
   for (const t of Object.values(store.db.tasks)) {
-    if (t.habit_id !== id || t.status !== "planned" || t.deleted_at || !t.occurrence_date) continue;
-    if (t.occurrence_date < today) continue;
-    if (!h.active || h.deleted_at || !h.days.includes(parseDayKey(t.occurrence_date).getDay()) || !inHabitRange(h, t.occurrence_date)) {
+    if (t.habit_id !== id || t.status !== "planned" || !t.occurrence_date) continue;
+    const key = t.occurrence_date;
+    if (key < today) continue;
+    if (t.deleted_at) {
+      if (!habitOn(old, key) && habitOn(h, key)) {
+        const at = slot(h, key);
+        if (Date.parse(at.starts_at) >= now) store.patch("tasks", t.id, { deleted_at: null, ...style, ...at });
+      }
+      continue;
+    }
+    if (!habitOn(h, key)) {
       store.patch("tasks", t.id, { deleted_at: nowIso() });
       continue;
     }
-    const start = atTime(parseDayKey(t.occurrence_date), h.start_time);
-    if (start.getTime() < Date.now()) continue;
-    store.patch("tasks", t.id, {
-      title: h.title,
-      color: h.color,
-      starts_at: start.toISOString(),
-      ends_at: new Date(start.getTime() + h.duration_min * MIN).toISOString(),
-      reminder_offsets: h.reminder_offsets,
-      sound_id: h.sound_id,
-      strict: h.strict,
-    });
+    if (Date.parse(t.starts_at) < now) continue;
+    // 서버가 만든 회차는 시각 글자 꼴(+00:00)이 달라서 숫자로 비교한다
+    const was = slot(old, key);
+    const moved = t.postpone_count > 0 || Date.parse(t.starts_at) !== Date.parse(was.starts_at) || Date.parse(t.ends_at) !== Date.parse(was.ends_at);
+    const at = retime && !moved ? slot(h, key) : null;
+    if (at && Date.parse(at.starts_at) < now) continue;
+    if (!restyle && !at) continue;
+    store.patch("tasks", t.id, { ...(restyle ? style : {}), ...(at ?? {}) });
   }
   materializeHabits(store, [startOfDay(new Date())]);
 }

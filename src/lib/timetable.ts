@@ -24,7 +24,7 @@ export function guessSemester(today: Date): Semester {
 
 /** '2026년 2학기' — 시작 달로 짐작(2~5월 1학기, 6~8월 여름, 9~11월 2학기, 12~1월 겨울) */
 export function semesterLabel(start: string | null | undefined): string {
-  if (!start) return "기간 없는 시간표";
+  if (!start) return "내 시간표";
   const y = Number(start.slice(0, 4)),
     m = Number(start.slice(5, 7));
   if (m >= 2 && m <= 5) return `${y}년 1학기`;
@@ -45,22 +45,33 @@ export const timetableHabits = (habits: Habit[]) => habits.filter((h) => h.in_ti
 export interface SemesterGroup extends Semester {
   key: string;
   label: string;
+  /** 이 학기 기간을 가진 수업(학기 기간을 바꾸면 같이 바뀜) */
+  own: Habit[];
+  /** 칸에 보일 것 — 수업 + 기간이 없거나 일부만 있는 것 중 이 학기와 겹치는 것(알바·동아리) */
   habits: Habit[];
 }
 
-/** 같은 기간끼리 한 학기 — 시작 순 */
+/** 시작·끝 날이 같은 수업끼리 한 학기(시작 순). 기간이 없는 것(알바·동아리)은 겹치는 모든 학기에 같이 보인다 */
 export function semesterGroups(list: Habit[]): SemesterGroup[] {
   const m = new Map<string, SemesterGroup>();
+  const rest: Habit[] = [];
   for (const h of list) {
-    const key = `${h.start_day ?? ""}~${h.end_day ?? ""}`;
+    if (!h.start_day || !h.end_day) {
+      rest.push(h);
+      continue;
+    }
+    const key = `${h.start_day}~${h.end_day}`;
     let g = m.get(key);
     if (!g) {
-      g = { key, start: h.start_day ?? "", end: h.end_day ?? "", label: semesterLabel(h.start_day), habits: [] };
+      g = { key, start: h.start_day, end: h.end_day, label: semesterLabel(h.start_day), own: [], habits: [] };
       m.set(key, g);
     }
-    g.habits.push(h);
+    g.own.push(h);
   }
-  return [...m.values()].sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+  if (!m.size) return rest.length ? [{ key: "~", start: "", end: "", label: semesterLabel(null), own: rest, habits: rest }] : [];
+  const groups = [...m.values()].sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+  for (const g of groups) g.habits = [...g.own, ...rest.filter((h) => (!h.start_day || h.start_day <= g.end) && (!h.end_day || h.end_day >= g.start))];
+  return groups;
 }
 
 /** 처음 보여 줄 학기 — 오늘이 들어 있는 것 → 가장 가까운 다음 학기 → 가장 최근 학기 */
@@ -72,6 +83,11 @@ export function pickGroup(groups: SemesterGroup[], today: string): SemesterGroup
 }
 
 export const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+/** 시작 → 끝 길이(분). 끝이 시작보다 이르면 다음 날까지(밤 알바 22:00~02:00 = 240) */
+export const spanMin = (start: string, end: string) => {
+  const d = toMin(end) - toMin(start);
+  return d < 0 ? d + 1440 : d;
+};
 export const toHHMM = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 
 /** 보일 요일(월~금 + 수업 있는 토·일) — 월요일부터 */

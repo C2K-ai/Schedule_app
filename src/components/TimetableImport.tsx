@@ -6,7 +6,7 @@ import { parseTimetable, type ParsedClass } from "@/lib/ai";
 import { shrinkPhoto, type Photo } from "@/lib/photo";
 import { createHabit } from "@/lib/planner";
 import { getSupabase } from "@/lib/supabase";
-import { colorFor, isSameClass, periodText, toHHMM, toMin, type Semester } from "@/lib/timetable";
+import { colorFor, isSameClass, periodText, spanMin, toHHMM, toMin, type Semester } from "@/lib/timetable";
 import { WEEKDAYS } from "@/lib/time";
 import type { ColorKey, Habit } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
@@ -39,6 +39,8 @@ export function TimetableImport({
   const [err, setErr] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
+  // 읽기를 누른 때의 학기 기간 — 읽는 동안 칸을 바꿔도 이걸로 넣는다
+  const [used, setUsed] = useState<Semester>(sem);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const pick = async (f: File | undefined) => {
@@ -57,13 +59,15 @@ export function TimetableImport({
     if (!sb || !session.userId) return setErr("사진 읽기는 로그인한 상태에서만 쓸 수 있어요 (설정 → 계정). 수업은 '수업' 버튼으로 직접 넣을 수 있어요.");
     if (!photo && !text.trim()) return setErr("시간표 사진을 고르거나 시간표를 글로 적어 주세요.");
     if (!range.start || !range.end || range.end < range.start) return setErr("학기 기간(개강 ~ 종강)을 확인해 주세요.");
+    const at = { ...range };
     setBusy(true);
     setErr(null);
     try {
       const r = await parseTimetable(sb, { image: photo ?? undefined, text: text.trim() });
       setReply(r.reply || null);
       if (!r.classes.length) return setErr(r.reply || "시간표에서 수업을 찾지 못했어요. 더 또렷한 사진으로 해 보세요.");
-      setDrafts(r.classes.map((c, i) => toDraft(c, i, existing, range)));
+      setUsed(at);
+      setDrafts(r.classes.map((c, i) => toDraft(c, i, existing, at)));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "시간표를 읽지 못했어요.");
     } finally {
@@ -72,7 +76,7 @@ export function TimetableImport({
   };
 
   const chosen = drafts?.filter((d) => d.on) ?? [];
-  const bad = chosen.find((d) => !d.title.trim() || !d.days.length || toMin(d.end) - toMin(d.start) < 5);
+  const bad = chosen.find((d) => !d.title.trim() || !d.days.length || spanMin(d.start, d.end) < 5);
   const save = () => {
     if (!chosen.length || bad) return;
     const colors = new Map<string, ColorKey>(existing.map((h) => [h.title.trim(), h.color]));
@@ -83,16 +87,16 @@ export function TimetableImport({
         color: colorFor(d.title, colors),
         days: [...d.days].sort(),
         start_time: d.start,
-        duration_min: toMin(d.end) - toMin(d.start),
+        duration_min: spanMin(d.start, d.end),
         reminder_offsets: settings.defaultOffsets,
         sound_id: null,
         strict: false,
-        start_day: range.start,
-        end_day: range.end,
+        start_day: used.start,
+        end_day: used.end,
         in_timetable: true,
       });
     }
-    onSaved(`${range.start}~${range.end}`);
+    onSaved(`${used.start}~${used.end}`);
   };
   const patch = (key: number, p: Partial<Draft>) => setDrafts((l) => l?.map((d) => (d.key === key ? { ...d, ...p } : d)) ?? null);
 
@@ -102,7 +106,7 @@ export function TimetableImport({
       onClose={busy ? undefined : onClose}
       size="lg"
       title="시간표 사진으로 넣기"
-      subtitle={drafts ? `${periodText(range.start, range.end)} 동안 매주 반복돼요. 틀린 건 고치고 넣으세요.` : "에브리타임·학교 포털 캡처, 종이 시간표 사진, 학원 시간표 다 돼요."}
+      subtitle={drafts ? `${periodText(used.start, used.end)} 동안 매주 반복돼요. 틀린 건 고치고 넣으세요.` : "에브리타임·학교 포털 캡처, 종이 시간표 사진, 학원 시간표 다 돼요."}
       footer={
         drafts ? (
           <div className="flex gap-2">
@@ -195,7 +199,7 @@ export function TimetableImport({
           </div>
           <div>
             <Label>학기 기간 — 이 동안 매주 반복돼요</Label>
-            <PeriodInputs value={range} onChange={setRange} />
+            <PeriodInputs value={range} onChange={setRange} disabled={busy} />
           </div>
           {err && (
             <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger">
@@ -211,17 +215,17 @@ export function TimetableImport({
 
 function toDraft(c: ParsedClass, key: number, existing: Habit[], sem: Semester): Draft {
   const dup = existing.some((h) => isSameClass(h, { title: c.title, start: c.start, days: c.days }, sem));
-  return { key, on: !dup, dup, title: c.title, place: c.place ?? "", days: c.days, start: c.start, end: toHHMM(toMin(c.start) + c.duration_min) };
+  return { key, on: !dup, dup, title: c.title, place: c.place ?? "", days: c.days, start: c.start, end: toHHMM(toMin(c.start) + Math.min(c.duration_min, 1435)) };
 }
 
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-export function PeriodInputs({ value, onChange }: { value: Semester; onChange: (v: Semester) => void }) {
+export function PeriodInputs({ value, onChange, disabled }: { value: Semester; onChange: (v: Semester) => void; disabled?: boolean }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-      <input type="date" value={value.start} onChange={(e) => onChange({ ...value, start: e.target.value })} aria-label="개강" className={cx(inputCls, "px-2.5")} />
+      <input type="date" value={value.start} disabled={disabled} onChange={(e) => onChange({ ...value, start: e.target.value })} aria-label="개강" className={cx(inputCls, "px-2.5")} />
       <span className="text-sm text-muted">~</span>
-      <input type="date" value={value.end} min={value.start || undefined} onChange={(e) => onChange({ ...value, end: e.target.value })} aria-label="종강" className={cx(inputCls, "px-2.5")} />
+      <input type="date" value={value.end} min={value.start || undefined} disabled={disabled} onChange={(e) => onChange({ ...value, end: e.target.value })} aria-label="종강" className={cx(inputCls, "px-2.5")} />
     </div>
   );
 }

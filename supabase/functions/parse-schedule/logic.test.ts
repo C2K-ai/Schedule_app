@@ -148,6 +148,7 @@ Deno.test("시간표: 수업 하나 정리 — 요일·시각이 이상하면 �
   assertEquals(cleanClass({ title: "x", days: [], start: "10:00", end: "11:00", place: null }), null);
   assertEquals(cleanClass({ title: "x", days: [1], start: "11:00", end: "10:00", place: null }), null);
   assertEquals(cleanClass({ title: "x", days: [1], start: "25:00", end: "26:00", place: null }), null);
+  assertEquals(cleanClass({ title: "야간 알바", days: [5], start: "22:00", end: "02:00", place: null })?.duration_min, 240);
   assertEquals(cleanClass({ title: "", days: [1], start: "10:00", end: "11:00", place: null }), null);
   assertEquals(cleanClass({ title: "x", days: [1], start: "10:00", end: "11:00", place: "" })?.place, null);
   // 모델이 요일마다 따로 적어도 하나로

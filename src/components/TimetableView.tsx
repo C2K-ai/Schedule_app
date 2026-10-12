@@ -12,6 +12,7 @@ import {
   pickGroup,
   semesterGroups,
   timetableHabits,
+  spanMin,
   toHHMM,
   toMin,
   type Semester,
@@ -108,7 +109,7 @@ export function TimetableView() {
       <p className="text-xs text-faint">수업은 반복 일정으로 들어가서 주·일 보기와 알림에도 나와요. 습관(☰ → 습관)에서 &lsquo;시간표에 보이기&rsquo;를 켜면 알바·동아리도 여기 보여요.</p>
 
       {editing && (
-        <ClassEditor initial={editing === "new" ? null : editing} sem={sem} askPeriod={!group} onClose={() => setEditing(null)} />
+        <ClassEditor initial={editing === "new" ? null : editing} sem={sem} askPeriod={!group?.start || !group?.end} onClose={() => setEditing(null)} />
       )}
       {period && group && <PeriodEditor group={group} onClose={() => setPeriod(false)} onSaved={(key) => setPicked(key)} />}
       {importing && (
@@ -171,7 +172,7 @@ function Grid({ group, today, now, onPick }: { group: SemesterGroup; today: stri
                   key={b.habit.id}
                   type="button"
                   onClick={() => onPick(b.habit)}
-                  title={`${b.habit.title} ${toHHMM(b.start)}–${toHHMM(b.end)}${b.habit.place ? ` · ${b.habit.place}` : ""}`}
+                  title={`${b.habit.title} ${toHHMM(b.start)}–${toHHMM(b.start + b.habit.duration_min)}${b.habit.place ? ` · ${b.habit.place}` : ""}`}
                   className="absolute overflow-hidden rounded-lg px-1 py-0.5 text-left text-[#111] shadow-sm transition hover:brightness-95 active:scale-[0.98]"
                   style={{
                     top: ((b.start - from * 60) / 60) * HOUR + 1,
@@ -183,6 +184,9 @@ function Grid({ group, today, now, onPick }: { group: SemesterGroup; today: stri
                 >
                   <span className="line-clamp-3 text-[11px] leading-tight font-bold break-all">{b.habit.title}</span>
                   {b.habit.place && <span className="mt-0.5 line-clamp-2 text-[10px] leading-tight opacity-75 break-all">{b.habit.place}</span>}
+                  {b.start + b.habit.duration_min > 24 * 60 && (
+                    <span className="mt-0.5 block text-[10px] leading-tight font-semibold opacity-75">→ 다음 날 {toHHMM(b.start + b.habit.duration_min)}</span>
+                  )}
                 </button>
               ))}
             {live && x === todayDow && nowMin >= from * 60 && nowMin <= to * 60 && (
@@ -207,11 +211,11 @@ function ClassEditor({ initial, sem, askPeriod, onClose }: { initial: Habit | nu
   const [range, setRange] = useState<Semester>(sem);
   const [err, setErr] = useState<string | null>(null);
 
+  const dur = spanMin(start, end);
   const save = () => {
-    const dur = toMin(end) - toMin(start);
     if (!title.trim()) return setErr("과목 이름을 적어 주세요");
     if (!days.length) return setErr("요일을 하나 이상 고르세요");
-    if (dur < 5) return setErr("끝나는 시각이 시작보다 뒤여야 해요");
+    if (dur < 5) return setErr("끝나는 시각을 확인해 주세요");
     if (askPeriod && (!range.start || !range.end || range.end < range.start)) return setErr("학기 기간을 확인해 주세요");
     const fields = { title: title.trim(), place: place.trim().slice(0, 60) || null, days: [...days].sort(), start_time: start, duration_min: dur, color };
     if (initial) updateHabit(store, initial.id, fields);
@@ -275,6 +279,7 @@ function ClassEditor({ initial, sem, askPeriod, onClose }: { initial: Habit | nu
             <input type="time" value={end} onChange={(e) => e.target.value && setEnd(e.target.value)} className={inputCls} />
           </div>
         </div>
+        {toMin(end) < toMin(start) && <p className="-mt-2 text-xs font-semibold text-muted">다음 날 {end}까지예요 (밤새 하는 일)</p>}
         {askPeriod && (
           <div>
             <Label>학기 기간 — 이 동안 매주 반복돼요</Label>
@@ -298,7 +303,7 @@ function PeriodEditor({ group, onClose, onSaved }: { group: SemesterGroup; onClo
   const [err, setErr] = useState<string | null>(null);
   const save = () => {
     if (!range.start || !range.end || range.end < range.start) return setErr("종강이 개강보다 뒤여야 해요");
-    for (const h of group.habits) updateHabit(store, h.id, { start_day: range.start, end_day: range.end });
+    for (const h of group.own) updateHabit(store, h.id, { start_day: range.start, end_day: range.end });
     onSaved(`${range.start}~${range.end}`);
     onClose();
   };
@@ -308,7 +313,7 @@ function PeriodEditor({ group, onClose, onSaved }: { group: SemesterGroup; onClo
       onClose={onClose}
       size="sm"
       title="학기 기간"
-      subtitle={`수업 ${group.habits.length}개가 이 기간 동안만 매주 반복돼요. 종강하면 알아서 멈춰요.`}
+      subtitle={`수업 ${group.own.length}개가 이 기간 동안만 매주 반복돼요. 종강하면 알아서 멈춰요.`}
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
