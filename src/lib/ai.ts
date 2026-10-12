@@ -4,8 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { CAREER_IMPORT_MAX, type ImportedCareer } from "./career";
 import { createHabit, createTask, isTimed, liveHabits, liveTasks } from "./planner";
 import type { PlannerStore } from "./store";
-import { addDays, atTime, dayKey, fmtTime, MIN, parseDayKey, startOfDay, toHHMM, WEEKDAYS } from "./time";
-import { saveMark } from "./marks";
+import { addDays, atTime, dayKey, fixDayKey, fmtTime, MIN, parseDayKey, startOfDay, toHHMM, WEEKDAYS } from "./time";
+import { liveMarks, saveMark } from "./marks";
 import type { Category, DB, Habit, Mark, ScheduleKind, Settings, Task } from "./types";
 
 /** parse-schedule 함수가 돌려주는 한 항목 (서버 logic.ts 의 clean() 결과와 같은 모양) */
@@ -88,7 +88,7 @@ export async function parseSchedule(
 
 /** AI 가 지우자고 고른 기존 일정 하나 */
 export interface AiRemoval {
-  kind: "task" | "habit";
+  kind: "task" | "habit" | "mark";
   id: string;
   title: string;
   /** 사람이 읽는 언제 — '10/11(일) 15:00–16:00', '매일 07:00 (반복)' */
@@ -107,9 +107,14 @@ const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay(
 const habitWhen = (h: Habit) =>
   `${h.days.length === 7 ? "매일" : `매주 ${[...h.days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((x) => WEEKDAYS[x]).join("·")}`} ${h.start_time} (반복${h.end_day ? `, ~${Number(h.end_day.slice(5, 7))}/${Number(h.end_day.slice(8, 10))}` : ""})`;
 
+const markWhen = (m: Mark) =>
+  m.yearly
+    ? `매년 ${Number(m.day.slice(5, 7))}/${Number(m.day.slice(8, 10))} (표시)`
+    : `${md(parseDayKey(m.day))}${m.end_day ? `~${md(parseDayKey(m.end_day))}` : ""} (표시)`;
+
 /**
- * AI 에게 보여 줄 기존 일정 — 아직 안 끝낸 일정(그제 ~ 60일 뒤 + 날짜 없음)과 반복 습관, 가까운 것부터 최대 250개.
- * ref(t1·h1…)만 보내고, 실제 id 는 이 기기에만 둔다
+ * AI 에게 보여 줄 기존 일정 — 아직 안 끝낸 일정(그제 ~ 60일 뒤 + 날짜 없음)과 반복 습관, 표시(매년 + 그제 이후), 최대 300개.
+ * ref(t1·h1·m1…)만 보내고, 실제 id 는 이 기기에만 둔다
  */
 export function existingForAi(db: DB, now = new Date()): ExistingForAi {
   const from = addDays(startOfDay(now), -2).getTime();
@@ -135,6 +140,17 @@ export function existingForAi(db: DB, now = new Date()): ExistingForAi {
     lines.push({ ref, when, title: h.title });
     byRef.set(ref, { kind: "habit", id: h.id, title: h.title, when });
   });
+  // 표시: 매년 것과 아직 안 지난 것 — "제주 여행 25일로 바꿔줘"·"생일 표시 지워줘"
+  const since = dayKey(addDays(startOfDay(now), -2));
+  liveMarks(db)
+    .filter((m) => m.yearly || (m.end_day ?? m.day) >= since)
+    .slice(0, 50)
+    .forEach((m, i) => {
+      const ref = `m${i + 1}`;
+      const when = markWhen(m);
+      lines.push({ ref, when, title: m.title });
+      byRef.set(ref, { kind: "mark", id: m.id, title: m.title, when });
+    });
   return { lines, byRef };
 }
 
@@ -159,13 +175,15 @@ export function saveParsed(
   const marks: Mark[] = [];
   for (const it of items) {
     if (it.kind === "mark") {
-      // 표시: 생일·기념일·여행 — 할 일이 아니라 캘린더에 날짜만
+      // 표시: 생일·기념일·여행 — 할 일이 아니라 캘린더에 날짜만. 날짜는 실제 있는 날로(서버도 고치지만 한 번 더)
+      const day = fixDayKey(it.date) ?? dayKey(new Date());
+      const end = fixDayKey(it.end_date);
       marks.push(
         saveMark(store, {
           title: it.title,
           notes: it.notes,
-          day: it.date ?? dayKey(new Date()),
-          end_day: !it.yearly && it.end_date && it.date && it.end_date > it.date ? it.end_date : null,
+          day,
+          end_day: !it.yearly && end && end > day ? end : null,
           yearly: Boolean(it.yearly),
           emoji: it.emoji ?? null,
           color: "pink",
@@ -188,8 +206,11 @@ export function saveParsed(
           sound_id: null,
           strict: opts.strict ?? true,
           // 기간: 첫날이 앞날이면 그날부터, 끝나는 날이 있으면 그날까지("이번 달 매일")
-          start_day: it.date && it.date > dayKey(new Date()) ? it.date : null,
-          end_day: it.repeat_until ?? null,
+          start_day: (() => {
+            const d = fixDayKey(it.date);
+            return d && d > dayKey(new Date()) ? d : null;
+          })(),
+          end_day: fixDayKey(it.repeat_until),
         }),
       );
       continue;

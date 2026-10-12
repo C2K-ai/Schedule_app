@@ -11,6 +11,20 @@ export function dayKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * 밖에서 온(AI 등) 'YYYY-MM-DD' 를 실제 날짜로 — 달 말일을 넘으면 말일(11-31 → 11-30), 꼴이 틀리면 null.
+ * DB date 칸은 없는 날짜를 거절해 그 표의 동기화가 통째로 막힌다
+ */
+export function fixDayKey(s: string | null | undefined): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s ?? "");
+  if (!m) return null;
+  const y = Number(m[1]),
+    mo = Number(m[2]),
+    d = Number(m[3]);
+  if (y < 1000 || mo < 1 || mo > 12 || d < 1) return null;
+  return `${m[1]}-${m[2]}-${pad(Math.min(d, new Date(y, mo, 0).getDate()))}`;
+}
+
 export function parseDayKey(key: string): Date {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, m - 1, d);

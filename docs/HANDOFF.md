@@ -109,7 +109,7 @@
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v9(Haiku 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v1(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
+- **Edge Functions**(배포 버전): `parse-schedule` v10(Haiku 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v1(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
   `signup` v3(**JWT 검증 끔**) · `send-due-notifications` v4 · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
@@ -234,11 +234,16 @@
 29. **표시(생일·기념일·시험·여행)**(2026-10-11) — 표 `marks`(마이그레이션 `20261015000000`), `src/lib/marks.ts`(매년 반복·여러 날·다가오는 표시),
    `MarkEditor.tsx`. 캘린더 칸·날짜 칸·작업 탭 '다가오는 표시'·메뉴 '표시 남기기'. 할 일·한 일과 달리 체크·알림 없음.
    다음에 할 만한 것: 주·일 시간표 머리에도 표시.
-30. **Write·말로 추가 → 표시**(2026-10-11, 사용자: "Write에서도 표시로") — parse-schedule **v9**: kind `mark` + `end_date`(여러 날)·`yearly`(매년)·`emoji`.
+30. **Write·말로 추가 → 표시**(2026-10-11, 사용자: "Write에서도 표시로") — parse-schedule **v9→v10**: kind `mark` + `end_date`(여러 날)·`yearly`(매년)·`emoji`.
    생일·기념일·여행·시각 없는 시험·D-day 는 표시, 그날 할 일("생일 선물 사기")·시각이 있으면 일정. `clean()` 이 표시는 시각·반복·알림·카테고리 비움.
    앱: `saveParsed` 가 표시는 `saveMark`(분홍), Write '넣은 일정'에 🎂 표시 · 날짜 · 매년, '고치기' → MarkEditor. 말로 추가 미리보기에 '표시' 칸·매년·끝나는 날.
    확인: Deno 시험 12개, 가짜 로그인 + 가짜 AI 답으로 Playwright(표시 2·일정 1 저장), 실제 Haiku 5.5(pg_net) 한 문장에 7개 —
    표시 5(내 생일·엄마 생신·결혼기념일 매년, 제주 여행 20~23일, 토익 다음 주 수) + 일정 2(선물 사기 금, 치과 토 15:00) 모두 맞음, 약 1원.
+   검토(2명 + 찾은 것마다 반박 1명, 워크플로) 뒤 고친 것(v10):
+   ① **없는 날짜**("2026-11-31"·"2027-02-29")가 꼴만 맞아 그대로 저장 → DB date 칸이 거절해 그 표의 올리기 묶음이 5번 실패 후 버려짐.
+      서버 `realDate`(말일로 당김)·매년 2/29 는 앞 윤년(2024-02-29, 평년엔 앱이 28일에 보임) + 앱 `fixDayKey`(time.ts)로 표시·반복 끝날·시작일 한 번 더.
+   ② AI 가 표시를 못 봐서 "제주 여행 25일로 바꿔줘"가 표시를 하나 더 만듦 → `existingForAi` 에 표시(m1…, 매년 것 + 그제 이후, 최대 50)
+      + `checkExisting` 이 m ref 받음 + `applyRemovals` 가 `deleteMark`. 실제 모델: 옮기기(m2 지우고 25~28일 새로)·지우기·2/29 모두 맞음.
 
 ## 9. 테마·배경 구조
 

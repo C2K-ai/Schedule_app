@@ -2,6 +2,7 @@
 
 import { Check, Lock, Repeat, Trash2 } from "lucide-react";
 import type { AiRemoval } from "@/lib/ai";
+import { deleteMark } from "@/lib/marks";
 import { deleteHabit, deleteTask, taskState } from "@/lib/planner";
 import type { PlannerStore } from "@/lib/store";
 import type { DB } from "@/lib/types";
@@ -67,6 +68,10 @@ export function applyRemovals(store: PlannerStore, items: RemovalDraft[]): numbe
       const t = store.db.tasks[r.id];
       if (!t || t.deleted_at) continue;
       deleteTask(store, r.id);
+    } else if (r.kind === "mark") {
+      const m = store.db.marks[r.id];
+      if (!m || m.deleted_at) continue;
+      deleteMark(store, r.id);
     } else {
       const h = store.db.habits[r.id];
       if (!h || h.deleted_at) continue;

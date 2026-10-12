@@ -1,6 +1,6 @@
 // deno test parse-schedule/logic.test.ts
 import { assertEquals } from "jsr:@std/assert@1";
-import { calendarTable, checkExisting, checkImage, clean, cleanRemove, MAX_IMAGE_B64, SCHEMA, type RawItem } from "./logic.ts";
+import { calendarTable, checkExisting, checkImage, clean, cleanRemove, MAX_IMAGE_B64, realDate, SCHEMA, type RawItem } from "./logic.ts";
 
 const base: RawItem = {
   title: "치과",
@@ -115,4 +115,29 @@ Deno.test("표시(mark): 생일은 매년 하루, 여행은 여러 날, 시각·
   const task = clean({ ...base, title: "치과", kind: "day", date: "2026-10-12" }, [], "2026-10-11");
   assertEquals([task?.end_date, task?.yearly, task?.emoji], [null, false, null]);
   assertEquals((SCHEMA.properties.items.items.properties.kind as { enum: string[] }).enum.includes("mark"), true);
+});
+
+Deno.test("없는 날짜는 실제 날짜로 — DB date 칸이 거절해 동기화가 막히지 않게", () => {
+  assertEquals(realDate("2026-11-31"), "2026-11-30");
+  assertEquals(realDate("2027-02-29"), "2027-02-28");
+  assertEquals(realDate("2028-02-29"), "2028-02-29");
+  assertEquals(realDate("2026-10-11"), "2026-10-11");
+  assertEquals([realDate("2026-13-01"), realDate("2026-00-10"), realDate("2026-10-00"), realDate("0000-01-01"), realDate("내일")], [null, null, null, null, null]);
+  // 표시: 매년 2월 29일은 앞 윤년으로(평년엔 앱이 28일에 보여 줌), 여러 날 끝도 고침
+  const leapBday = clean({ ...base, title: "엄마 생신", kind: "mark", date: "2027-02-29", yearly: true, emoji: "🎂" }, [], "2026-10-11");
+  assertEquals(leapBday?.date, "2024-02-29");
+  const trip = clean({ ...base, title: "여행", kind: "mark", date: "2026-11-28", end_date: "2026-11-31", yearly: false }, [], "2026-10-11");
+  assertEquals([trip?.date, trip?.end_date], ["2026-11-28", "2026-11-30"]);
+  const once = clean({ ...base, title: "시험", kind: "mark", date: "2026-11-31", yearly: false }, [], "2026-10-11");
+  assertEquals(once?.date, "2026-11-30");
+  // 일정·반복 끝나는 날도
+  assertEquals(clean({ ...base, kind: "day", date: "2026-11-31" }, [], "2026-10-11")?.date, "2026-11-30");
+  const habit = clean({ ...base, date: "2026-11-01", start: "07:00", repeat_days: [1], repeat_until: "2026-11-31" }, [], "2026-10-11");
+  assertEquals(habit?.repeat_until, "2026-11-30");
+});
+
+Deno.test("지우기·옮기기: 표시(m1…)도 목록에 들어간다", () => {
+  const ex = checkExisting([{ ref: "m1", when: "10/20(화)~10/23(금) (표시)", title: "제주 여행" }, { ref: "t1", when: "a", title: "치과" }]);
+  assertEquals(ex.map((e) => e.ref), ["m1", "t1"]);
+  assertEquals(cleanRemove(["m1", "m2"], ex), ["m1"]);
 });

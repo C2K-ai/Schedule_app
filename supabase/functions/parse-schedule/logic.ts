@@ -83,7 +83,7 @@ Fields:
 - reminders_min: minutes-before reminders only if they ask ("30분 전에 알려줘" → [30], "정각에" → [0]); null otherwise.
 - notes: extra details worth keeping (place, things to bring, people) that do not belong in the title; else null.
 - end_date: marks only — the last day of a mark that spans several days ("20일부터 23일까지 여행" → the 23rd), else null.
-- yearly: marks only — true for things that come back every year (birthdays, 생신, wedding or relationship anniversaries, "매년"); false otherwise and for all non-marks. A yearly mark is one day (end_date null).
+- yearly: marks only — true for things that come back every year (birthdays, 생신, wedding or relationship anniversaries, "매년"); false otherwise and for all non-marks. A yearly mark is one day (end_date null) and keeps the month and day they said — for a 2월 29일 birthday use 2024-02-29 (the app shows it on Feb 28 in other years), never move it to 02-28.
 - emoji: marks only — one fitting emoji: 🎂 birthday, 💍 wedding anniversary, ❤️ couple anniversary, 🎉 celebration or holiday, ✈️ trip or vacation, 📝 exam, 🏥 hospital, ⭐ anything else; null for non-marks.
 
 Deleting and moving existing items:
@@ -92,11 +92,12 @@ The user may ask to delete or cancel things already in their planner ("치과 �
 - Match by meaning of the title (synonyms, short forms and speech-recognition slips are fine) and by the day/time they mention. When they name a day or time, only take items on that day/time. "다", "전부", "모두" with a day means every item listed on that day.
 - To move or reschedule an existing item ("치과 4시로 옮겨줘", "회의 내일로 미뤄"), put its ref in "remove" AND return the new version as an item, keeping its title and length (duration_min = its current length) unless they change them.
 - Refs starting with "h" are repeating routines. Remove one only when they want to stop the routine itself ("매일 운동 그만할래"). To cancel just one day ("오늘 운동은 빼줘"), remove that day's "t" item instead.
+- Refs starting with "m" are marks (days to remember: birthdays, trips, exams). To move a mark ("제주 여행 25일부터로 바꿔줘"), remove its ref AND return the new version as a "mark" item, keeping its title, emoji, yearly and number of days unless they change them. Never return a second copy of a mark without removing the old one.
 - If nothing in the list clearly matches, leave "remove" empty and say so in reply. Never remove anything they did not ask to remove. If no existing items are listed, "remove" must be empty.
 
 reply: one short, friendly Korean sentence summarising what you understood (e.g. "내일 오후 3시 치과, 금요일 보고서 마감 — 2개 찾았어요.", "내일 15:00 치과를 지울게요."). If nothing schedulable was said, return no items and use reply to say so briefly.`;
 
-/** 지우기·옮기기에 쓰는 기존 일정 한 줄 — ref 는 t1·t2…(일정), h1…(반복 습관) */
+/** 지우기·옮기기에 쓰는 기존 일정 한 줄 — ref 는 t1·t2…(일정), h1…(반복 습관), m1…(표시) */
 export interface ExistingItem {
   ref: string;
   when: string;
@@ -110,7 +111,7 @@ export function checkExisting(x: unknown): ExistingItem[] {
   const seen = new Set<string>();
   for (const e of x) {
     const o = e as { ref?: unknown; when?: unknown; title?: unknown };
-    if (!o || typeof o.ref !== "string" || !/^[th]\d{1,4}$/.test(o.ref) || seen.has(o.ref)) continue;
+    if (!o || typeof o.ref !== "string" || !/^[thm]\d{1,4}$/.test(o.ref) || seen.has(o.ref)) continue;
     if (typeof o.title !== "string" || typeof o.when !== "string") continue;
     const clip = (s: string, n: number) => s.replace(/[\r\n|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
     seen.add(o.ref);
@@ -143,6 +144,31 @@ export function checkImage(x: unknown): { media_type: ImageType; data: string } 
 export const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 export const isTime = (s: unknown): s is string => typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
 
+const leap = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+
+/**
+ * 모델이 적은 날짜를 실제 있는 날짜로 — 꼴만 맞는 "2026-11-31"·"2027-02-29" 는 DB date 칸이 거절해 동기화가 통째로 막힌다.
+ * 달 말일을 넘으면 그 달 말일로(11/31 → 11/30), 달·날이 0 이거나 꼴이 틀리면 null
+ */
+export function realDate(s: unknown): string | null {
+  if (!isDate(s)) return null;
+  const y = Number(s.slice(0, 4)),
+    m = Number(s.slice(5, 7)),
+    d = Number(s.slice(8, 10));
+  if (y < 1000 || m < 1 || m > 12 || d < 1) return null;
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return d <= last ? s : `${s.slice(0, 8)}${String(last).padStart(2, "0")}`;
+}
+
+/** 매년 표시의 2월 29일 — 윤년이 아니면 바로 앞 윤년으로(평년엔 앱이 2월 28일에 보여 준다) */
+function yearlyDay(s: unknown): string | null {
+  if (!isDate(s) || s.slice(5) !== "02-29") return realDate(s);
+  let y = Number(s.slice(0, 4));
+  if (y < 1000) return null;
+  while (!leap(y)) y--;
+  return `${y}-02-29`;
+}
+
 /** 오늘부터 6주치 '날짜 = 요일 (이번 주/다음 주)' 표 — 모델이 날짜 계산을 직접 하지 않게("29일"처럼 먼 날짜도 표에서 고른다) */
 export function calendarTable(today: string): string {
   const [y, m, d] = today.split("-").map(Number);
@@ -165,9 +191,10 @@ export function clean(raw: RawItem, categories: { id: string; name: string }[], 
   if (!title) return null;
   if (raw.kind === "mark") {
     // 표시: 날짜만(시각·반복·알림·카테고리 없음). 매년이면 하루짜리, 여러 날이면 끝 날이 시작보다 뒤일 때만
-    const date = isDate(raw.date) ? raw.date : today;
     const yearly = raw.yearly === true;
-    const end = !yearly && isDate(raw.end_date) && raw.end_date > date ? raw.end_date : null;
+    const date = (yearly ? yearlyDay(raw.date) : realDate(raw.date)) ?? today;
+    const endDay = realDate(raw.end_date);
+    const end = !yearly && endDay && endDay > date ? endDay : null;
     const emoji = typeof raw.emoji === "string" && raw.emoji.trim() ? [...raw.emoji.trim()].slice(0, 2).join("").slice(0, 8) : null;
     return {
       title,
@@ -194,7 +221,7 @@ export function clean(raw: RawItem, categories: { id: string; name: string }[], 
     start ??= "09:00";
   }
   if (kind === "timed" && !start) kind = "day";
-  let date = isDate(raw.date) ? raw.date : null;
+  let date = realDate(raw.date);
   if (kind !== "someday" && !date) date = today;
   if (kind === "someday") {
     date = null;
@@ -204,7 +231,8 @@ export function clean(raw: RawItem, categories: { id: string; name: string }[], 
   const dur = Number.isInteger(raw.duration_min) ? Math.min(720, Math.max(5, raw.duration_min!)) : null;
   const cat = raw.category ? categories.find((c) => c.name.trim() === raw.category!.trim()) : undefined;
   // 기간 있는 반복의 끝 — 반복일 때만, 첫날보다 앞이면 버림
-  const until = repeat.length && isDate(raw.repeat_until) && date && raw.repeat_until >= date ? raw.repeat_until : null;
+  const untilDay = realDate(raw.repeat_until);
+  const until = repeat.length && untilDay && date && untilDay >= date ? untilDay : null;
   const reminders = Array.isArray(raw.reminders_min)
     ? [...new Set(raw.reminders_min.filter((x) => Number.isInteger(x) && x >= 0 && x <= 1440))].sort((a, b) => b - a)
     : null;
