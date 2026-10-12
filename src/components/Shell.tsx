@@ -7,6 +7,7 @@ import {
   BriefcaseBusiness,
   HardDrive,
   CalendarDays,
+  Camera,
   Check,
   ListChecks,
   Menu as MenuIcon,
@@ -20,6 +21,7 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   Star,
+  Table2,
   Tag,
   Timer,
   UserRound,
@@ -28,6 +30,8 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useIsAdmin } from "@/lib/admin";
 import { createCategory, deleteCategory, liveCategories, updateCategory } from "@/lib/planner";
+import { OPEN_TIMETABLE, openTimetable, pendingWritePhoto } from "@/lib/pending";
+import { shrinkPhoto } from "@/lib/photo";
 import { MIN } from "@/lib/time";
 import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
@@ -144,12 +148,14 @@ function MenuHeading({ children, action }: { children: ReactNode; action?: React
 function MenuPanel({
   filter,
   onFilter,
+  onTimetable,
   onCategories,
   onCareer,
   onDiary,
 }: {
   filter: TaskFilter;
   onFilter: (f: TaskFilter) => void;
+  onTimetable: () => void;
   onCategories: () => void;
   onCareer: () => void;
   onDiary: () => void;
@@ -198,6 +204,7 @@ function MenuPanel({
         ariaLabel="DREAM 일기"
         onClick={onDiary}
       />
+      <MenuItem icon={<Table2 size={17} />} label="시간표" onClick={onTimetable} />
       <MenuItem icon={<Repeat size={17} />} label="습관" onClick={() => p.openSheet("habits")} />
       <MenuItem icon={<BriefcaseBusiness size={17} />} label="커리어 기록" onClick={onCareer} />
       <MenuItem icon={<HardDrive size={17} />} label="드라이브" onClick={() => p.openSheet("drive")} />
@@ -266,6 +273,31 @@ export function Shell() {
     }
     window.scrollTo({ top: 0 });
   };
+  // 메뉴 '시간표'·Write 의 '시간표에 넣기' → 캘린더 탭(시간표 보기는 CalendarTab 이 연다)
+  useEffect(() => {
+    const go = () => {
+      setTabState("calendar");
+      try {
+        localStorage.setItem(TAB_KEY, "calendar");
+      } catch {
+        /* 저장 못 해도 이번엔 바뀜 */
+      }
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener(OPEN_TIMETABLE, go);
+    return () => window.removeEventListener(OPEN_TIMETABLE, go);
+  }, []);
+  // '사진' 버튼 — 고르면 줄여서 Write 창에 넣은 채로 연다(카톡 캡처·공지·초대장)
+  const photoRef = useRef<HTMLInputElement>(null);
+  const pickPhoto = async (f: File | undefined) => {
+    if (!f) return;
+    try {
+      pendingWritePhoto.set(await shrinkPhoto(f));
+      p.openSheet("write");
+    } catch (e) {
+      p.toast({ text: (e as Error).message, tone: "danger" });
+    }
+  };
   const pickFilter = (f: TaskFilter) => {
     setFilter(f);
     setTab("tasks");
@@ -312,6 +344,7 @@ export function Shell() {
     <MenuPanel
       filter={filter}
       onFilter={pickFilter}
+      onTimetable={() => (setDrawer(false), openTimetable({ import: false, photo: null }))}
       onCategories={() => setCatEdit(true)}
       onCareer={() => (setCareer(true), setDrawer(false))}
       onDiary={() => (setDrawer(false), openDiaryWithVeil(() => p.openSheet("diary")))}
@@ -322,6 +355,7 @@ export function Shell() {
     <>
       <Backdrop />
       <AutoFullscreen enabled={p.settings.pcFullscreen} />
+      <input ref={photoRef} type="file" accept="image/*" hidden onChange={(e) => void pickPhoto(e.target.files?.[0]).finally(() => (e.target.value = ""))} />
 
       {/* PC: 왼쪽 레일 */}
       <aside
@@ -369,6 +403,12 @@ export function Shell() {
             </button>
           </div>
           <button
+            onClick={() => photoRef.current?.click()}
+            className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-accent/50 text-sm font-bold text-accent-text hover:bg-accent/10"
+          >
+            <Camera size={17} /> 사진으로 일정 넣기 <span className="text-xs font-normal text-muted">카톡 캡처</span>
+          </button>
+          <button
             onClick={() => p.openActivity({})}
             className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-did/60 text-sm font-bold text-did hover:bg-did-soft"
           >
@@ -407,6 +447,13 @@ export function Shell() {
       {/* 폰: 아래 탭바 + 둥근 + 버튼 */}
       <div className="md:hidden">
         <div className="fixed right-4 bottom-[calc(76px+env(safe-area-inset-bottom))] z-30 flex flex-col items-end gap-2.5">
+          <button
+            aria-label="사진으로 일정 넣기"
+            onClick={() => photoRef.current?.click()}
+            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-accent/60 bg-[color-mix(in_oklab,var(--surface)_85%,transparent)] px-3.5 text-[13px] font-bold text-accent-text shadow-lg backdrop-blur-md active:scale-95"
+          >
+            <Camera size={16} strokeWidth={2.5} /> 사진
+          </button>
           <button
             aria-label="한 일 기록"
             onClick={() => p.openActivity({})}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Cloud, CloudOff, Download, Image as ImageIcon, Maximize, Mic, Minimize, PanelLeftOpen, PenLine } from "lucide-react";
+import { Cloud, CloudOff, Download, Eye, Maximize, Mic, Minimize, PanelLeftOpen, PenLine } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { isStandalone } from "@/lib/notify";
 import { cloudEnabled } from "@/lib/supabase";
@@ -225,7 +225,8 @@ export function TopBar({
           <SyncPill />
           {photo && (
             <IconButton label="배경만 보기" onClick={() => setWallpaper(true)}>
-              <ImageIcon size={19} />
+              {/* 그림 아이콘은 '사진 넣기'로 헷갈려서 눈 모양 */}
+              <Eye size={19} />
             </IconButton>
           )}
           <button

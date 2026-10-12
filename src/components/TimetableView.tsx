@@ -1,7 +1,9 @@
 "use client";
 
 import { CalendarRange, ImagePlus, Plus, Table2, Trash } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { OPEN_TIMETABLE, pendingTimetable } from "@/lib/pending";
+import type { Photo } from "@/lib/photo";
 import { createHabit, deleteHabit, updateHabit } from "@/lib/planner";
 import {
   blocksFor,
@@ -37,7 +39,21 @@ export function TimetableView() {
   const [picked, setPicked] = useState<string | null>(null);
   const group = groups.find((g) => g.key === picked) ?? pickGroup(groups, today);
   const [editing, setEditing] = useState<Habit | "new" | null>(null);
-  const [importing, setImporting] = useState(false);
+  // 사진으로 넣기 창 — 다른 화면(Write·메뉴)에서 부탁받아 열 때는 그 사진으로 바로
+  const [importing, setImporting] = useState<{ photo: Photo | null } | null>(() => {
+    const r = pendingTimetable.peek();
+    return r?.import ? { photo: r.photo } : null;
+  });
+  useEffect(() => {
+    pendingTimetable.clear();
+    const on = () => {
+      const r = pendingTimetable.peek();
+      pendingTimetable.clear();
+      if (r?.import) setImporting({ photo: r.photo });
+    };
+    window.addEventListener(OPEN_TIMETABLE, on);
+    return () => window.removeEventListener(OPEN_TIMETABLE, on);
+  }, []);
   const [period, setPeriod] = useState(false);
   // 새 수업·사진으로 넣기의 학기 — 보고 있는 학기, 없으면 이번 학기 짐작
   const sem: Semester = group && group.start && group.end ? { start: group.start, end: group.end } : guessSemester(new Date(now));
@@ -77,7 +93,7 @@ export function TimetableView() {
           <Button size="sm" variant="soft" onClick={() => setEditing("new")}>
             <Plus size={15} /> 수업
           </Button>
-          <Button size="sm" variant="primary" onClick={() => setImporting(true)}>
+          <Button size="sm" variant="primary" onClick={() => setImporting({ photo: null })}>
             <ImagePlus size={15} /> 사진으로 넣기
           </Button>
         </div>
@@ -95,7 +111,7 @@ export function TimetableView() {
             desc="에브리타임·학교 포털 캡처나 종이 시간표 사진을 올리면 수업을 학기 동안 매주 한 번에 넣어요. 직접 하나씩 넣어도 돼요."
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button variant="primary" onClick={() => setImporting(true)}>
+                <Button variant="primary" onClick={() => setImporting({ photo: null })}>
                   <ImagePlus size={16} /> 사진으로 넣기
                 </Button>
                 <Button variant="soft" onClick={() => setEditing("new")}>
@@ -115,11 +131,12 @@ export function TimetableView() {
       {importing && (
         <TimetableImport
           sem={sem}
+          initialPhoto={importing.photo}
           existing={group?.habits ?? []}
-          onClose={() => setImporting(false)}
+          onClose={() => setImporting(null)}
           onSaved={(key) => {
             setPicked(key);
-            setImporting(false);
+            setImporting(null);
           }}
         />
       )}

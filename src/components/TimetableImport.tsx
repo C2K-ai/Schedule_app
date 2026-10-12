@@ -1,8 +1,9 @@
 "use client";
 
-import { Check, ImagePlus, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
+import { Check, ClipboardPaste, ImagePlus, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { parseTimetable, type ParsedClass } from "@/lib/ai";
+import { readClipboardImage, usePasteImage } from "@/lib/clipboard";
 import { shrinkPhoto, type Photo } from "@/lib/photo";
 import { createHabit } from "@/lib/planner";
 import { getSupabase } from "@/lib/supabase";
@@ -20,11 +21,14 @@ type Draft = { key: number; on: boolean; dup: boolean; title: string; place: str
  */
 export function TimetableImport({
   sem,
+  initialPhoto,
   existing,
   onClose,
   onSaved,
 }: {
   sem: Semester;
+  /** Write 등에서 넘겨받은 사진 — 있으면 고른 채로 연다 */
+  initialPhoto?: Photo | null;
   /** 지금 보는 학기의 수업 — 이미 있는 건 처음에 빼 둔다 */
   existing: Habit[];
   onClose: () => void;
@@ -33,7 +37,7 @@ export function TimetableImport({
 }) {
   const { store, settings, session } = usePlanner();
   const [range, setRange] = useState<Semester>(sem);
-  const [photo, setPhoto] = useState<Photo | null>(null);
+  const [photo, setPhoto] = useState<Photo | null>(initialPhoto ?? null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -50,6 +54,21 @@ export function TimetableImport({
       setPhoto(await shrinkPhoto(f));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "사진을 읽지 못했어요.");
+    }
+  };
+
+  // 복사한 사진 붙여넣기(Ctrl+V 또는 버튼) — 미리보기 단계에선 무시
+  usePasteImage((f) => {
+    if (!drafts && !busy) void pick(f);
+  });
+  const pasteButton = async () => {
+    setErr(null);
+    try {
+      const f = await readClipboardImage();
+      if (f) await pick(f);
+      else setErr("복사한 사진이 없어요. 시간표 캡처를 복사한 다음 눌러 주세요.");
+    } catch (e) {
+      setErr((e as Error).message);
     }
   };
 
@@ -185,6 +204,18 @@ export function TimetableImport({
               <span className="font-semibold">시간표 사진 고르기</span>
               <span className="text-xs text-muted">캡처·사진 한 장 — 수업 칸이 다 보이게</span>
             </button>
+          )}
+          {!photo && (
+            <div className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+              <button
+                type="button"
+                onClick={() => void pasteButton()}
+                className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 font-semibold hover:bg-surface-2 hover:text-fg"
+              >
+                <ClipboardPaste size={14} /> 복사한 사진 붙여넣기
+              </button>
+              <span className="hidden md:inline">또는 Ctrl+V</span>
+            </div>
           )}
           <div>
             <Label hint="없어도 돼요">덧붙일 말 · 또는 시간표를 글로</Label>

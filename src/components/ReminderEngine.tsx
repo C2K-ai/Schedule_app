@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { SHARED_KEY, sharedText } from "@/lib/share";
+import { pendingWritePhoto } from "@/lib/pending";
+import { shrinkPhoto } from "@/lib/photo";
+import { SHARED_KEY, sharedText, takeSharedFromWorker } from "@/lib/share";
 import { setAppBadge, showSystemNotification, registerServiceWorker } from "@/lib/notify";
 import { activeFocus, checkinQueue, completeTask, enforcementQueue, finishFocus, focusRemaining, startFocus, startTask } from "@/lib/planner";
 import { refreshPushSubscription } from "@/lib/push";
@@ -280,7 +282,30 @@ export function ReminderEngine() {
       window.history.replaceState(null, "", withBase("/"));
       return;
     }
-    // 다른 앱에서 공유받은 글(manifest share_target) → 'Write' 창에 채워서 연다
+    // 카톡·갤러리에서 '공유 → DREAM'(POST) — 서비스 워커가 받아 둔 사진·글을 꺼내 'Write' 창에 채워서 연다
+    if (q.get("shared") === "1") {
+      window.history.replaceState(null, "", withBase("/"));
+      void (async () => {
+        const got = await takeSharedFromWorker(withBase("")).catch(() => ({ text: "", image: null }));
+        if (got.text) {
+          try {
+            sessionStorage.setItem(SHARED_KEY, got.text);
+          } catch {
+            /* 못 넘기면 빈 창 */
+          }
+        }
+        if (got.image) {
+          try {
+            pendingWritePhoto.set(await shrinkPhoto(got.image));
+          } catch (e) {
+            latest.current.toast({ text: (e as Error).message, tone: "danger" });
+          }
+        }
+        latest.current.openSheet("write");
+      })();
+      return;
+    }
+    // 예전 방식(GET ?text=)으로 공유받은 글 → 'Write' 창에 채워서 연다
     const shared = sharedText(q);
     if (shared) {
       try {

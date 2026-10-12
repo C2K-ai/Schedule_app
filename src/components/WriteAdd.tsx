@@ -1,9 +1,11 @@
 "use client";
 
-import { ImagePlus, Loader2, Mic, PenLine, Repeat, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ClipboardPaste, ImagePlus, Loader2, Mic, PenLine, Repeat, Sparkles, TriangleAlert, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { existingForAi, isPastItem, parseSchedule, REMOVE_RE, saveParsed, type ParsedItem } from "@/lib/ai";
 import { deleteHabit, deleteTask, liveCategories } from "@/lib/planner";
+import { readClipboardImage, usePasteImage } from "@/lib/clipboard";
+import { openTimetable, pendingWritePhoto } from "@/lib/pending";
 import { shrinkPhoto, type Photo } from "@/lib/photo";
 import { SHARED_KEY } from "@/lib/share";
 import { getSupabase } from "@/lib/supabase";
@@ -65,8 +67,9 @@ function WriteBody() {
     }
   }, [shared]);
   const [text, setText] = useState(shared);
-  // 사진으로 일정 넣기 — 시간표·공지·초대장 사진을 AI 가 읽는다
-  const [photo, setPhoto] = useState<Photo | null>(null);
+  // 사진으로 일정 넣기 — 카톡 캡처·공지·초대장 사진을 AI 가 읽는다. '사진' 버튼·공유로 받은 사진이면 넣은 채로 연다
+  const [photo, setPhoto] = useState<Photo | null>(() => pendingWritePhoto.peek());
+  useEffect(() => pendingWritePhoto.clear(), []);
   const fileRef = useRef<HTMLInputElement>(null);
   const pick = async (f: File | undefined) => {
     if (!f) return;
@@ -80,6 +83,18 @@ function WriteBody() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // 복사한 사진 붙여넣기 — 창이 떠 있는 동안 Ctrl+V(폰은 입력칸에 붙여넣기), 또는 '붙여넣기' 버튼
+  usePasteImage((f) => void pick(f));
+  const pasteButton = async () => {
+    setErr(null);
+    try {
+      const f = await readClipboardImage();
+      if (f) await pick(f);
+      else setErr("복사한 사진이 없어요. 사진을 복사한 다음 눌러 주세요.");
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
   const [added, setAdded] = useState<Added[]>([]);
   const [held, setHeld] = useState<Held[]>([]);
   // AI 가 지우자고 고른 기존 일정 — 바로 지우지 않고 확인받는다
@@ -166,8 +181,9 @@ function WriteBody() {
           }}
         >
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pick(e.target.files?.[0]).finally(() => (e.target.value = ""))} />
-          <Button type="button" variant="soft" className="h-12 shrink-0 px-3" aria-label="사진으로 넣기" title="사진으로 넣기(시간표·공지·초대장)" onClick={() => fileRef.current?.click()}>
+          <Button type="button" variant="soft" className="h-12 shrink-0 gap-1 px-2.5" aria-label="사진으로 넣기" title="사진으로 넣기(카톡 캡처·공지·초대장)" onClick={() => fileRef.current?.click()}>
             <ImagePlus size={18} />
+            <span className="text-xs">사진</span>
           </Button>
           <input
             autoFocus
@@ -185,11 +201,35 @@ function WriteBody() {
           </Button>
         </form>
 
+        {!photo && (
+          <div className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+            <button
+              type="button"
+              onClick={() => void pasteButton()}
+              className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 font-semibold hover:bg-surface-2 hover:text-fg"
+            >
+              <ClipboardPaste size={14} /> 복사한 사진 붙여넣기
+            </button>
+            <span className="hidden md:inline">또는 Ctrl+V — 카톡 캡처·공지·초대장</span>
+          </div>
+        )}
         {photo && (
           <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface-2 p-2">
             {/* eslint-disable-next-line @next/next/no-img-element -- 기기 안 미리보기(data URL) */}
             <img src={photo.preview} alt="넣을 사진" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
-            <p className="min-w-0 flex-1 text-sm text-muted">사진 속 일정을 찾아 넣어요. 시간표는 매주 반복 일정으로 들어가요.</p>
+            <div className="min-w-0 flex-1 text-sm text-muted">
+              <p>사진 속 일정을 찾아 넣어요. 카톡 캡처면 약속 날짜·시간을 읽어요.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  openSheet(null);
+                  openTimetable({ import: true, photo });
+                }}
+                className="mt-1 text-xs font-bold text-accent-text hover:underline"
+              >
+                학교·학원 시간표 사진이면 → 시간표에 넣기
+              </button>
+            </div>
             <button type="button" aria-label="사진 빼기" onClick={() => setPhoto(null)} className="rounded-lg p-1.5 text-muted hover:bg-surface-3">
               <X size={16} />
             </button>

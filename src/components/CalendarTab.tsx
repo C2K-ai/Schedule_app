@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { activitiesOnDay, activityMinutes, dayNoteFor, isSomeday, liveCategories, saveDayNote } from "@/lib/planner";
 import { addDays, dayKey, fmtDate, fmtSpan, MIN, sameDay, startOfDay, WEEKDAYS } from "@/lib/time";
 import { marksOnDay } from "@/lib/marks";
+import { OPEN_TIMETABLE, pendingTimetable } from "@/lib/pending";
 import { COLOR_HEX } from "@/lib/types";
 import { useMedia } from "@/lib/useMedia";
 import { ActivityRow, DidButton } from "./ActivityEditor";
@@ -282,7 +283,13 @@ function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date;
 }
 
 export function CalendarTab() {
-  const [mode, setMode] = useState<"month" | View | "timetable">("month");
+  // 메뉴 '시간표'·Write 의 '시간표에 넣기'로 오면 바로 시간표 보기
+  const [mode, setMode] = useState<"month" | View | "timetable">(() => (pendingTimetable.peek() ? "timetable" : "month"));
+  useEffect(() => {
+    const go = () => setMode("timetable");
+    window.addEventListener(OPEN_TIMETABLE, go);
+    return () => window.removeEventListener(OPEN_TIMETABLE, go);
+  }, []);
   const [selected, setSelected] = useState(() => startOfDay(new Date()));
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const wide = useMedia("(min-width: 1024px)");

@@ -4,9 +4,11 @@
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
  *  - 잠금화면 카드    : 앱이 넘겨준 시점별 내용(lib/lockCard.ts)으로 '지금/다음 일정' 알림을 조용히 바꿔 단다
  */
-const VERSION = "must-v8";
+const VERSION = "must-v9";
 // 버전이 바뀌어도 지우지 않는 작은 저장소(잠금화면 카드 내용)
 const STATE = "must-state";
+// '공유 → DREAM' 으로 받은 사진·글을 앱이 꺼내 갈 때까지 잠깐 두는 곳
+const SHARE = "must-share";
 const DEV = new URL(self.location.href).searchParams.get("mode") === "development";
 // 하위 경로 배포(GitHub Pages /Schedule_app) 대응 — sw.js 가 놓인 폴더가 앱의 뿌리
 const BASE = self.location.pathname.replace(/\/sw\.js$/, "");
@@ -39,8 +41,36 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== VERSION && k !== STATE).map((k) => caches.delete(k)));
+      await Promise.all(keys.filter((k) => k !== VERSION && k !== STATE && k !== SHARE).map((k) => caches.delete(k)));
       await self.clients.claim();
+    })(),
+  );
+});
+
+// ───────────── 공유받기(사진·글) ─────────────
+// manifest share_target(POST multipart): 카톡·갤러리에서 '공유 → DREAM' 한 사진(image)과 글(title·text·url)을
+// SHARE 캐시에 두고 앱을 ?shared=1 로 연다 — 앱(ReminderEngine)이 꺼내서 Write 창에 채운다
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "POST" || new URL(req.url).pathname !== `${BASE}/share-target`) return;
+  event.respondWith(
+    (async () => {
+      try {
+        const form = await req.formData();
+        const cache = await caches.open(SHARE);
+        await cache.delete(`${BASE}/__shared/image`);
+        const file = form.getAll("image").find((f) => typeof f !== "string" && f.size > 0 && /^image\//.test(f.type));
+        if (file) await cache.put(`${BASE}/__shared/image`, new Response(file, { headers: { "content-type": file.type } }));
+        const text = {};
+        for (const k of ["title", "text", "url"]) {
+          const v = form.get(k);
+          if (typeof v === "string" && v.trim()) text[k] = v.slice(0, 4000);
+        }
+        await cache.put(`${BASE}/__shared/text`, new Response(JSON.stringify(text), { headers: { "content-type": "application/json" } }));
+      } catch {
+        /* 못 받으면 빈 Write 창 */
+      }
+      return Response.redirect(`${ROOT}?shared=1`, 303);
     })(),
   );
 });
