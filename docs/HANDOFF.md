@@ -42,6 +42,7 @@
   (홈 화면에 설치한 안드로이드 앱만) ④ Write 사진 버튼으로 시간표 사진 넣기(로그인 필요, 실제 AI 호출은 아직 안 해 봄) ⑤ PC 캘린더 탭 주/일 → 오른쪽 인박스 끌어 놓기.
   ⑥ Voice/Write 로 "내일 치과 취소해줘"(지우기 확인 창) ⑦ "이번 달 매일 …" → 달 끝까지 들어가는지(8절 23·24) ⑧ Write 에 "내일 내 생일"·"20일부터 23일까지 제주 여행" → 일정이 아니라 표시로(8절 30, 모델은 시험 통과 — 폰 화면에서 한 번).
   ⑨ 캘린더 → 시간표 → '사진으로 넣기'에 실제 에타·포털 캡처(8절 31) — 미리보기에서 시각이 맞는지, 학기 기간이 맞는지.
+  ⑩ 홈 화면 앱에서 카톡·갤러리 사진 '공유 → DREAM'(8절 32 — 설치된 앱의 공유 설정이 새 manifest 로 바뀌는 데 하루쯤 걸릴 수 있음), 폰 '붙여넣기' 버튼.
 - 잠금화면 카드가 사용자 폰에서 안 보이는 문제(7절 '이어서 할 것') — 사용자가 "나중에" 하자고 함.
 - 도구: Deno 는 `npm i --no-save deno`(또는 스크래치에), Playwright 는 `npm i playwright-core@1.56.1` + `executablePath: '/opt/pw-browsers/chromium'`.
   화면 확인: `npx next build` → `cd out && python3 -m http.server 3201`(루트로 서빙) → Playwright. 캘린더 탭 → '주' 에서 시간표·인박스.
@@ -259,6 +260,15 @@
    ② 시각·길이가 바뀔 때만, 옮기거나 미룬 회차는 빼고 시각을 고침(학기 기간만 바꿔도 보강 시각이 돌아가던 문제; 서버 회차의 +00:00 꼴은 숫자로 비교),
    ③ 밤새 하는 수업(22:00~02:00) 저장·표시 ④ 사진 읽는 동안 학기 기간을 바꿔도 읽기 누른 때 기간으로 저장 ⑤ 기간 없는 항목이 따로 '학기'가 되던 것.
    시험: 단위 100(`tests/timetable.test.mjs`·`tests/habit-update.test.mjs`), DB, Deno 56, Playwright 가짜 로그인 390·1280.
+
+32. **사진으로 일정 넣기 찾기 쉽게**(2026-10-12, 사용자: "카톡 캡처 어떻게 넣냐, 위치를 모르겠다", "복사 붙여넣기가 안 돼 아쉽다") —
+   폰 '📷 사진' 버튼(한 일 위)·PC 왼쪽 '사진으로 일정 넣기' → 고르면 줄여서 Write 에 넣은 채로(`src/lib/pending.ts` 로 넘김).
+   복사한 사진 붙여넣기: Write·시간표 사진 창이 떠 있는 동안 Ctrl+V(`usePasteImage`), '복사한 사진 붙여넣기' 버튼(`navigator.clipboard.read`) — `src/lib/clipboard.ts`.
+   '공유 → DREAM' 이 사진도 받음: manifest share_target 을 POST multipart(`/share-target`, files image/*)로 →
+   `public/sw.js`(must-v9)가 받아 캐시 `must-share` 에 두고 `?shared=1` 로 → ReminderEngine 이 `takeSharedFromWorker` 로 꺼내 Write 에 글·사진.
+   예전 GET(?text=)도 그대로 받음. Write 사진에서 '시간표에 넣기' → 캘린더 시간표 + 사진으로 넣기 창(그 사진 그대로), ☰ 메뉴 '시간표'
+   (`OPEN_TIMETABLE` 이벤트 + `pendingTimetable`). 위쪽 '배경만 보기' 아이콘은 사진 넣기로 헷갈려 눈 모양으로.
+   Playwright: 사진 버튼 → Write, Write → 시간표, ☰ 시간표, 붙여넣기 이벤트, 서비스 워커 공유(POST → ?shared=1 → 사진·글) 다 확인.
 
 ## 9. 테마·배경 구조
 
