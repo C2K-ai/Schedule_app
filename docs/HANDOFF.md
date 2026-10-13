@@ -5,14 +5,7 @@
 
 ## 0. ⚠️ 지금 상태 — 2026-10-13 갱신 (여기부터 읽기)
 
-**브랜치**: `ui-revamp` = `main`(2026-10-13: 시간표 분리·칸 디자인·사진 Sonnet(8절 33) + 다른 계정 보안 작업까지 배포). 끝난 일은 8절.
-
-### 0-1. 다른 계정 보안 작업 — **Edge 일부 아직 배포 안 함**
-- DB(`20261018000000_security_hardening`, 서버엔 20261012071359 로 2차까지 적용 확인)·`calendar-feed` v2·`parse-schedule` v12·앱(sw.js must-v10 등)은 배포됨.
-- **아직 옛 버전으로 도는 것**: `send-due-notifications` v4 · `admin` v4 · `career-polish` v4 (+ 이들이 쓰는 `_shared/push.ts`). 저장소 코드가 더 새것
-  (푸시 서버 주소 확인·8초 제한·건마다 오류 격리·정지 때 구독 주소 지우기·커리어 재료 예산). 옛 버전도 새 DB 와 잘 돌아감(매분 발송 200 확인).
-  매분 알림 발송이라 시험 없이 올리지 않았음 — 올릴 땐 Deno 시험 → 배포 → `net._http_response` 에서 매분 응답 200 인지 확인.
-  자세한 내용 `docs/worklog/2026-10-10_11-career-import-security.md`.
+**브랜치**: `ui-revamp` = `main`(2026-10-13: 시간표 분리·칸 디자인·사진 Sonnet(8절 33) + 다른 계정 보안 작업 Edge 까지 전부 배포(8절 34)). 끝난 일은 8절.
 
 ### 0-0. 일기 책 애니메이션 — 다듬기 배포함(2026-10-10), **사용자 폰 확인 대기**
 사용자 지적 두 가지(닫기가 너무 짧음 · 폰에서 심하게 버벅임)를 고쳐 배포함. 사용자가 써 보고 말하면 그 부분만 고친다(큰 진단·심사 다시 돌리지 말 것).
@@ -119,8 +112,8 @@
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
-  `signup` v3(**JWT 검증 끔**) · `send-due-notifications` v4(저장소 코드가 더 새것 — 0-1) · `notification-action` · `push-test` v2(제목 DREAM).
+- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v5(Sonnet 5.5) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v5 ·
+  `signup` v4(**JWT 검증 끔**) · `send-due-notifications` v5(**JWT 검증 끔** — 크론 비밀값 헤더로) · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
   `must_cron_secret`, `must_action_secret`. 키 값은 문서·채팅에 절대 쓰지 말 것.
@@ -139,6 +132,8 @@
   `supabase/tests/schema.test.mjs` 에 같은 마이그레이션을 넣고 테스트 추가(Auth·Storage 는 흉내 스키마가 있음).
 - **Edge 배포**: MCP `deploy_edge_function` — `import_map_path: "deno.json"`, `entrypoint_path: "<함수>/index.ts"`,
   files 에 `deno.json`, `_shared/env.ts`(+필요하면 `_shared/push.ts`·`_shared/ai_usage.ts`), `<함수>/index.ts`·`logic.ts`.
+  함수 폴더의 다른 파일도 import 하면 다 넣는다(알림 발송 = `briefing.ts`·`rules.ts`, 커리어 = `import.ts`). JWT 검증은 지금 상태 그대로(4절).
+  배포 뒤: `net.http_post` 로 불러 401 `{"error":"unauthorized"}`(함수가 뜸) 또는 매분 발송은 `net._http_response` 의 200 확인.
 - **샌드박스 네트워크**: 클라우드 세션에서 supabase.co·api.anthropic.com 에 직접 못 붙을 수 있다 → DB 의 **pg_net**
   (`net.http_post` → `net._http_response`)으로 Edge 함수·Claude API 를 시험했다(키는 `vault.decrypted_secrets` 에서 SQL 안에서만 꺼냄).
 - **화면 확인**: Playwright(Chromium `/opt/pw-browsers/chromium`). 로그인 화면은 가짜 Supabase 로:
@@ -290,6 +285,16 @@
    카톡 규칙: 마지막에 정한 시각, 짧은 대답은 앞 메시지 전체 뜻으로, 대화 날짜줄 기준, '~까지'는 날짜 일정(언젠가 아님). 시험 이미지 `testdata/kakao-sample.jpg`(가짜).
    검토는 워크플로가 세션 한도에 걸려 멈춤 → 혼자 다시 봄(붙여넣기·Write 바쁠 때 중복 2건 고침). 다른 계정 보안 커밋 4개와 합친 뒤(충돌 없음)
    검사 다 통과(단위 101·DB·Deno 57) → v12 배포·부팅 확인 → 2026-10-13 main 배포.
+
+34. **다른 계정 보안 작업의 Edge 3개 배포**(2026-10-13, 사용자: "서버 함수 3개도 시험하고 올려줘") — `send-due-notifications` v4→**v5**,
+   `admin` v4→**v5**, `career-polish` v4→**v5**(+`_shared/push.ts`). 배포본과 저장소를 글자 단위로 비교: 알림 발송은 커밋 1a14c32 그대로였고
+   바뀌는 것 = 일정 알림 먼저·브리핑 뒤, 건마다 오류 격리, 푸시 서버 주소 허용 목록(DB 검사와 같은 규칙)·8초(+2초) 시간 제한, safeTz.
+   admin = 정지·모든 기기 로그아웃 때 `calendar_feeds` 지움. career-polish = 재료 2만 자 예산, '한 번에 넣기' 다듬기(6b7a86a), 출력 넘침 `output_too_long`(앱과 맞춤).
+   검토(2명 + 찾은 것마다 반박 1명, 워크플로): 배포 막을 문제 없음. 고친 것 ① 알림 꺼내기(RPC)가 실패해도 브리핑은 보냄(예전처럼 따로)
+   ② 관리자 화면 '모든 기기 로그아웃'·'정지' 확인 창에 "구글 캘린더 구독 주소도 끊겨요" 안내(지금 살아 있는 구독 주소 1개 = 관리자 본인 것).
+   확인: Deno 57·단위 101·tsc·eslint, 배포 뒤 매분 발송 200(`{"claimed":0,"briefing":…}`), admin·career-polish 는 로그인 없이 401(함수가 뜸).
+   알아 둘 것: 서버 푸시 구독이 0개라 실제 Web Push 는 지금 안 나감(7절 잠금화면 카드 문제와 같은 뿌리) · `push.test.ts` 의 410 시험은 이제
+   127.0.0.1 주소가 허용 목록에서 먼저 걸러져 네트워크 경로를 안 탐(통과는 함) · 푸시가 10초 넘게 걸려 끊었는데 실제론 갔으면 다음 분에 한 번 더 감(tag 같아 교체).
 
 ## 9. 테마·배경 구조
 

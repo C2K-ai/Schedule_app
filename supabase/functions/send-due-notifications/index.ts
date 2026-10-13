@@ -21,9 +21,10 @@ Deno.serve(async (req) => {
   const db = admin();
   // 일정 알림을 먼저(제때 가야 함), 아침 브리핑(하루 한 번)은 그 뒤에 — 브리핑이 늦어져도 일정 알림은 안 밀린다
   const { data, error } = await db.rpc("claim_due_notification_jobs", { p_limit: 300 });
-  if (error) return json({ error: error.message }, 500);
-  const jobs = (data ?? []) as Job[];
   const briefLater = () => sendBriefings(db).catch((e) => ({ error: String(e) }));
+  // 알림 꺼내기가 실패해도 브리핑은 따로 보낸다(예전처럼 서로 묶이지 않게)
+  if (error) return json({ error: error.message, briefing: await briefLater() }, 500);
+  const jobs = (data ?? []) as Job[];
   if (!jobs.length) return json({ claimed: 0, briefing: await briefLater() });
 
   const taskIds = [...new Set(jobs.map((j) => j.task_id))];
