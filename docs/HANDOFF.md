@@ -112,7 +112,7 @@
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v5(Sonnet 5.5) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v5 ·
+- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v5(Sonnet 5.5) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v6 ·
   `signup` v4(**JWT 검증 끔**) · `send-due-notifications` v5(**JWT 검증 끔** — 크론 비밀값 헤더로) · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
@@ -287,7 +287,7 @@
    검사 다 통과(단위 101·DB·Deno 57) → v12 배포·부팅 확인 → 2026-10-13 main 배포.
 
 34. **다른 계정 보안 작업의 Edge 3개 배포**(2026-10-13, 사용자: "서버 함수 3개도 시험하고 올려줘") — `send-due-notifications` v4→**v5**,
-   `admin` v4→**v5**, `career-polish` v4→**v5**(+`_shared/push.ts`). 배포본과 저장소를 글자 단위로 비교: 알림 발송은 커밋 1a14c32 그대로였고
+   `admin` v4→**v6**(v5 는 주석 글자 하나 잘못 올라가 다시), `career-polish` v4→**v5**(+`_shared/push.ts`). 배포본과 저장소를 글자 단위로 비교: 알림 발송은 커밋 1a14c32 그대로였고
    바뀌는 것 = 일정 알림 먼저·브리핑 뒤, 건마다 오류 격리, 푸시 서버 주소 허용 목록(DB 검사와 같은 규칙)·8초(+2초) 시간 제한, safeTz.
    admin = 정지·모든 기기 로그아웃 때 `calendar_feeds` 지움. career-polish = 재료 2만 자 예산, '한 번에 넣기' 다듬기(6b7a86a), 출력 넘침 `output_too_long`(앱과 맞춤).
    검토(2명 + 찾은 것마다 반박 1명, 워크플로): 배포 막을 문제 없음. 고친 것 ① 알림 꺼내기(RPC)가 실패해도 브리핑은 보냄(예전처럼 따로)
