@@ -3,9 +3,16 @@
 > 새 계정·새 세션에서 이 앱을 이어서 고칠 때 **이 파일부터** 읽으세요. 기능별 자세한 기록은 `docs/REVAMP-HANDOFF.md`,
 > 구조는 `docs/ARCHITECTURE.md`, 알림은 `docs/PWA-NOTIFICATIONS.md`, 서버 처음 설정은 `docs/SETUP-SUPABASE.md`.
 
-## 0. ⚠️ 지금 상태 — 2026-10-11 갱신 (여기부터 읽기)
+## 0. ⚠️ 지금 상태 — 2026-10-13 갱신 (여기부터 읽기)
 
-**브랜치**: `ui-revamp` = `main`(2026-10-11: 표시(생일·기념일) + Write/말로 추가에서 표시로까지 배포). 끝난 일은 8절.
+**브랜치**: `ui-revamp` = `main`(2026-10-13: 시간표 분리·칸 디자인·사진 Sonnet(8절 33) + 다른 계정 보안 작업까지 배포). 끝난 일은 8절.
+
+### 0-1. 다른 계정 보안 작업 — **Edge 일부 아직 배포 안 함**
+- DB(`20261018000000_security_hardening`, 서버엔 20261012071359 로 2차까지 적용 확인)·`calendar-feed` v2·`parse-schedule` v12·앱(sw.js must-v10 등)은 배포됨.
+- **아직 옛 버전으로 도는 것**: `send-due-notifications` v4 · `admin` v4 · `career-polish` v4 (+ 이들이 쓰는 `_shared/push.ts`). 저장소 코드가 더 새것
+  (푸시 서버 주소 확인·8초 제한·건마다 오류 격리·정지 때 구독 주소 지우기·커리어 재료 예산). 옛 버전도 새 DB 와 잘 돌아감(매분 발송 200 확인).
+  매분 알림 발송이라 시험 없이 올리지 않았음 — 올릴 땐 Deno 시험 → 배포 → `net._http_response` 에서 매분 응답 200 인지 확인.
+  자세한 내용 `docs/worklog/2026-10-10_11-career-import-security.md`.
 
 ### 0-0. 일기 책 애니메이션 — 다듬기 배포함(2026-10-10), **사용자 폰 확인 대기**
 사용자 지적 두 가지(닫기가 너무 짧음 · 폰에서 심하게 버벅임)를 고쳐 배포함. 사용자가 써 보고 말하면 그 부분만 고친다(큰 진단·심사 다시 돌리지 말 것).
@@ -112,8 +119,8 @@
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v1(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
-  `signup` v3(**JWT 검증 끔**) · `send-due-notifications` v4 · `notification-action` · `push-test` v2(제목 DREAM).
+- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v4(Sonnet 5.5) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v4 ·
+  `signup` v3(**JWT 검증 끔**) · `send-due-notifications` v4(저장소 코드가 더 새것 — 0-1) · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
   `must_cron_secret`, `must_action_secret`. 키 값은 문서·채팅에 절대 쓰지 말 것.
@@ -126,7 +133,7 @@
 ## 5. 작업 방법·도구 요령
 
 - **검사**: `npx tsc --noEmit` · `npx eslint src` · `npm run test:db`(PGlite 로 마이그레이션 실제 실행, 116개) ·
-  Edge: `cd supabase/functions && deno test --config deno.json --allow-env --allow-net .`(29개). Deno 가 없으면 `npm i deno` 로 받아 씀.
+  Edge: `cd supabase/functions && deno test --config deno.json --allow-env --allow-net .`(57개). Deno 가 없으면 `npm i deno` 로 받아 씀.
 - **DB 변경**: 새 마이그레이션 파일을 만들고 Supabase MCP `apply_migration`. **`DROP`·`DELETE FROM`·`TRUNCATE` 를 넣으면 MCP 가 승인 창을
   띄우고 멈춘다** — `create or replace`, `add column if not exists`, `for all` 정책 등으로 피한다. 마이그레이션은 "다시 돌려도 안전"하게.
   `supabase/tests/schema.test.mjs` 에 같은 마이그레이션을 넣고 테스트 추가(Auth·Storage 는 흉내 스키마가 있음).
@@ -138,11 +145,11 @@
   `NEXT_PUBLIC_SUPABASE_URL=https://mock.supabase.test NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_mock npx next dev -p 3124`
   → `context.route("https://mock.supabase.test/**")` 로 응답을 흉내, 세션은 localStorage `sb-mock-auth-token`.
   dev 오버레이가 클릭을 가로채면 `nextjs-portal{display:none!important}` 스타일을 넣는다. 한글 내려받기 이름은 `LANG=C.UTF-8` 필요.
-- **서비스 워커**를 고치면 `public/sw.js` 의 `VERSION`(지금 `must-v8`)을 올린다. 잠금화면 카드 내용은 `must-state` 캐시(버전 바뀌어도 유지).
+- **서비스 워커**를 고치면 `public/sw.js` 의 `VERSION`(지금 `must-v10`)을 올린다. 잠금화면 카드 내용은 `must-state` 캐시(버전 바뀌어도 유지).
 
 ## 6. AI 모델·비용
 
-- 말로 일정 정리: `claude-haiku-5-5`, thinking 끔, 한 번 약 0.6원. 날짜는 모델이 계산하지 않게 **3주치 달력 표(이번 주/다음 주 표시)** 를 같이 준다.
+- 말로 일정 정리: `claude-haiku-5-5`, thinking 끔, 한 번 약 0.6원. 사진(카톡 캡처 등)·시간표 사진은 `claude-sonnet-5-5`(effort low, 다시 시도 안 함) — Haiku 보다 비쌈(정확한 값은 관리자 화면 AI 사용량). 날짜는 모델이 계산하지 않게 **3주치 달력 표(이번 주/다음 주 표시)** 를 같이 준다.
 - 커리어 다듬기: `claude-sonnet-5-5`(effort low), 한 번 약 8원. Haiku 5.5 와 블라인드 비교(5건×3심사)에서 Sonnet 이 '없는 사실 지어내기'가
   적어서(큰 과장 0건 vs 2건) 유지 — 사용자도 Sonnet 을 원함.
 - 하루 한도: 한 사람 30회(관리자 무제한, 관리자 화면 → 설정). 비용 어림 단가는 `lib/admin.ts` `PRICE_PER_MTOK`.
@@ -281,6 +288,8 @@
    붙여넣기 검토 반영: 글도 같이 있으면(엑셀 셀 등) 글 붙여넣기를 그대로, 받을 때만 막음, 위에 뜬 다른 창 입력칸은 안 건드림. Write 가 사진을 읽는 중엔 '시간표에 넣기' 숨김.
    **parse-schedule v12**: 사진(카톡 캡처 등)도 **Sonnet 5.5 effort low**(가짜 카톡 캡처에서 Haiku 는 "다음 주 수요일까지"를 이번 주로, Sonnet 맞음), 글은 Haiku 그대로.
    카톡 규칙: 마지막에 정한 시각, 짧은 대답은 앞 메시지 전체 뜻으로, 대화 날짜줄 기준, '~까지'는 날짜 일정(언젠가 아님). 시험 이미지 `testdata/kakao-sample.jpg`(가짜).
+   검토는 워크플로가 세션 한도에 걸려 멈춤 → 혼자 다시 봄(붙여넣기·Write 바쁠 때 중복 2건 고침). 다른 계정 보안 커밋 4개와 합친 뒤(충돌 없음)
+   검사 다 통과(단위 101·DB·Deno 57) → v12 배포·부팅 확인 → 2026-10-13 main 배포.
 
 ## 9. 테마·배경 구조
 
