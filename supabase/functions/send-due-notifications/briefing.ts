@@ -89,14 +89,14 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
           .eq("schedule", "timed")
           .lt("starts_at", new Date(now - grace * 60_000).toISOString())
           .gt("ends_at", nowIso),
-        // 끝났는데 체크 안 한 일정(최근 7일) — 실패가 아니라 '했나요?'
+        // 끝났는데 체크 안 한 일정(최근 7일) — 실패가 아니라 '했나요?'. 날짜만 일정은 그날이 지나면(앱 checkinQueue 와 같게)
         db
           .from("tasks")
           .select("id", { count: "exact", head: true })
           .eq("user_id", d.user_id)
           .is("deleted_at", null)
           .eq("status", "planned")
-          .eq("schedule", "timed")
+          .in("schedule", ["timed", "day"])
           .lte("ends_at", nowIso)
           .gt("ends_at", new Date(now - 7 * 86_400_000).toISOString()),
       ]);

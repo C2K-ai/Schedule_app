@@ -22,3 +22,12 @@ Deno.test("배지 = 시간 안의 미시작 강제 일정 + 끝났는데 체크 
   ];
   assertEquals(badgeCounts(rows, now, () => 5).get(u), 2);
 });
+
+Deno.test("날짜만 일정은 그날이 지나야 배지에 들고, 강제 경고로는 안 센다", () => {
+  const u = "u1";
+  const rows = [
+    { user_id: u, strict: false, schedule: "day", starts_at: "2026-10-08T00:00:00+09:00", ends_at: at("00:00") }, // 어제 것 → 1
+    { user_id: u, strict: true, schedule: "day", starts_at: at("00:00"), ends_at: "2026-10-10T00:00:00+09:00" }, // 오늘 것 → 0
+  ];
+  assertEquals(badgeCounts(rows, now, () => 5).get(u), 1);
+});

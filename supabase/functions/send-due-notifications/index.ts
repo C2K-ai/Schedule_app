@@ -35,10 +35,10 @@ Deno.serve(async (req) => {
     // 앱 아이콘 배지 숫자 = 시간 안의 미시작 강제 일정 + 끝났는데 체크 안 한 일정(최근 7일) — rules.ts
     db
       .from("tasks")
-      .select("user_id, strict, starts_at, ends_at")
+      .select("user_id, strict, schedule, starts_at, ends_at")
       .in("user_id", userIds)
       .eq("status", "planned")
-      .eq("schedule", "timed")
+      .in("schedule", ["timed", "day"])
       .is("deleted_at", null)
       .lt("starts_at", new Date().toISOString())
       .gt("ends_at", new Date(Date.now() - 7 * 86_400_000).toISOString()),

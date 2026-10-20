@@ -233,12 +233,15 @@ export function enforcementQueue(tasks: Task[], now: number, graceMin: number): 
   );
 }
 
-/** 끝났는데 체크를 안 한 일정(최근 7일) — 앱을 열면 '했나요?' 하나씩 묻는다. 오래된 것부터 */
+/**
+ * 끝났는데 체크를 안 한 일정(최근 7일) — 앱을 열면 '했나요?' 하나씩 묻는다. 오래된 것부터.
+ * 날짜만 일정은 그날이 지나면(다음 날 0시부터) 묻는다. 날짜 없음은 정한 날이 없어 묻지 않는다.
+ */
 export function checkinQueue(tasks: Task[], now: number): Task[] {
   return tasks
     .filter(
       (t) =>
-        isTimed(t) &&
+        !isSomeday(t) &&
         t.status === "planned" &&
         now >= Date.parse(t.ends_at) &&
         now - Date.parse(t.ends_at) < 7 * DAY,
@@ -482,7 +485,8 @@ export function completeTask(store: PlannerStore, id: string) {
 export function confirmDone(store: PlannerStore, id: string) {
   const t = store.db.tasks[id];
   if (!t || t.status === "done") return;
-  const end = Math.min(Date.parse(t.ends_at), Date.now());
+  // 날짜만 일정의 끝은 다음 날 0시 — 그날 안(23:59)에 한 걸로 둔다
+  const end = Math.min(Date.parse(t.ends_at) - (isTimed(t) ? 0 : MIN), Date.now());
   const next = store.patch("tasks", id, {
     status: "done",
     started_at: t.started_at ?? t.starts_at,
@@ -517,6 +521,20 @@ export function postponeTask(store: PlannerStore, id: string, newStart: Date, re
     from_starts_at: t.starts_at,
     to_starts_at: newStart.toISOString(),
   });
+}
+
+/** 날짜만 일정을 다른 날로 미룬다(시각 없이 그날 하루) — '했나요?'에서 못 했을 때 */
+export function postponeToDay(store: PlannerStore, id: string, day: string, reason: string) {
+  const t = store.db.tasks[id];
+  if (!t) return;
+  const win = scheduleWindow("day", { day });
+  const next = store.patch("tasks", id, {
+    ...win,
+    status: "planned",
+    started_at: null,
+    postpone_count: t.postpone_count + 1,
+  });
+  log(store, "postponed", next, { reason, from_starts_at: t.starts_at, to_starts_at: win.starts_at });
 }
 
 export function skipTask(store: PlannerStore, id: string, reason: string) {

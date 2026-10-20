@@ -8,14 +8,16 @@ import {
   deleteTask,
   enforcementQueue,
   isExpired,
+  isTimed,
   markMissed,
   postponeTask,
+  postponeToDay,
   rescheduleTask,
   skipTask,
   startTask,
 } from "@/lib/planner";
 import { findSound, playSound, stopAllSounds } from "@/lib/sound";
-import { addDays, addMinutes, atTime, fmtSpan, fmtTime, MIN, toHHMM } from "@/lib/time";
+import { addDays, addMinutes, atTime, dayKey, fmtSpan, fmtTime, MIN, parseDayKey, toHHMM } from "@/lib/time";
 import { COLOR_HEX, type Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { usePlanner } from "./PlannerProvider";
@@ -114,6 +116,34 @@ export function TimeChoices({ base, value, now, onChange }: { base: Task; value:
 }
 
 const nextSlot = (now: number) => new Date(Math.ceil(now / (5 * MIN)) * 5 * MIN + 15 * MIN);
+
+/** 날짜만 일정을 다시 잡을 날 — 오늘·내일·모레 또는 달력에서 */
+function DayChoices({ value, now, onChange }: { value: string; now: number; onChange: (day: string) => void }) {
+  const today = new Date(now);
+  const opts = [
+    { label: "오늘", day: dayKey(today) },
+    { label: "내일", day: dayKey(addDays(today, 1)) },
+    { label: "모레", day: dayKey(addDays(today, 2)) },
+  ];
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {opts.map((o) => (
+          <Chip key={o.label} active={o.day === value} onClick={() => onChange(o.day)}>
+            {o.label}
+          </Chip>
+        ))}
+      </div>
+      <input type="date" value={value} min={dayKey(today)} onChange={(e) => e.target.value && onChange(e.target.value)} className={inputCls} />
+    </div>
+  );
+}
+
+/** '했나요?' 목록 한 줄의 때 — 날짜만 일정은 날짜만 */
+const whenLabel = (t: Task) => {
+  const d = new Date(t.starts_at);
+  return `${d.getMonth() + 1}/${d.getDate()}${isTimed(t) ? ` ${fmtTime(t.starts_at)}` : ""}`;
+};
 
 /** 미시작 경고음 — 화면 없이 소리만. 경고창의 '경고음 끄기'나 어떤 처리를 하면 멈춘다(최대 45초). */
 export function OverdueSiren() {
@@ -374,6 +404,8 @@ function CheckinCard({ task, queue, now, onLater }: { task: Task; queue: Task[];
   const [reason, setReason] = useState("");
   const [shake, setShake] = useState(0);
   const [newStart, setNewStart] = useState<Date>(() => nextSlot(now));
+  const timed = isTimed(task);
+  const [newDay, setNewDay] = useState(() => dayKey(new Date(now)));
   // 강제 모드 일정만 사유가 꼭 필요(설정 글자 수), 아니면 적어도 되고 안 적어도 된다
   const need = task.strict ? settings.reasonMinLength : 0;
   const needAll = queue.some((t) => t.strict) ? settings.reasonMinLength : 0;
@@ -400,15 +432,21 @@ function CheckinCard({ task, queue, now, onLater }: { task: Task; queue: Task[];
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold tracking-widest text-accent-text">
-            이 일정 했나요? {queue.length > 1 && `· 1 / ${queue.length}`}
+            이 {timed ? "일정" : "할 일"} 했나요? {queue.length > 1 && `· 1 / ${queue.length}`}
           </p>
           <h2 className="mt-1 text-xl font-bold tracking-tight break-words md:text-2xl">{task.title}</h2>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
             <span className="size-2 rounded-full" style={{ background: COLOR_HEX[task.color] }} />
-            <span className="font-mono tabular-nums">
-              {dayLabel} {fmtTime(task.starts_at)} – {fmtTime(task.ends_at)}
-            </span>
-            <span>· 끝난 지 {fmtSpan(ago)}</span>
+            {timed ? (
+              <>
+                <span className="font-mono tabular-nums">
+                  {dayLabel} {fmtTime(task.starts_at)} – {fmtTime(task.ends_at)}
+                </span>
+                <span>· 끝난 지 {fmtSpan(ago)}</span>
+              </>
+            ) : (
+              <span>{dayLabel} 할 일 · 날짜만</span>
+            )}
           </p>
         </div>
         {onLater && step === "ask" && (
@@ -424,7 +462,7 @@ function CheckinCard({ task, queue, now, onLater }: { task: Task; queue: Task[];
 
       {step === "ask" && (
         <div className="mt-5 grid gap-2">
-          <p className="text-sm text-muted">체크를 안 해서 물어봐요. 했다면 그 시간에 한 걸로 기록할게요.</p>
+          <p className="text-sm text-muted">체크를 안 해서 물어봐요. 했다면 {timed ? "그 시간에" : "그날"} 한 걸로 기록할게요.</p>
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant="primary"
@@ -479,7 +517,11 @@ function CheckinCard({ task, queue, now, onLater }: { task: Task; queue: Task[];
         <div className="mt-5 space-y-4">
           <div>
             <p className="mb-2 text-sm font-semibold">언제 다시 할까요?</p>
-            <TimeChoices base={task} value={newStart} now={now} onChange={setNewStart} />
+            {timed ? (
+              <TimeChoices base={task} value={newStart} now={now} onChange={setNewStart} />
+            ) : (
+              <DayChoices value={newDay} now={now} onChange={setNewDay} />
+            )}
           </div>
           <div>
             <p className="mb-2 text-sm font-semibold">못 한 이유 {need === 0 && <span className="font-normal text-muted">(적어도 되고 안 적어도 돼요)</span>}</p>
@@ -489,14 +531,25 @@ function CheckinCard({ task, queue, now, onLater }: { task: Task; queue: Task[];
             <Button variant="ghost" onClick={() => setStep("not")}>
               뒤로
             </Button>
-            <Button
-              variant="primary"
-              className="flex-1"
-              disabled={newStart.getTime() <= now}
-              onClick={() => guard(need, () => postponeTask(store, task.id, newStart, reason.trim() || "못 했어요"))}
-            >
-              {fmtTime(newStart)}로 다시 잡기
-            </Button>
+            {timed ? (
+              <Button
+                variant="primary"
+                className="flex-1"
+                disabled={newStart.getTime() <= now}
+                onClick={() => guard(need, () => postponeTask(store, task.id, newStart, reason.trim() || "못 했어요"))}
+              >
+                {fmtTime(newStart)}로 다시 잡기
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                className="flex-1"
+                disabled={newDay < dayKey(new Date(now))}
+                onClick={() => guard(need, () => postponeToDay(store, task.id, newDay, reason.trim() || "못 했어요"))}
+              >
+                {parseDayKey(newDay).getMonth() + 1}/{parseDayKey(newDay).getDate()}로 다시 잡기
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -521,9 +574,7 @@ function CheckinCard({ task, queue, now, onLater }: { task: Task; queue: Task[];
           <ul className="max-h-48 space-y-1 overflow-y-auto rounded-xl bg-surface-2 p-3 text-sm">
             {queue.map((t) => (
               <li key={t.id} className="flex gap-2">
-                <span className="shrink-0 font-mono text-muted tabular-nums">
-                  {new Date(t.starts_at).getMonth() + 1}/{new Date(t.starts_at).getDate()} {fmtTime(t.starts_at)}
-                </span>
+                <span className="shrink-0 font-mono text-muted tabular-nums">{whenLabel(t)}</span>
                 <span className="truncate">{t.title}</span>
               </li>
             ))}
