@@ -2,6 +2,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CAREER_IMPORT_MAX, type ImportedCareer } from "./career";
+import type { CareerVisual, VisualEntryInput } from "./careerVisual";
 import { createHabit, createTask, isTimed, liveHabits, liveTasks } from "./planner";
 import type { PlannerStore } from "./store";
 import { addDays, atTime, dayKey, fixDayKey, fmtTime, MIN, parseDayKey, startOfDay, toHHMM, WEEKDAYS } from "./time";
@@ -312,6 +313,31 @@ export async function polishCareer(
     throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 다듬기에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
   }
   return data as Polished;
+}
+
+/** 커리어 '한눈에 보기' — AI 는 글만(한 줄 소개·대표 경험·항목별 한 줄·기술 묶음), 디자인은 앱(careerVisual.ts) */
+export async function visualizeCareer(client: SupabaseClient, entries: VisualEntryInput[]): Promise<CareerVisual> {
+  const { data, error } = await client.functions.invoke("career-polish", { body: { mode: "visual", entries, today: dayKey(new Date()) } });
+  if (error) {
+    const { code, limit } = await errorBody(error);
+    if (code === "empty") throw new Error("커리어 기록이 아직 없어요.");
+    throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 정리에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
+  }
+  return data as CareerVisual;
+}
+
+/** 커리어 'AI 자유 디자인' — HTML 한 장을 통째로(앱은 lockHtml 로 잠가서 띄운다). 1분 안팎 걸린다 */
+export async function designCareer(client: SupabaseClient, entries: VisualEntryInput[], wish: string): Promise<string> {
+  const { data, error } = await client.functions.invoke("career-polish", { body: { mode: "design", entries, wish, today: dayKey(new Date()) } });
+  if (error) {
+    const { code, limit } = await errorBody(error);
+    if (code === "empty") throw new Error("커리어 기록이 아직 없어요.");
+    if (code === "timeout" || code === "output_too_long") throw new Error("AI 가 다 그리지 못했어요. 다시 해 보거나, 원하는 느낌을 짧게 적어 주세요.");
+    throw new Error(message(code, limit) ?? (navigator.onLine ? "AI 디자인에 실패했어요. 잠시 뒤 다시 해 주세요." : "인터넷이 끊겨 있어요."));
+  }
+  const html = (data as { html?: unknown }).html;
+  if (typeof html !== "string" || !html) throw new Error("AI 가 빈 페이지를 돌려줬어요. 다시 해 주세요.");
+  return html;
 }
 
 /** 커리어 '한 번에 넣기' — 정리해 둔 글을 통째로 → 항목별 기록(글은 그대로, 날짜·종류만 정리) */

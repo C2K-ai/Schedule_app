@@ -1,6 +1,6 @@
 "use client";
 
-import { BriefcaseBusiness, Check, ClipboardCopy, ClipboardPaste, Loader2, Pencil, Plus, Sparkles, Trash, TriangleAlert } from "lucide-react";
+import { BriefcaseBusiness, Check, ClipboardCopy, ClipboardPaste, LayoutTemplate, Loader2, Pencil, Plus, Sparkles, Trash, TriangleAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { polishCareer } from "@/lib/ai";
 import { CAREER_KINDS, careerPeriod as period, kindLabel } from "@/lib/career";
@@ -9,6 +9,7 @@ import { getSupabase } from "@/lib/supabase";
 import { addDays, dayKey, fmtTime, uuid } from "@/lib/time";
 import type { CareerEntry } from "@/lib/types";
 import { CareerImport } from "./CareerImport";
+import { CareerVisual } from "./CareerVisual";
 import { usePlanner } from "./PlannerProvider";
 import { Button, cx, Empty, inputCls, Label, Modal } from "./ui";
 
@@ -208,6 +209,7 @@ export function CareerSheet({ open, onClose }: { open: boolean; onClose: () => v
   const list = useMemo(() => liveCareer(snap.db), [snap.db]);
   const [editing, setEditing] = useState<Draft | null>(null);
   const [importing, setImporting] = useState(false);
+  const [visual, setVisual] = useState(false);
   if (!open) return null;
 
   const blank = (): Draft => ({
@@ -228,24 +230,45 @@ export function CareerSheet({ open, onClose }: { open: boolean; onClose: () => v
     <Modal
       open
       onClose={() => {
+        // 한눈에 보기에서 닫으면 목록으로(창 전체를 닫지 않고)
+        if (visual) return setVisual(false);
         setEditing(null);
         setImporting(false);
         onClose();
       }}
-      title={editing ? (list.some((x) => x.id === editing.id) ? "커리어 기록 고치기" : "새 커리어 기록") : importing ? "한 번에 넣기" : "커리어 기록"}
+      title={
+        editing
+          ? list.some((x) => x.id === editing.id)
+            ? "커리어 기록 고치기"
+            : "새 커리어 기록"
+          : importing
+            ? "한 번에 넣기"
+            : visual
+              ? "커리어 한눈에 보기"
+              : "커리어 기록"
+      }
       subtitle={
         editing
           ? undefined
           : importing
             ? "정리해 둔 커리어 글을 그대로 붙여 넣으면 AI 가 항목별 기록으로 나눠요. 글은 고치지 않아요."
-            : "했던 일을 그때그때 남겨 두면, 나중에 이력서·포트폴리오를 쓸 때 그대로 꺼내 쓸 수 있어요."
+            : visual
+              ? "기록 전체를 이력서·포트폴리오 한 장으로 — HTML 로 저장하거나 인쇄해서 PDF 로 만들 수 있어요."
+              : "했던 일을 그때그때 남겨 두면, 나중에 이력서·포트폴리오를 쓸 때 그대로 꺼내 쓸 수 있어요."
       }
-      size="lg"
+      size={visual ? "xl" : "lg"}
     >
       {editing ? (
         <Editor key={editing.id} initial={editing} onDone={() => setEditing(null)} />
       ) : importing ? (
         <CareerImport onDone={() => setImporting(false)} />
+      ) : visual ? (
+        <div className="space-y-3">
+          <CareerVisual list={list} />
+          <Button variant="ghost" onClick={() => setVisual(false)}>
+            ← 기록 목록으로
+          </Button>
+        </div>
       ) : (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -263,6 +286,11 @@ export function CareerSheet({ open, onClose }: { open: boolean; onClose: () => v
                 }}
               >
                 <ClipboardCopy size={16} /> 전체 복사
+              </Button>
+            )}
+            {list.length > 0 && (
+              <Button onClick={() => setVisual(true)}>
+                <LayoutTemplate size={16} /> 한눈에 보기
               </Button>
             )}
           </div>

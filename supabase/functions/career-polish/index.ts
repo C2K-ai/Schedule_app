@@ -1,5 +1,6 @@
 // 커리어 기록 다듬기 — 내가 대충 적은 메모 + 그 기간에 끝낸 일정·하루 노트 → 이력서용 제목·요약·문장·기술
 //   mode "import": 정리해 둔 커리어 글을 통째로 → 항목별 기록(글은 그대로, 날짜·종류만 정리) — 앱이 미리보기로 보여 주고 사용자가 고른 것만 저장
+//   mode "visual"·"design": 기록 전체를 한 장으로(visual.ts) — 글만 써 주면 앱이 그리거나, HTML 을 통째로
 //   배포: npx supabase functions deploy career-polish   (JWT 검증 켠 채로 — 로그인한 주인만)
 //   키:   parse-schedule 과 같은 Vault 'must_anthropic_key' / ANTHROPIC_API_KEY
 import Anthropic from "npm:@anthropic-ai/sdk@0.131.0";
@@ -7,6 +8,18 @@ import { claim, finish, release, unbilled } from "../_shared/ai_usage.ts";
 import { admin, cors, json, setting } from "../_shared/env.ts";
 import { buildImportPrompt, cleanImport, IMPORT_MAX, IMPORT_SCHEMA, IMPORT_SYSTEM } from "./import.ts";
 import { buildPrompt, cleanPolished, SCHEMA, SYSTEM, type Material, type Polished } from "./logic.ts";
+import {
+  buildVisualPrompt,
+  cleanHtml,
+  cleanVisual,
+  DESIGN_SCHEMA,
+  DESIGN_SYSTEM,
+  readEntries,
+  VISUAL_SCHEMA,
+  VISUAL_SYSTEM,
+  WISH_MAX,
+  type Visual,
+} from "./visual.ts";
 
 // 이력서 문장은 '없는 사실 안 지어내기'가 중요해 한 단계 위 모델로(드물게 써서 비용 차이 작음, 1번 약 8~10원).
 //   2026-10-08 블라인드 비교(5건 × 3심사): Sonnet 5.5 는 큰 과장 0건, Haiku 5.5 는 low·high 모두 2건(예: 응시 전인 '독일어 B1'을 기술로)
@@ -22,16 +35,26 @@ Deno.serve(async (req) => {
   if (authErr || !auth.user) return json({ error: "unauthorized" }, 401);
   const userId = auth.user.id;
 
-  let body: Material & { mode?: unknown; text?: unknown; today?: unknown };
+  let body: Material & { mode?: unknown; text?: unknown; today?: unknown; entries?: unknown; wish?: unknown };
   try {
     body = await req.json();
   } catch {
     return json({ error: "bad_json" }, 400);
   }
   const importing = body.mode === "import";
+  const visual = body.mode === "visual";
+  const design = body.mode === "design";
   let prompt: string | null;
   let today = "";
-  if (importing) {
+  let count = 0;
+  if (visual || design) {
+    if (typeof body.today !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.today)) return json({ error: "bad_clock" }, 400);
+    const list = readEntries(body.entries);
+    if (!list.length) return json({ error: "empty" }, 400);
+    count = list.length;
+    const wish = design && typeof body.wish === "string" ? Array.from(body.wish.trim()).slice(0, WISH_MAX).join("") : "";
+    prompt = buildVisualPrompt(list, body.today, wish);
+  } else if (importing) {
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (!text) return json({ error: "empty" }, 400);
     if (text.length > IMPORT_MAX) return json({ error: "too_long", max: IMPORT_MAX }, 400);
@@ -53,7 +76,8 @@ Deno.serve(async (req) => {
   // 한 사람의 하루 한도(관리자 화면 → 설정) — 한 칸 예약. 확인을 못 하면 비용이 새지 않게 막는다
   let slot: number;
   try {
-    const c = await claim(db, userId, importing ? "career-import" : "career-polish", MODEL);
+    const fn = importing ? "career-import" : visual ? "career-visual" : design ? "career-design" : "career-polish";
+    const c = await claim(db, userId, fn, MODEL);
     if (!c.ok || c.id === null) return json({ error: "daily_limit", limit: c.limit }, 429);
     slot = c.id;
   } catch (e) {
@@ -62,24 +86,38 @@ Deno.serve(async (req) => {
   }
 
   // 나누기는 글 전체를 옮겨 적어 길다(2,500자 → 약 40초) — Edge 시간 한도(150초) 안에서 기다린다
-  const client = new Anthropic({ apiKey, maxRetries: importing ? 0 : 1, timeout: importing ? 140_000 : 60_000 });
+  //   HTML 통째로(design)도 길어서 같은 한도 안에서 기다린다
+  const long = importing || design;
+  const client = new Anthropic({ apiKey, maxRetries: long ? 0 : 1, timeout: long ? 140_000 : 60_000 });
+  const [schema, system] = importing
+    ? [IMPORT_SCHEMA, IMPORT_SYSTEM]
+    : visual
+      ? [VISUAL_SCHEMA, VISUAL_SYSTEM]
+      : design
+        ? [DESIGN_SCHEMA, DESIGN_SYSTEM]
+        : [SCHEMA, SYSTEM];
   try {
     const res = await client.messages.create({
       model: MODEL,
-      max_tokens: importing ? 12000 : 8000,
+      max_tokens: importing ? 12000 : design ? 16000 : 8000,
       // 글 다듬기·나누기는 low 로 충분 — 생각을 짧게 해 빠르고 싸다
-      output_config: { effort: "low", format: { type: "json_schema", schema: importing ? IMPORT_SCHEMA : SCHEMA } },
-      system: importing ? IMPORT_SYSTEM : SYSTEM,
+      output_config: { effort: "low", format: { type: "json_schema", schema } },
+      system,
       messages: [{ role: "user", content: prompt }],
     });
     await finish(db, slot, res.model ?? MODEL, res.usage);
     if (res.stop_reason === "refusal") return json({ error: "refused" }, 422);
     // 나누기에서 답이 끝까지 못 나온 것은 글자 수 한도와 다른 문제(항목이 너무 많음) — 앱이 '반씩 나눠서'로 안내
-    if (res.stop_reason === "max_tokens") return json({ error: importing ? "output_too_long" : "too_long" }, 422);
+    if (res.stop_reason === "max_tokens") return json({ error: importing || design ? "output_too_long" : "too_long" }, 422);
     const out = res.content.find((b) => b.type === "text");
     if (!out || out.type !== "text") return json({ error: "no_output" }, 502);
     const parsed = JSON.parse(out.text);
     if (importing) return json({ entries: cleanImport(parsed, today, String(body.text).trim()) });
+    if (visual) return json(cleanVisual(parsed as Partial<Visual>, count));
+    if (design) {
+      const html = cleanHtml((parsed as { html?: unknown }).html);
+      return html ? json({ html }) : json({ error: "no_output" }, 502);
+    }
     return json(cleanPolished(parsed as Polished));
   } catch (e) {
     if (unbilled(e)) await release(db, slot);
