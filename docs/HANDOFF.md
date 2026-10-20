@@ -5,7 +5,7 @@
 
 ## 0. ⚠️ 지금 상태 — 2026-10-20 갱신 (여기부터 읽기)
 
-**브랜치**: `ui-revamp` = `main`(2026-10-20: 날짜만 할 일도 '했나요?'로 물어봄(8절 35)). 끝난 일은 8절.
+**브랜치**: `ui-revamp` = `main`(2026-10-20: 날짜만 할 일 '했나요?'(8절 35)·X 표시(36)·커리어 한눈에 보기(37)). 끝난 일은 8절.
 
 ### 0-0. 일기 책 애니메이션 — 다듬기 배포함(2026-10-10), **사용자 폰 확인 대기**
 사용자 지적 두 가지(닫기가 너무 짧음 · 폰에서 심하게 버벅임)를 고쳐 배포함. 사용자가 써 보고 말하면 그 부분만 고친다(큰 진단·심사 다시 돌리지 말 것).
@@ -112,7 +112,7 @@
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v5(Sonnet 5.5) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v6 ·
+- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v6(Sonnet 5.5 — 다듬기·한 번에 넣기·한눈에 보기) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v6 ·
   `signup` v4(**JWT 검증 끔**) · `send-due-notifications` v6(**JWT 검증 끔** — 크론 비밀값 헤더로) · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
@@ -309,6 +309,17 @@
 36. **놓침·건너뜀에 X 표시**(2026-10-20, 사용자: 할 일 왼쪽 동그라미가 흐릿 → "X 표시 선명하게") — 할 일 목록 왼쪽 동그라미:
    놓침 = 빨강 바탕 흰 X, 건너뜀 = 회색 바탕 X(누르면 다시 잡기 그대로). 타임라인 칸(✓ 자리)·습관 패널 오늘 칸에도 X.
    같이 고친 것: 지난 날짜만 할 일의 동그라미도 '했나요? · 했으면 체크'(`taskState` 가 checkinQueue 와 같게) — 누르면 그날 한 걸로.
+
+37. **커리어 '한눈에 보기'**(2026-10-20, 사용자: "커리어 기록을 AI 가 HTML 로 시각적으로 표현 — 둘 다 가능?") — 커리어 기록 창 → '한눈에 보기'.
+   탭 셋: **깔끔한 이력서 · 포트폴리오** = AI 는 글만(career-polish **v6** `mode: "visual"` — 한 줄 소개·대표 경험 3·항목별 한 줄·기술 묶음, n 번호로),
+   디자인은 앱(`src/lib/careerVisual.ts` `renderCareerHtml`, 글자는 모두 이스케이프) — AI 1회로 두 디자인 같이 씀.
+   **AI 자유 디자인** = `mode: "design"`(HTML 통째로, 원하는 느낌 200자, max 16000 토큰) → 서버 `cleanHtml` 로 스크립트·바깥 주소 걷고,
+   앱은 `lockHtml`(CSP `default-src 'none'`) + `<iframe sandbox="allow-same-origin allow-modals">`(스크립트 없음, 인쇄만).
+   'HTML 저장'(파일)·'인쇄·PDF'(iframe print). 결과는 이 기기 localStorage `must:v1:<scope>:career-visual`(다시 열 때 AI 안 부름), 기록이 바뀌면 '다시 만들기' 안내.
+   보내는 순서 = 최근 것부터(`visualOrder` — 서버 `readEntries` 와 같은 거르기라 번호 안 어긋남), 글은 다듬은 글 먼저 600자, 합계 2.4만 자까지.
+   확인: 실제 Sonnet(가짜 대학생 기록 8개) — 글만 출력 약 800 토큰·사실만, HTML 통째로 약 2,700 토큰·사실만. 두 디자인 390·900px·A4 PDF 화면,
+   앱 안 미리보기(가짜 기록 + 캐시), **잠금 시험**: 스크립트 든 HTML 을 넣어도 실행 안 됨(제목·부모 창 그대로), 바깥 이미지 2개는 CSP 로 막힘(요청 안 나감).
+   시험: `tests/career-visual.test.mjs`(단위 110), `career-polish/visual.test.ts`(Deno 62). ai_usage fn = career-visual / career-design.
 
 ## 9. 테마·배경 구조
 
