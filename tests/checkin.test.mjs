@@ -6,7 +6,7 @@ const mem = new Map();
 globalThis.localStorage ??= { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k), key: () => null, length: 0 };
 
 const { PlannerStore } = await import("../src/lib/store.ts");
-const { checkinQueue, confirmDone, createTask, postponeToDay } = await import("../src/lib/planner.ts");
+const { checkinQueue, confirmDone, createTask, postponeToDay, taskState } = await import("../src/lib/planner.ts");
 const { DEFAULT_SETTINGS } = await import("../src/lib/settings.ts");
 const { addDays, dayKey, startOfDay } = await import("../src/lib/time.ts");
 
@@ -63,4 +63,14 @@ test("날짜만 일정 '다시 잡기'는 고른 날 하루로 옮기고 다시 
   assert.equal(after.starts_at, startOfDay(addDays(new Date(), 1)).toISOString());
   assert.equal(after.ends_at, startOfDay(addDays(new Date(), 2)).toISOString());
   assert.equal(checkinQueue(live(store), Date.now()).length, 0);
+});
+
+test("목록 동그라미도 같게 — 지난 날짜만 할 일은 '했나요?'(누르면 그날 한 걸로), 오늘 것·날짜 없음은 그대로", () => {
+  const store = setup();
+  const past = createTask(store, { title: "보고서 내기", schedule: "day", day: day(-1) }, DEFAULT_SETTINGS);
+  const today = createTask(store, { title: "오늘 할 일", schedule: "day", day: day(0) }, DEFAULT_SETTINGS);
+  const some = createTask(store, { title: "언젠가", schedule: "someday" }, DEFAULT_SETTINGS);
+  assert.equal(taskState(past, Date.now(), 5), "unchecked");
+  assert.equal(taskState(today, Date.now(), 5), "upcoming");
+  assert.equal(taskState(some, Date.now() + 30 * 86_400_000, 5), "upcoming");
 });

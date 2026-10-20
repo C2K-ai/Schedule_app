@@ -157,7 +157,11 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
           "grid size-6 shrink-0 place-items-center rounded-full border-2 transition",
           done
             ? "border-ok bg-ok text-white"
-            : st === "overdue"
+            : t.status === "missed"
+              ? "border-danger bg-danger text-white"
+              : t.status === "skipped"
+                ? "border-muted bg-muted text-bg"
+                : st === "overdue"
               ? "border-danger"
               : st === "unchecked"
                 ? "border-warn hover:bg-warn/15"
@@ -165,6 +169,7 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
         )}
       >
         {done && <Check size={14} strokeWidth={3} />}
+        {closed && !done && <X size={14} strokeWidth={3.25} />}
         {st === "overdue" && <TriangleAlert size={11} className="text-danger" />}
       </button>
       <button onClick={() => openTask(t)} className="min-w-0 flex-1 text-left">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Flame, NotebookPen, Repeat } from "lucide-react";
+import { Check, Flame, NotebookPen, Repeat, X } from "lucide-react";
 import { useMemo } from "react";
 import { completeTask, habitStreak, recentLogs } from "@/lib/planner";
 import { addDays, DAY, dayKey, fmtTime, startOfDay } from "@/lib/time";
@@ -60,7 +60,7 @@ export function HabitMini() {
             return (
               <li key={h.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface-2">
                 <button
-                  disabled={!todayTask || todayTask.status === "done"}
+                  disabled={!todayTask || todayTask.status === "done" || todayTask.status === "missed" || todayTask.status === "skipped"}
                   onClick={() => {
                     if (!todayTask) return;
                     completeTask(store, todayTask.id);
@@ -69,13 +69,23 @@ export function HabitMini() {
                     "grid size-9 shrink-0 place-items-center rounded-xl text-sm transition",
                     todayTask?.status === "done"
                       ? "bg-accent text-accent-fg"
-                      : todayTask
+                      : todayTask?.status === "missed" || todayTask?.status === "skipped"
+                        ? "bg-danger text-white"
+                        : todayTask
                         ? "border-2 border-dashed border-line-strong text-muted hover:border-accent"
                         : "bg-surface-2 text-faint",
                   )}
                   aria-label="오늘 완료"
                 >
-                  {todayTask?.status === "done" ? <Check size={16} strokeWidth={3} /> : todayTask ? "" : "–"}
+                  {todayTask?.status === "done" ? (
+                    <Check size={16} strokeWidth={3} />
+                  ) : todayTask?.status === "missed" || todayTask?.status === "skipped" ? (
+                    <X size={16} strokeWidth={3} />
+                  ) : todayTask ? (
+                    ""
+                  ) : (
+                    "–"
+                  )}
                 </button>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{h.title}</p>

@@ -145,7 +145,8 @@ export function taskState(t: Task, now: number, graceMin: number): TaskState {
   if (t.status === "skipped") return "skipped";
   if (t.status === "missed") return "missed";
   if (t.status === "in_progress") return "in_progress";
-  if (!isTimed(t)) return "upcoming"; // 날짜만·날짜 없음은 시각 경고 대상이 아니다
+  // 날짜만·날짜 없음은 시각 경고 대상이 아니다. 날짜만은 그날이 지나면 '했나요?'(checkinQueue 와 같게)
+  if (!isTimed(t)) return !isSomeday(t) && now >= Date.parse(t.ends_at) ? "unchecked" : "upcoming";
   if (now >= Date.parse(t.ends_at)) return "unchecked";
   const start = Date.parse(t.starts_at);
   if (now >= start + graceMin * MIN) return "overdue";

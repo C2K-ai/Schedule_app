@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleHelp, Play, Repeat, TriangleAlert } from "lucide-react";
+import { Check, CircleHelp, Play, Repeat, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { taskState, type TaskState } from "@/lib/planner";
 import { addMinutes, dayKey, fmtTime, MIN, minutesOfDay, sameDay, snapMinutes, startOfDay, WEEKDAYS } from "@/lib/time";
@@ -478,6 +478,9 @@ export function Timeline({
                     >
                       <div className={cx("flex min-w-0 items-center gap-1", compact ? "text-[12px]" : "text-[13px]")}>
                         {st === "done" && <Check size={13} className="shrink-0 text-ok" />}
+                        {(st === "missed" || st === "skipped") && (
+                          <X size={13} strokeWidth={3} className={cx("shrink-0", st === "missed" ? "text-danger" : "text-muted")} aria-label={st === "missed" ? "놓침" : "건너뜀"} />
+                        )}
                         {st === "in_progress" && <Play size={12} className="shrink-0" style={{ color }} />}
                         {st === "overdue" && <TriangleAlert size={13} className="shrink-0 text-danger" />}
                         {st === "unchecked" && <CircleHelp size={13} className="shrink-0 text-warn" aria-label="했나요?" />}
