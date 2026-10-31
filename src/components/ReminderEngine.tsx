@@ -6,7 +6,7 @@ import { shrinkPhoto } from "@/lib/photo";
 import { SHARED_KEY, sharedText, takeSharedFromWorker } from "@/lib/share";
 import { setAppBadge, showSystemNotification, registerServiceWorker } from "@/lib/notify";
 import { activeFocus, checkinQueue, completeTask, enforcementQueue, finishFocus, focusRemaining, startFocus, startTask } from "@/lib/planner";
-import { refreshPushSubscription } from "@/lib/push";
+import { ensurePush, pushStatus } from "@/lib/push";
 import {
   addSnooze,
   computeTriggers,
@@ -266,7 +266,7 @@ export function ReminderEngine() {
       } else if (data?.type === "must:resubscribe") {
         const sb = getSupabase();
         const uid = latest.current.session.userId;
-        if (sb && uid) void refreshPushSubscription(sb, uid);
+        if (sb && uid) void ensurePush(sb, uid);
       }
     };
     navigator.serviceWorker.addEventListener("message", onMsg);
@@ -318,10 +318,18 @@ export function ReminderEngine() {
     }
   }, [handleAction]);
 
-  // 로그인 상태면 푸시 구독을 매번 갱신
+  // 로그인 상태면 앱을 열 때마다 이 기기 푸시를 살피고 고친다(서버가 지운 죽은 구독이면 새로 받아 다시 등록).
+  // 앱을 오래 켜 둔 채 다시 볼 때도 3시간에 한 번
   useEffect(() => {
     const sb = getSupabase();
-    if (sb && session.userId) void refreshPushSubscription(sb, session.userId);
+    const uid = session.userId;
+    if (!sb || !uid) return;
+    void ensurePush(sb, uid);
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && Date.now() - pushStatus().at > 3 * 3600_000) void ensurePush(sb, uid);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [session.userId]);
 
   return null;

@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, BellRing, Cloud, Download, KeyRound, LogOut, Monitor, Moon, RefreshCw, Smartphone, Sun, Upload, Vibrate, Volume2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   isIOS,
   isStandalone,
@@ -15,7 +15,19 @@ import { feedUrl, GOOGLE_ADD_BY_URL, loadFeed, makeFeed, removeFeed } from "@/li
 import { clearRecovery, inRecovery } from "@/lib/authLinks";
 import { lockCardSupported, testLockCard } from "@/lib/lockCard";
 import { OFFSET_CHOICES } from "@/lib/settings";
-import { briefingTime, currentPushSubscription, pushSupported, sendTestPush, setBriefingTime, subscribePush, unsubscribePush } from "@/lib/push";
+import {
+  briefingTime,
+  DEFAULT_BRIEFING,
+  ensurePush,
+  onPushStatus,
+  pushProblem,
+  pushStatus,
+  pushSupported,
+  sendTestPush,
+  setBriefingTime,
+  subscribePush,
+  unsubscribePush,
+} from "@/lib/push";
 import { downloadSound, findSound, playSound, unlockAudio, vibrate, VIBRATIONS } from "@/lib/sound";
 import { hasLocalData, readLocalDb } from "@/lib/store";
 import { cloudEnabled, getSupabase } from "@/lib/supabase";
@@ -92,14 +104,17 @@ function NotifyTab() {
   const { settings, updateSettings, session, ring, toast, tasks } = usePlanner();
   const [perm, setPerm] = useState<PermissionState>(() => notificationPermission());
   const [lockTest, setLockTest] = useState<{ ok: boolean; text: string } | null>(null);
-  const [pushOn, setPushOn] = useState(false);
+  // 이 기기 푸시 상태 — 서버에 실제로 등록돼 있는지까지 본 값(ensurePush)
+  const push = useSyncExternalStore(onPushStatus, pushStatus, pushStatus);
+  const pushOn = push.state === "ok";
   const [busy, setBusy] = useState(false);
   const [briefing, setBriefing] = useState<string | null>(() => briefingTime());
   const set = (p: Partial<Settings>) => updateSettings(p);
 
   useEffect(() => {
-    void currentPushSubscription().then((s) => setPushOn(Boolean(s)));
-  }, []);
+    const c = getSupabase();
+    if (c && session.userId) void ensurePush(c, session.userId);
+  }, [session.userId]);
 
   const ios = isIOS();
   const standalone = isStandalone();
@@ -189,8 +204,9 @@ function NotifyTab() {
         ) : (
           <div className="flex flex-wrap items-center gap-2">
             <span className={cx("rounded-lg px-2.5 py-1 text-sm font-bold", pushOn ? "bg-ok/15 text-ok" : "bg-surface-2 text-muted")}>
-              {pushOn ? "이 기기 등록됨" : "등록 안 됨"}
+              {pushOn ? "이 기기 등록됨" : push.state === "unknown" ? "확인하는 중…" : push.state === "off" ? "꺼 둠" : "등록 안 됨"}
             </span>
+            {pushProblem(push) && push.state !== "unsupported" && <span className="w-full text-sm text-warn">{pushProblem(push)}</span>}
             {pushOn ? (
               <>
                 <Button
@@ -212,8 +228,7 @@ function NotifyTab() {
                 <Button
                   variant="ghost"
                   onClick={async () => {
-                    await unsubscribePush(sb!);
-                    setPushOn(false);
+                    await unsubscribePush(sb!, true);
                   }}
                 >
                   등록 해제
@@ -230,7 +245,6 @@ function NotifyTab() {
                     setPerm(p);
                     if (p !== "granted") throw new Error("알림 권한이 필요합니다");
                     await subscribePush(sb!, session.userId!);
-                    setPushOn(true);
                     toast({ text: "이 기기가 서버 푸시에 등록됐습니다", tone: "ok" });
                   } catch (e) {
                     toast({ text: `등록 실패: ${(e as Error).message}`, tone: "danger" });
@@ -300,7 +314,7 @@ function NotifyTab() {
         </Section>
       )}
 
-      <Section title="오늘 브리핑" desc="‘오늘 할 일 n개 · 다음 일정 · 미시작 n건’을 한 줄로 알려 줍니다.">
+      <Section title="오늘 브리핑" desc="오늘 잡힌 일정을 시각 순서로, 시간이 안 정해진 일정까지 이름으로 알려 줘요.">
         <Switch
           checked={settings.launchBriefing}
           onChange={(launchBriefing) => set({ launchBriefing })}
@@ -316,7 +330,8 @@ function NotifyTab() {
           <span>
             <span className="block text-sm font-semibold">이 기기 아침 브리핑 시각</span>
             <span className="mt-0.5 block text-xs leading-relaxed text-muted">
-              앱을 안 열어도 서버가 이 시각에 푸시로 보냅니다(하루 한 번). ‘3. 서버 푸시’에서 이 기기를 등록해야 와요.
+              앱을 안 열어도 서버가 이 시각에 푸시로 보내요(하루 한 번). 폰은 기본 {DEFAULT_BRIEFING}. 그때 폰이 꺼져 있었으면 켜자마자 와요(6시간 안).
+              ‘2. 서버 푸시’에 이 기기가 등록돼 있어야 와요.
             </span>
           </span>
           <select
@@ -335,7 +350,7 @@ function NotifyTab() {
             aria-label="아침 브리핑 시각"
           >
             <option value="off">끔</option>
-            {["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00"].map((t) => (
+            {["05:00", "06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00"].map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>

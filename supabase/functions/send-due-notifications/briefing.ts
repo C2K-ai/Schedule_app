@@ -1,4 +1,4 @@
-// 기기별 아침 브리핑 — claim_due_briefings() 가 꺼낸 기기마다 "오늘 할 일 n개 · 다음 HH:MM 무엇 · 미시작 n건"
+// 기기별 아침 브리핑 — claim_due_briefings() 가 꺼낸 기기마다 오늘 일정 목록(시각 순서 + 시간 미정) · 미시작 n건
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { safeTz, sendToSubscription, VIBRATIONS, type PushPayload } from "../_shared/push.ts";
 
@@ -8,35 +8,70 @@ export interface BriefTask {
   starts_at: string;
   schedule: string | null;
   strict: boolean;
+  /** 보여 줄 시각 "HH:MM" — 시간표 수업처럼 이미 현지 시각인 것(없으면 starts_at 을 시간대로 바꿔서) */
+  time?: string;
+}
+
+export interface TimetableHabit {
+  title: string;
+  start_time: string | null;
+  days: number[] | null;
+  start_day: string | null;
+  end_day: string | null;
+}
+
+/** 오늘(현지 날짜 YYYY-MM-DD) 시간표 수업·알바 — 시간표는 일정(tasks)을 만들지 않아 따로 센다(앱 timetable.ts 와 같은 규칙) */
+export function timetableToday(list: TimetableHabit[], localDay: string): BriefTask[] {
+  const dow = new Date(`${localDay}T00:00:00Z`).getUTCDay();
+  return list
+    .filter(
+      (h) =>
+        /^([01][0-9]|2[0-3]):[0-5][0-9]/.test(h.start_time ?? "") &&
+        (h.days ?? []).includes(dow) &&
+        (!h.start_day || h.start_day <= localDay) &&
+        (!h.end_day || h.end_day >= localDay),
+    )
+    .map((h) => ({ title: h.title, status: "planned", starts_at: "", schedule: "timed", strict: false, time: h.start_time!.slice(0, 5) }));
 }
 
 const hhmm = (iso: string, tz: string) =>
   new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(new Date(iso));
 
+/** 브리핑에 이름을 적는 일정 수 — 넘으면 '외 n개' */
+export const BRIEF_MAX = 8;
+/** 브리핑 푸시를 푸시 서버가 들고 있는 시간 */
+export const BRIEF_TTL_SEC = 6 * 3600;
+const short = (s: string) => (s.length > 20 ? `${s.slice(0, 19)}…` : s);
+
 /**
  * 앱의 buildBriefing(src/components/Briefing.tsx)과 같은 문구.
+ *   1줄: 시각 있는 일정 "09:00 회의 · 14:30 병원"(접힌 알림에도 보이는 줄)
+ *   2줄: "시간 미정 · 장보기, 보고서" — 날짜만 정한 일정도 이름으로
+ *   끝줄: 미시작 n건 · 했는지 확인할 일정 n건
  * overdue = 지금 시간 안의 미시작 강제 일정 수(앱 enforcementQueue), unchecked = 끝났는데 체크 안 한 일정 수(앱 checkinQueue)
  */
-export function briefingText(
-  tasks: BriefTask[],
-  now: number,
-  tz: string,
-  graceMin: number,
-  overdue: number,
-  unchecked = 0,
-): { title: string; body: string } {
+export function briefingText(tasks: BriefTask[], tz: string, overdue: number, unchecked = 0): { title: string; body: string } {
   const open = tasks.filter((t) => t.status === "planned" || t.status === "in_progress");
   const timed = (t: BriefTask) => (t.schedule ?? "timed") === "timed";
-  const first = open
-    .filter((t) => timed(t) && Date.parse(t.starts_at) >= now - graceMin * 60_000)
-    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))[0];
-  const parts = [
-    open.length ? `오늘 할 일 ${open.length}개` : "오늘 잡힌 할 일이 없어요",
-    first ? `다음 ${hhmm(first.starts_at, tz)} ${first.title}` : null,
-    overdue ? `미시작 ${overdue}건` : null,
-    unchecked ? `했는지 확인할 일정 ${unchecked}건` : null,
+  const at = (t: BriefTask) => t.time ?? hhmm(t.starts_at, tz);
+  // 모두 오늘 안이라 현지 "HH:MM" 순서 = 시각 순서
+  const withTime = open
+    .filter(timed)
+    .map((t) => ({ t, at: at(t) }))
+    .sort((a, b) => a.at.localeCompare(b.at));
+  const noTime = open.filter((t) => !timed(t));
+  // 시간 미정 일정이 있으면 그 자리를 남겨 둔다(둘 다 보이게)
+  const shownTimed = withTime.slice(0, noTime.length ? BRIEF_MAX - Math.min(noTime.length, 3) : BRIEF_MAX);
+  const shownNoTime = noTime.slice(0, BRIEF_MAX - shownTimed.length);
+  const rest = open.length - shownTimed.length - shownNoTime.length;
+  const lines = [
+    shownTimed.map(({ t, at }) => `${at} ${short(t.title)}`).join(" · "),
+    shownNoTime.length ? `시간 미정 · ${shownNoTime.map((t) => short(t.title)).join(", ")}` : "",
+    rest > 0 ? `외 ${rest}개` : "",
+    [overdue ? `미시작 ${overdue}건` : "", unchecked ? `했는지 확인할 일정 ${unchecked}건` : ""].filter(Boolean).join(" · "),
   ].filter(Boolean);
-  return { title: "☀ 좋은 아침이에요", body: parts.join(" · ") };
+  if (!open.length) lines.unshift("오늘 잡힌 일정이 없어요");
+  return { title: open.length ? `☀ 오늘 일정 ${open.length}개` : "☀ 좋은 아침이에요", body: lines.join("\n") };
 }
 
 /** sendToSubscription 의 오류 문자열("403 ...", "? ...")에서 다시 해 볼 만한지 */
@@ -65,14 +100,23 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
   for (const d of (data ?? []) as Due[]) {
     // 한 기기에서 난 오류가 뒤 사람들의 브리핑을 막지 않게(보안 점검 2026-10-11)
     try {
-      const { data: tasks } = await db
-        .from("tasks")
-        .select("title, status, starts_at, schedule, strict")
-        .eq("user_id", d.user_id)
-        .is("deleted_at", null)
-        .neq("schedule", "someday")
-        .gte("starts_at", d.day_start)
-        .lt("starts_at", d.day_end);
+      const [{ data: tasks }, { data: classes }] = await Promise.all([
+        db
+          .from("tasks")
+          .select("title, status, starts_at, schedule, strict")
+          .eq("user_id", d.user_id)
+          .is("deleted_at", null)
+          .neq("schedule", "someday")
+          .gte("starts_at", d.day_start)
+          .lt("starts_at", d.day_end),
+        db
+          .from("habits")
+          .select("title, start_time, days, start_day, end_day")
+          .eq("user_id", d.user_id)
+          .eq("in_timetable", true)
+          .eq("active", true)
+          .is("deleted_at", null),
+      ]);
       const now = Date.now();
       const { data: prof } = await db.from("profiles").select("grace_min").eq("id", d.user_id).maybeSingle();
       const grace = prof?.grace_min ?? 5;
@@ -100,7 +144,8 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
           .lte("ends_at", nowIso)
           .gt("ends_at", new Date(now - 7 * 86_400_000).toISOString()),
       ]);
-      const text = briefingText((tasks ?? []) as BriefTask[], now, safeTz(d.tz), grace, overdue ?? 0, unchecked ?? 0);
+      const today = [...((tasks ?? []) as BriefTask[]), ...timetableToday((classes ?? []) as TimetableHabit[], String(d.local_day))];
+      const text = briefingText(today, safeTz(d.tz), overdue ?? 0, unchecked ?? 0);
       const payload: PushPayload = {
         ...text,
         tag: `must-briefing-${d.local_day}`,
@@ -109,7 +154,8 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
         requireInteraction: false,
         vibrate: VIBRATIONS.short,
       };
-      const r = await sendToSubscription(db, d, payload, 3 * 3600);
+      // 6시간 동안 살려 둔다 — 그때 폰이 꺼져 있었어도 아침에 켜면 와 있게
+      const r = await sendToSubscription(db, d, payload, BRIEF_TTL_SEC);
       if (r === "sent") briefed++;
       else if (r !== "removed") {
         failed++;

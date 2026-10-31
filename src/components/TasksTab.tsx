@@ -21,6 +21,7 @@ import { COLOR_HEX, type Category, type ScheduleKind, type Task } from "@/lib/ty
 import { useNow } from "@/lib/useNow";
 import { AuthForm } from "./AuthForm";
 import { BriefingCard } from "./Briefing";
+import { PushHealthCard } from "./PushHealthCard";
 import { NowStrip } from "./NowBar";
 import { IN_APP } from "./InAppNotice";
 import { MarkChip } from "./MarkEditor";
@@ -345,6 +346,7 @@ export function TasksTab({
     <div className="space-y-5">
       <CloudLoginCard />
       <InstallHint />
+      <PushHealthCard />
       <UpcomingMarks />
       <BriefingCard />
       <div ref={nowRef}>
