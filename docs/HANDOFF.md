@@ -3,9 +3,16 @@
 > 새 계정·새 세션에서 이 앱을 이어서 고칠 때 **이 파일부터** 읽으세요. 기능별 자세한 기록은 `docs/REVAMP-HANDOFF.md`,
 > 구조는 `docs/ARCHITECTURE.md`, 알림은 `docs/PWA-NOTIFICATIONS.md`, 서버 처음 설정은 `docs/SETUP-SUPABASE.md`.
 
-## 0. ⚠️ 지금 상태 — 2026-10-20 갱신 (여기부터 읽기)
+## 0. ⚠️ 지금 상태 — 2026-10-31 갱신 (여기부터 읽기)
 
-**브랜치**: `ui-revamp` = `main`(2026-10-20: 날짜만 할 일 '했나요?'(8절 35)·X 표시(36)·커리어 한눈에 보기(37)). 끝난 일은 8절.
+**브랜치**: `ui-revamp` = `main`(2026-10-31: 관리자 화면 AI 키 바꾸기(8절 38)까지). 끝난 일은 8절.
+
+### 0-A. ⏰ Claude API 키 11/6 만료 — **사용자가 새 키 붙여 넣기 대기**
+- 사용자에게 Anthropic 알림: 키 `whsk-api-key` 가 **2026-11-06 만료**. DREAM 이 쓰는 Vault `must_anthropic_key` 는 **2026-10-07 15:18 UTC** 에 넣은 것
+  → 정확히 30일 뒤가 11/6 이라 그 키로 봄(키 ID 를 API 로 알 방법은 없음). 10/31 확인: 지금 키로 요청 200(아직 됨), 마지막 AI 사용 10/23.
+- 새 키는 콘솔(사용자 로그인)에서만 만들 수 있어 Claude 는 못 만든다 → **관리자 → 설정 → 'AI 키 (Claude API)'** 에 붙여 넣으면 서버가 시험 후 바꿈(8절 38).
+- 사용자가 바꾼 뒤 확인할 것: `select public.must_ai_key_hint() ->> 'updated_at'` 이 10/07 에서 바뀌었는지(힌트 글자는 채팅에 쓰지 말 것),
+  pg_net 으로 `GET https://api.anthropic.com/v1/models?limit=1`(Vault 키로) 200. 새 키도 만료가 있으면 그 날짜를 여기 적어 둘 것.
 
 ### 0-0. 일기 책 애니메이션 — 다듬기 배포함(2026-10-10), **사용자 폰 확인 대기**
 사용자 지적 두 가지(닫기가 너무 짧음 · 폰에서 심하게 버벅임)를 고쳐 배포함. 사용자가 써 보고 말하면 그 부분만 고친다(큰 진단·심사 다시 돌리지 말 것).
@@ -112,7 +119,7 @@
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
-- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v6(Sonnet 5.5 — 다듬기·한 번에 넣기·한눈에 보기) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v6 ·
+- **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v6(Sonnet 5.5 — 다듬기·한 번에 넣기·한눈에 보기) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v6 · `ai-key` v1(관리자만 — AI 키 바꾸기) ·
   `signup` v4(**JWT 검증 끔**) · `send-due-notifications` v6(**JWT 검증 끔** — 크론 비밀값 헤더로) · `notification-action` · `push-test` v2(제목 DREAM).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
@@ -320,6 +327,14 @@
    확인: 실제 Sonnet(가짜 대학생 기록 8개) — 글만 출력 약 800 토큰·사실만, HTML 통째로 약 2,700 토큰·사실만. 두 디자인 390·900px·A4 PDF 화면,
    앱 안 미리보기(가짜 기록 + 캐시), **잠금 시험**: 스크립트 든 HTML 을 넣어도 실행 안 됨(제목·부모 창 그대로), 바깥 이미지 2개는 CSP 로 막힘(요청 안 나감).
    시험: `tests/career-visual.test.mjs`(단위 110), `career-polish/visual.test.ts`(Deno 62). ai_usage fn = career-visual / career-design.
+
+38. **관리자 화면에서 Claude API 키 바꾸기**(2026-10-31, 사용자: 키 만료 알림 → "너가 체크하고 너가 스왑하셈") — 관리자 → 설정 → 'AI 키 (Claude API)'.
+   지금 키 알아보기(앞 16·뒤 4글자 + 넣은 날), 비밀번호 칸에 새 키 → '시험하고 바꾸기': Edge **`ai-key`** v1(verify_jwt, must_admins 만)이
+   모양 확인 → Haiku 5.5 1토큰 시험(키가 맞는지·잔액 있는지 — 401 key_rejected / 403 / 크레딧 없음 no_credit) → 맞을 때만 Vault 에 넣음.
+   DB `20261031000000_ai_key_swap`: `must_set_ai_key`·`must_ai_key_hint`(service role 만, 키 값은 안 돌려줌. Postgres 정규식은 반복 255 까지라 길이는 따로 검사).
+   키가 채팅·문서·로그를 안 거침. Edge 비밀값 ANTHROPIC_API_KEY 가 따로 있으면 그쪽이 먼저라 화면이 경고(env_override). 바꾼 뒤 이미 떠 있는 AI 함수는
+   캐시한 옛 키를 잠깐 쓸 수 있음(함수가 다시 뜨면 새 키) — 옛 키가 11/6 까지 살아 있어 그 전에 바꾸면 끊김 없음.
+   시험: DB 8개, Deno 2개, 화면 14개(틀린 키 안내·바꾼 뒤 입력 칸 비움·키가 화면 HTML·기기 저장소에 안 남음). 배포 뒤 인증 없이 부르면 401, 앱 역할은 DB 함수 못 부름.
 
 ## 9. 테마·배경 구조
 
