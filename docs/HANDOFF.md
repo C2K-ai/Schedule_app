@@ -5,7 +5,14 @@
 
 ## 0. ⚠️ 지금 상태 — 2026-10-31 갱신 (여기부터 읽기)
 
-**브랜치**: `ui-revamp` = `main`(2026-10-31: 관리자 화면 AI 키 바꾸기 + 실제 키 교체 끝(8절 38)). 끝난 일은 8절.
+**브랜치**: `ui-revamp` = `main`(2026-10-31: 폰 알림 살리기 + 아침 브리핑에 오늘 일정 목록(8절 39)). 끝난 일은 8절.
+
+### 0-1. 폰 알림 — 고쳐 배포함(2026-10-31), **사용자가 폰에서 앱을 한 번 열기 대기**
+- 원인: 서버 `push_subscriptions` **0행**(10/21 무렵부터 알림 작업이 전부 'no subscriptions'). 앱은 구독 저장 실패를 조용히 삼키고, 브라우저 구독이 죽으면 다시 만들지 않았음. 고친 것은 8절 39.
+- 사용자가 폰에서 앱(홈 화면 DREAM)을 한 번 열면 저절로 다시 등록되거나, 작업 탭 맨 위 '이 폰은 알림이 꺼져 있어요 → 알림 켜기' 카드가 뜸.
+- 다음 세션이 확인할 것: `select device_name, briefing_time, created_at from push_subscriptions` 에 안드로이드 폰 1행이 생겼는지 → (사용자) 설정 → 알림 → '서버 푸시 테스트'
+  → 다음 날 07:00 브리핑이 왔는지. 행이 안 생기면 사용자에게 카드 문구(권한 꺼짐 / 차단 / 오류 내용)를 물어볼 것.
+- 왜 구독이 죽었는지는 못 밝힘(로그가 하루치만 남음). 후보: 크롬이 알림 권한을 거둬 감 · 사이트 데이터 지움 · 앱 다시 설치. 다시 죽어도 이제 앱을 열면 고쳐짐.
 
 ### 0-0. 일기 책 애니메이션 — 다듬기 배포함(2026-10-10), **사용자 폰 확인 대기**
 사용자 지적 두 가지(닫기가 너무 짧음 · 폰에서 심하게 버벅임)를 고쳐 배포함. 사용자가 써 보고 말하면 그 부분만 고친다(큰 진단·심사 다시 돌리지 말 것).
@@ -95,7 +102,8 @@
 | 표시(생일·기념일·여행) | `MarkEditor.tsx`(MarkEditor·MarkChip), `lib/marks.ts`, 표 `marks` |
 | 시간표(학기별 주간 칸·사진으로 넣기, **일정·알림과 따로**) | `TimetableView.tsx`(칸·수업 고치기·학기 기간), `TimetableImport.tsx`(사진/글 → 미리보기), `lib/timetable.ts`, 습관 `in_timetable`·`place`(회차 안 만듦 — `planner.ts` `isClass`·`dropClassOccurrences`), Edge `parse-schedule` mode "timetable", 디자인 값 `docs/design/timetable-ui-guide.md` |
 | 커리어 기록 + AI 다듬기 | `Career.tsx`, Edge `career-polish` |
-| 알림(앱 안 알람·서버 푸시) | `ReminderEngine.tsx`, `lib/reminders.ts`, `lib/push.ts`, `public/sw.js`, Edge `send-due-notifications`·`notification-action` |
+| 알림(앱 안 알람·서버 푸시) | `ReminderEngine.tsx`, `lib/reminders.ts`, `lib/push.ts`(`ensurePush` — 열 때마다 구독 살피고 고침), `PushHealthCard.tsx`(폰 '알림 켜기' 카드), `public/sw.js`, Edge `send-due-notifications`·`notification-action` |
+| 오늘 브리핑(앱을 켤 때·서버 아침 푸시) | `lib/briefing.ts`·`Briefing.tsx`(앱), Edge `send-due-notifications/briefing.ts`(같은 모양 — 시각 순서 + 시간표 + 시간 미정), 기기별 시각 `push_subscriptions.briefing_time`(폰 기본 07:00) |
 | 폰 잠금화면 일정 카드 | `lib/lockCard.ts`, `LockCardSync.tsx`, `public/sw.js`(lock-card) |
 | 테마·배경 | `globals.css`(data-palette), `lib/backgrounds.ts`, `BackgroundPicker.tsx`, `Backdrop.tsx`, `public/themes/bg/` |
 | 설정 | `SettingsSheet.tsx`, `lib/settings.ts`(기본값), `lib/types.ts`(Settings 타입) |
@@ -113,7 +121,8 @@
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
 - **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v6(Sonnet 5.5 — 다듬기·한 번에 넣기·한눈에 보기) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v6 · `ai-key` v1(관리자만 — AI 키 바꾸기) ·
-  `signup` v4(**JWT 검증 끔**) · `send-due-notifications` v6(**JWT 검증 끔** — 크론 비밀값 헤더로) · `notification-action` · `push-test` v2(제목 DREAM).
+  `signup` v5(**JWT 검증 끔**) · `send-due-notifications` v7(**JWT 검증 끔** — 크론 비밀값 헤더로) · `notification-action` v2(**JWT 검증 끔** — 서명 토큰) · `push-test` v3(제목 DREAM).
+  알림 쓰는 함수 4개 모두 지금 저장소의 `_shared/push.ts`(2026-10-31 배포).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
   `must_cron_secret`, `must_action_secret`. 키 값은 문서·채팅에 절대 쓰지 말 것.
@@ -155,7 +164,7 @@
 - (사용자) Auth 설정의 '유출 비밀번호 보호' 켜기(보안 점검 경고 1건).
 - (선택) `20261008000500_admin_guards` 의 크론 정리 부분(`do $do$` 블록)을 SQL Editor 에서 실행 — 4절 참고.
 - **이어서 할 것(2026-10-08 사용자 요청, 나중에)**: 잠금화면 카드가 사용자 폰(안드로이드·크롬)에서 안 보인다고 함.
-  스위치는 켜짐(profiles.settings.lockCard=true), 서버 푸시 등록 기기는 0대. 설정 → 알림의 '지금 띄워 보기'(`testLockCard`)가 알려 주는
+  스위치는 켜짐(profiles.settings.lockCard=true), 서버 푸시 등록 기기는 0대(2026-10-31: 0대인 원인을 찾아 고침 — 0-1·8절 39). 설정 → 알림의 '지금 띄워 보기'(`testLockCard`)가 알려 주는
   문구부터 확인하고, 잠금화면에 '무엇을' 보여 줄지도 사용자와 다시 정하기로 함(지금은 소리 없는 알림 한 장).
 - 아이디어(요청 오면): 드라이브 잠긴 파일의 **이름도 숨기기**, 커리어 프롬프트에 "동사 부풀리기 금지(체크→관리, 왔다→유치)·응시 전 자격은 기술에 넣지 말 것" 추가,
   아이폰 잠금화면 카드(웹앱 한계로 현재 안드로이드만).
@@ -331,6 +340,20 @@
    **2026-10-31 교체 끝**: 옛 키(`whsk-api-key`, 10/07 넣음 → 11/06 만료, 넣은 날+30일이라 그 키로 봄 — 키 ID 를 API 로 알 방법은 없음)를
    사용자가 콘솔에서 새 키를 만들어 이 칸으로 바꿈 → Vault `updated_at` 2026-10-31 05:00 UTC. 확인: Vault 키로 모델 목록 200, Haiku 1토큰 200(잔액 OK).
    옛 키는 지우지 말고 11/6 에 저절로 끝나게 두면 됨(떠 있던 AI 함수가 옛 키를 잠깐 캐시했어도 그때까지는 됨). 새 키도 만료가 있으면 알림 메일 올 때 같은 칸에서 다시.
+39. **폰 알림 살리기 + 아침 브리핑에 오늘 일정 목록**(2026-10-31, 사용자: "모바일에서 알림 오는 게 사라졌다 · 오늘 예정된 걸 시간이 안 정해져도 아침에 폰 켜면 알림이 와 있어야") —
+   원인: 서버 `push_subscriptions` **0행**(10/21 무렵부터 알림 작업이 'no subscriptions'). 크론·발송 함수는 정상(매분 200). 폰(안드로이드 크롬)은 로그인돼 있고 10/30 에도 앱을 열었음.
+   푸시 서버가 404/410 이면 서버가 구독을 지우는데, 앱(옛 `refreshPushSubscription`)은 브라우저에 구독이 있을 때만 다시 저장했고 실패는 `.catch(() => {})` 로 삼킴 → 다시 안 살아남.
+   - 앱 `src/lib/push.ts` **`ensurePush`**(앱을 열 때 · 3시간 넘게 지나 다시 볼 때 · SW `pushsubscriptionchange`): 서버에 이 기기 endpoint 가 없으면 죽은 구독을 버리고 새로 구독해 저장,
+     폰은 권한만 있으면 조용히 다시 구독(PC 는 전에 등록한 적 있을 때만 — `must:push-had`). 설정 '등록 해제'로 직접 끄면 `must:push-off` 로 기억해 저절로 안 켬(로그아웃은 해당 없음).
+     상태(ok/none/off/ask/blocked/error)는 `pushStatus()`·`onPushStatus` — 설정 알림 탭이 실제 등록 상태와 문제를 보여 줌.
+   - 사람이 눌러야 하면(권한이 '물어보기'로 돌아감 · 차단 · 실패) 폰 작업 탭 맨 위 **`PushHealthCard`**('이 폰은 알림이 꺼져 있어요 → 알림 켜기' / 차단이면 폰 설정 안내 + '다시 확인'). X 는 이번 실행 동안만 숨김.
+   - **아침 브리핑**(서버 `send-due-notifications/briefing.ts` · 앱을 켤 때 `src/lib/briefing.ts`, 같은 모양): 제목 '☀ 오늘 일정 n개',
+     1줄 "09:00 회의 · 14:30 병원"(시간표 수업·알바 포함 — 시간표는 일정을 안 만들어 habits 에서 오늘 요일·학기 기간으로 따로 셈), 2줄 "시간 미정 · 장보기, 보고서"(날짜만 일정),
+     끝줄 미시작·확인할 일정. 8개까지 이름(시간 미정 자리는 남김), 나머지 '외 n개', 제목 20자로 줄임. 없으면 '☀ 좋은 아침이에요 / 오늘 잡힌 일정이 없어요'.
+   - 폰 브리핑 기본 10:00 → **07:00**(이미 시각을 고른 기기는 그대로), 푸시 서버 보관(TTL) 3시간 → **6시간**(그때 폰이 꺼져 있었어도 켜면 와 있게), 선택지에 05:00.
+   - 같이: signup v5 · push-test v3 · notification-action v2 도 지금 공용 알림 코드로(알림 버튼 서명 토큰 만들기·검사가 옛 코드와 글자까지 같음을 확인한 뒤).
+   시험: Deno 65(브리핑 6), 단위 112(브리핑 2), 화면 18(가짜 서버 + 가짜 PushManager: 권한 없음 → 카드 → 허용 → 새 구독 저장·카드 사라짐 / 서버가 지운 구독 → 버리고 새로 /
+   멀쩡한 구독 → 그대로 / 등록 해제 기억). 배포본 = 저장소(send-due 글자 단위 확인), 배포 뒤 크론 200, signup·notification-action 에 잘못된 요청 → 400·401(정상 거절).
 
 ## 9. 테마·배경 구조
 
