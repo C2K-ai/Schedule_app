@@ -105,10 +105,18 @@ const MESSAGES: Record<string, string> = {
   bad_ai_daily_limit: "AI 하루 한도는 0~1000 사이 정수예요.",
   bad_drive_quota_mb: "드라이브 용량은 0~10000MB 사이 정수예요.",
   last_admin: "관리자가 최소 한 명은 있어야 해요.",
+  // AI 키 바꾸기(Edge ai-key)
+  bad_key: "Claude API 키 모양이 아니에요(sk-ant- 로 시작해요). 콘솔에서 복사한 그대로 붙여 넣어 주세요.",
+  key_rejected: "Anthropic 이 이 키를 받아 주지 않아요 — 지웠거나 잘못 복사한 키예요.",
+  key_no_permission: "이 키로는 모델을 쓸 수 없어요 — 콘솔에서 키 권한·작업공간을 확인해 주세요.",
+  no_credit: "키는 맞는데 그 계정에 잔액(크레딧)이 없어요 — 콘솔 Billing 에서 충전한 뒤 다시 해 주세요.",
+  rate_limited: "Anthropic 쪽 요청이 잠깐 몰렸어요. 몇 초 뒤 다시 눌러 주세요.",
+  key_test_failed: "키를 시험하지 못했어요. 잠시 뒤 다시 해 주세요.",
+  save_failed: "키는 맞는데 서버에 넣지 못했어요. 잠시 뒤 다시 해 주세요.",
 };
 
-async function call<T>(client: SupabaseClient, body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await client.functions.invoke("admin", { body });
+async function call<T>(client: SupabaseClient, body: Record<string, unknown>, fn = "admin"): Promise<T> {
+  const { data, error } = await client.functions.invoke(fn, { body });
   if (error) {
     let code = "";
     let message = "";
@@ -124,6 +132,18 @@ async function call<T>(client: SupabaseClient, body: Record<string, unknown>): P
 }
 
 export const adminOverview = (c: SupabaseClient) => call<Overview>(c, { action: "overview" });
+
+/** 서버의 Claude API 키 — 값은 안 오고 알아보기용 앞뒤 몇 글자('sk-ant-api03-Abc…wxyz')와 넣은 때만 */
+export interface AiKeyInfo {
+  exists: boolean;
+  hint?: string;
+  updated_at?: string;
+  /** Edge 비밀값 ANTHROPIC_API_KEY 가 따로 있어 그쪽이 먼저 쓰임(여기서 바꿔도 소용없음) */
+  env_override: boolean;
+}
+export const aiKeyInfo = (c: SupabaseClient) => call<AiKeyInfo>(c, { action: "info" }, "ai-key");
+/** 새 키를 서버가 먼저 시험해 보고(1토큰) 맞을 때만 바꾼다 */
+export const setAiKey = (c: SupabaseClient, key: string) => call<AiKeyInfo & { ok: true }>(c, { action: "set", key }, "ai-key");
 export const adminUsers = (c: SupabaseClient) => call<{ users: AdminUser[]; me: string }>(c, { action: "users" });
 export type SettingsPatch = Partial<Pick<AdminSettings, "signups_open" | "ai_daily_limit" | "drive_quota_mb">>;
 export const adminSettings = (c: SupabaseClient, patch: SettingsPatch) =>

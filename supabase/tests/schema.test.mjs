@@ -51,7 +51,13 @@ ok(true, "init.sql 실행됨");
 // Vault 흉내 + 함수 설정 마이그레이션
 await db.exec(`
   create schema vault;
-  create table vault.decrypted_secrets (name text primary key, decrypted_secret text);
+  create table vault.decrypted_secrets (name text primary key, decrypted_secret text,
+    id uuid not null default gen_random_uuid(), updated_at timestamptz not null default now());
+  -- Supabase Vault 의 넣기·바꾸기 흉내(관리자 화면 AI 키 바꾸기 시험용)
+  create function vault.create_secret(new_secret text, new_name text default null, new_description text default '', new_key_id uuid default null)
+    returns uuid language sql as $$ insert into vault.decrypted_secrets (name, decrypted_secret) values (new_name, new_secret) returning id $$;
+  create function vault.update_secret(secret_id uuid, new_secret text default null, new_name text default null, new_description text default null, new_key_id uuid default null)
+    returns void language sql as $$ update vault.decrypted_secrets set decrypted_secret = coalesce(new_secret, decrypted_secret), updated_at = now() where id = secret_id $$;
   insert into vault.decrypted_secrets values ('must_vapid_public', 'PUB'), ('must_cron_secret', 'CRON'), ('other_app_secret', 'NOPE');
 `);
 await db.exec(readFileSync(new URL("../migrations/20261006000000_config.sql", import.meta.url), "utf8"));
@@ -65,7 +71,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql", "20261017000000_timetable_no_tasks.sql", "20261018000000_security_hardening.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql", "20261017000000_timetable_no_tasks.sql", "20261018000000_security_hardening.sql", "20261031000000_ai_key_swap.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -1047,6 +1053,47 @@ await db.exec(`reset role;`);
   } else {
     ok(false, `알림 공정성 시험 준비 실패(${jb})`);
   }
+}
+
+// ── 관리자 화면 AI 키 바꾸기(20261031000000_ai_key_swap) ──
+{
+  const as = async (uid, sql, params) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql, params);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const asService = async (sql, params) => {
+    await db.exec(`set role service_role;`);
+    try {
+      return await q(sql, params);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  const err = async (fn) => {
+    try {
+      await fn();
+      return "";
+    } catch (e) {
+      return String(e.message);
+    }
+  };
+  const K1 = `sk-ant-api03-${"a".repeat(80)}WXYZ`;
+  const K2 = `sk-ant-api03-Bcd${"b".repeat(77)}LAST`;
+  ok((await asService(`select public.must_ai_key_hint() v`))[0].v.exists === false, "AI 키: 처음엔 없음");
+  ok((await err(() => as(A, `select public.must_set_ai_key($1)`, [K1]))).length > 0, "AI 키: 로그인 사용자(관리자 포함)는 직접 못 바꿈 — Edge(service role)만");
+  ok((await err(() => as(A, `select public.must_ai_key_hint()`))).length > 0, "AI 키: 알아보기용 글자도 앱에서 직접 못 읽음");
+  ok((await err(() => asService(`select public.must_set_ai_key($1)`, ["sk-proj-nope"]))).includes("bad_key"), "AI 키: 모양이 다르면 거절");
+  let h = (await asService(`select public.must_set_ai_key($1) v`, [K1]))[0].v;
+  ok(h.exists === true && h.hint === `${K1.slice(0, 16)}…WXYZ`, `AI 키: 없으면 새로 넣음 + 앞 16·뒤 4글자만 돌려줌 (${h.hint})`);
+  h = (await asService(`select public.must_set_ai_key($1) v`, [K2]))[0].v;
+  const rows = (await q(`select decrypted_secret from vault.decrypted_secrets where name = 'must_anthropic_key'`)).map((r) => r.decrypted_secret);
+  ok(rows.length === 1 && rows[0] === K2 && h.hint === "sk-ant-api03-Bcd…LAST", "AI 키: 있으면 그 자리를 바꿈(하나만 남음)");
+  const cfg = (await asService(`select public.must_function_config() v`))[0].v;
+  ok(cfg.must_anthropic_key === K2, "AI 키: AI 함수들이 읽는 설정(must_function_config)에 새 키가 보임");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

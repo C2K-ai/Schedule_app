@@ -25,6 +25,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   adminOverview,
   adminSettings,
+  aiKeyInfo,
+  setAiKey,
   adminUserAction,
   adminUsers,
   costKrw,
@@ -33,6 +35,7 @@ import {
   isBanned,
   userCostKrw,
   type AdminSettings,
+  type AiKeyInfo,
   type SettingsPatch,
   type AdminUser,
   type CronJob,
@@ -695,6 +698,8 @@ function SettingsTab({
         {!validLimit && <p className="mt-1.5 text-xs font-semibold text-danger">0~1000 사이 숫자만 넣을 수 있어요.</p>}
       </section>
 
+      <AiKeySection />
+
       <section>
         <h3 className="font-bold">드라이브 용량 (한 사람당)</h3>
         <p className="mt-1 text-sm leading-relaxed text-muted">
@@ -726,6 +731,100 @@ function SettingsTab({
         </a>
       </section>
     </div>
+  );
+}
+
+/** Claude API 키 바꾸기 — 키에 만료가 있어(예: 30일) 만료 전에 새 키로. 붙여 넣은 키는 서버가 먼저 시험(1토큰)해 보고 맞을 때만 바꾼다 */
+function AiKeySection() {
+  const sb = getSupabase();
+  const [info, setInfo] = useState<AiKeyInfo | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!sb) return;
+    let alive = true;
+    aiKeyInfo(sb)
+      .then((i) => alive && setInfo(i))
+      .catch((e: Error) => alive && setLoadErr(e.message));
+    return () => {
+      alive = false;
+    };
+  }, [sb]);
+
+  const swap = async () => {
+    if (!sb || !key.trim()) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await setAiKey(sb, key);
+      setInfo(r);
+      setKey("");
+      setMsg({ ok: true, text: `바꿨어요 — 시험 통과. 이제 AI 기능이 이 키(${r.hint ?? "새 키"})를 써요.` });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section>
+      <h3 className="flex items-center gap-1.5 font-bold">
+        <KeyRound size={16} /> AI 키 (Claude API)
+      </h3>
+      <p className="mt-1 text-sm leading-relaxed text-muted">
+        말로·Write·사진·커리어 AI 가 쓰는 Anthropic 키예요. 키에 만료가 있으면(콘솔에서 만료 알림 메일이 와요) 그 전에 새 키로 바꿔 주세요 — 콘솔에서 만든 새 키를
+        붙여 넣으면 서버가 먼저 아주 짧게 시험해 보고(1원도 안 들어요) 맞을 때만 바꿔요. 키는 이 화면에서 서버로만 가고 다시 보이지 않아요(앞뒤 몇 글자만).
+      </p>
+      <p className="mt-2 text-sm">
+        {loadErr ? (
+          <span className="font-semibold text-danger">{loadErr}</span>
+        ) : info === null ? (
+          <span className="text-muted">지금 키 확인하는 중…</span>
+        ) : info.exists ? (
+          <>
+            지금 키 <span className="font-mono font-semibold break-all">{info.hint}</span>
+            {info.updated_at && <span className="text-muted"> · {fmtDay(info.updated_at)} 넣음</span>}
+          </>
+        ) : (
+          <span className="font-semibold text-warn">아직 키가 없어요 — AI 기능이 꺼져 있어요.</span>
+        )}
+      </p>
+      {info?.env_override && (
+        <p className="mt-1 text-xs leading-relaxed font-semibold text-warn">
+          Supabase 의 Edge 비밀값 ANTHROPIC_API_KEY 가 따로 있어 그 키가 먼저 쓰여요. 여기서 바꾼 키를 쓰려면 대시보드 → Edge Functions → Secrets 에서 그 값을
+          지워 주세요.
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !busy && void swap()}
+          placeholder="새 키 붙여 넣기 (sk-ant-…)"
+          aria-label="새 Claude API 키"
+          className={cx(inputCls, "h-9 min-w-0 flex-1 py-1 font-mono text-sm")}
+        />
+        <Button size="sm" variant="primary" disabled={busy || !key.trim()} onClick={() => void swap()}>
+          {busy ? "시험하는 중…" : "시험하고 바꾸기"}
+        </Button>
+      </div>
+      {msg && <p className={cx("mt-1.5 text-xs leading-relaxed font-semibold", msg.ok ? "text-accent-text" : "text-danger")}>{msg.text}</p>}
+      <a
+        href="https://console.anthropic.com/settings/keys"
+        target="_blank"
+        rel="noreferrer"
+        className="mt-2 inline-block text-sm font-bold text-accent-text"
+      >
+        Anthropic 콘솔 → API Keys 열기 →
+      </a>
+    </section>
   );
 }
 
