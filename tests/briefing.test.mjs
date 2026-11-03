@@ -1,4 +1,4 @@
-// 오늘 브리핑 — 시각 순서 목록 + 시간 미정 이름 + 시간표 수업(서버 아침 푸시와 같은 모양). npm run test:unit
+// 오늘 브리핑 — 시각 순서 목록 + 시간 미정 이름, 시간표 수업은 빼고(서버 아침 푸시와 같은 모양). npm run test:unit
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -23,7 +23,7 @@ const live = (store) => Object.values(store.db.tasks).filter((t) => !t.deleted_a
 const timed = (store, title, h) => createTask(store, { title, schedule: "timed", starts_at: at(h), ends_at: at(h + 1) }, DEFAULT_SETTINGS);
 const klass = (o) => ({ id: o.title, updated_at: "", color: "violet", duration_min: 75, reminder_offsets: [], sound_id: null, strict: false, active: true, created_at: "", deleted_at: null, start_day: null, end_day: null, in_timetable: true, place: null, ...o });
 
-test("시각 순서 목록 · 시간표 수업도 끼움 · 시간 미정은 이름으로 · 끝낸 일·언젠가는 빼고", () => {
+test("시각 순서 목록 · 시간 미정은 이름으로 · 시간표 수업·끝낸 일·언젠가는 빼고", () => {
   const store = new PlannerStore(`b${Math.random()}`, null, null);
   timed(store, "치과", 15);
   timed(store, "아침 운동", 8);
@@ -36,15 +36,17 @@ test("시각 순서 목록 · 시간표 수업도 끼움 · 시간 미정은 이
     klass({ title: "다른 요일 수업", start_time: "11:00", days: [(now.getDay() + 1) % 7] }),
     klass({ title: "지난 학기", start_time: "12:00", days: [now.getDay()], start_day: "2020-03-02", end_day: "2020-06-21" }),
   ];
-  const b = buildBriefing(live(store), habits, now.getTime(), 5);
-  assert.equal(b.title, "☀ 오늘 일정 4개");
-  assert.equal(b.body, "08:00 아침 운동 · 10:30 자료구조 · 15:00 치과\n시간 미정 · 보고서");
-  assert.equal(b.line, "08:00 아침 운동 · 10:30 자료구조 · 15:00 치과 · 시간 미정 · 보고서");
+  // 시간표(습관 in_timetable)는 일정을 만들지 않고 브리핑에도 안 들어간다 — habits 를 넘기는 자리 자체가 없다
+  assert.equal(habits.length, 3);
+  const b = buildBriefing(live(store), now.getTime(), 5);
+  assert.equal(b.title, "☀ 오늘 일정 3개");
+  assert.equal(b.body, "08:00 아침 운동 · 15:00 치과\n시간 미정 · 보고서");
+  assert.equal(b.line, "08:00 아침 운동 · 15:00 치과 · 시간 미정 · 보고서");
 });
 
 test("오늘 일정이 없으면 그렇게 말한다", () => {
   const store = new PlannerStore(`b${Math.random()}`, null, null);
-  const b = buildBriefing(live(store), [], now.getTime(), 5);
+  const b = buildBriefing(live(store), now.getTime(), 5);
   assert.equal(b.title, "☀ 좋은 아침이에요");
   assert.equal(b.body, "오늘 남은 일정이 없어요");
 });

@@ -13,7 +13,7 @@ const CARD_EVENT = "must:briefing";
 
 /** 앱을 켤 때(노트북 부팅 뒤 자동 실행 포함) 한 번 — 시스템 알림을 띄우고, 작업 탭 카드에 문구를 넘긴다. 늘 붙어 있는 관리자 */
 export function BriefingEngine() {
-  const { tasks, habits, settings, session, snap } = usePlanner();
+  const { tasks, settings, session, snap } = usePlanner();
   const ready = !session.userId || snap.status.lastSyncAt !== null || snap.status.mode === "local";
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export function BriefingEngine() {
     } catch {
       return;
     }
-    const b = buildBriefing(tasks, habits, Date.now(), settings.graceMin);
+    const b = buildBriefing(tasks, Date.now(), settings.graceMin);
     try {
       sessionStorage.setItem(CARD_KEY, b.line);
     } catch {
@@ -32,7 +32,7 @@ export function BriefingEngine() {
     }
     window.dispatchEvent(new Event(CARD_EVENT));
     void showSystemNotification({ title: b.title, body: b.body, tag: "must-briefing", kind: "before", vibration: "short" });
-  }, [ready, settings.launchBriefing, settings.graceMin, tasks, habits]);
+  }, [ready, settings.launchBriefing, settings.graceMin, tasks]);
 
   return null;
 }

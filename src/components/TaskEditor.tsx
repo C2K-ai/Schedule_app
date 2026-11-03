@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, Play, Repeat, RotateCcw, Star, Trash, Volume2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Camera, Check, Play, Repeat, RotateCcw, Star, Trash, Volume2 } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import {
   completeTask,
   createHabit,
@@ -16,11 +16,14 @@ import {
 } from "@/lib/planner";
 import { DURATION_CHOICES, OFFSET_CHOICES } from "@/lib/settings";
 import { findSound, playSound } from "@/lib/sound";
+import { getSupabase } from "@/lib/supabase";
+import { removeTaskPhoto, uploadTaskPhoto } from "@/lib/taskPhoto";
 import { atTime, fmtOffset, fmtTime, MIN, parseDayKey, toDateInput, toHHMM, WEEKDAYS } from "@/lib/time";
 import { COLOR_HEX, type ColorKey, type ScheduleKind, type Settings, type Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
 import { usePlanner, type EditorState } from "./PlannerProvider";
 import { SoundOptions } from "./SoundOptions";
+import { TaskPhoto } from "./TaskPhoto";
 import { Button, Chip, ColorPicker, cx, inputCls, Label, Modal, Segmented, Switch } from "./ui";
 
 interface Draft {
@@ -92,7 +95,7 @@ export function TaskEditor() {
 }
 
 function EditorBody({ editor }: { editor: EditorState }) {
-  const { closeEditor, openReschedule, store, settings, snap } = usePlanner();
+  const { closeEditor, openReschedule, store, settings, snap, session } = usePlanner();
   const categories = useMemo(() => liveCategories(snap.db), [snap.db]);
   const now = useNow(10_000);
   const task = editor.taskId ? (store.db.tasks[editor.taskId] ?? null) : null;
@@ -107,7 +110,42 @@ function EditorBody({ editor }: { editor: EditorState }) {
   const lockedDelete = task && task.strict && (st === "overdue" || st === "late");
 
   const timed = d.schedule === "timed";
+
+  // 사진(드라이브 '일정 사진'에 올리고 일정엔 id 만) — 고르면 바로 올린다. 저장 안 하고 닫으면 이번에 올린 건 지운다
+  const sb = getSupabase();
+  const uid = session.userId;
+  const [photoId, setPhotoId] = useState<string | null>(task?.photo_id ?? null);
+  const [uploading, setUploading] = useState<number | null>(null);
+  const uploaded = useRef<string[]>([]);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const pickPhoto = async (file?: File) => {
+    if (!file) return;
+    if (!sb || !uid) return setErr("사진은 로그인하면 붙일 수 있어요 — 설정 → 동기화에서 로그인해 주세요.");
+    setErr(null);
+    setUploading(0);
+    try {
+      const id = await uploadTaskPhoto(sb, file, d.title, (p) => setUploading(p));
+      uploaded.current.push(id);
+      setPhotoId(id);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setUploading(null);
+    }
+  };
+  /** 저장했으면 남은 사진(바꾸기 전 것·안 쓴 것)을 치우고 닫는다 */
+  const finish = (kept: string | null) => {
+    for (const id of uploaded.current) if (id !== kept) void removeTaskPhoto(sb, uid, id);
+    if (task?.photo_id && task.photo_id !== kept) void removeTaskPhoto(sb, uid, task.photo_id);
+    closeEditor();
+  };
+  const cancel = () => {
+    for (const id of uploaded.current) void removeTaskPhoto(sb, uid, id);
+    closeEditor();
+  };
+
   const save = () => {
+    if (uploading !== null) return setErr("사진을 올리는 중이에요 — 끝나면 저장해 주세요.");
     if (!d.title.trim()) return setErr("제목을 적어 주세요");
     if (timed && d.duration < 5) return setErr("최소 5분 이상");
     const win =
@@ -134,6 +172,7 @@ function EditorBody({ editor }: { editor: EditorState }) {
         sound_id: d.soundId,
         strict: timed ? d.strict : false,
         notes: d.notes.trim() || null,
+        ...(photoId !== (task.photo_id ?? null) ? { photo_id: photoId } : {}),
       });
     } else if (timed && d.repeat) {
       if (!d.days.length) return setErr("반복할 요일을 하나 이상 고르세요");
@@ -147,6 +186,8 @@ function EditorBody({ editor }: { editor: EditorState }) {
         sound_id: d.soundId,
         strict: d.strict,
       });
+      // 반복(습관)은 사진을 붙이지 않는다
+      return finish(null);
     } else {
       createTask(
         store,
@@ -163,17 +204,18 @@ function EditorBody({ editor }: { editor: EditorState }) {
           sound_id: d.soundId,
           strict: d.strict,
           notes: d.notes.trim() || null,
+          photo_id: photoId,
         },
         settings,
       );
     }
-    closeEditor();
+    finish(photoId);
   };
 
   return (
     <Modal
       open
-      onClose={closeEditor}
+      onClose={cancel}
       title={task ? "일정 편집" : "새 일정"}
       subtitle={task?.habit_id ? "습관에서 만들어진 회차입니다 — 반복 설정은 '습관'에서 바꿉니다." : undefined}
       footer={
@@ -186,6 +228,8 @@ function EditorBody({ editor }: { editor: EditorState }) {
               onClick={() => {
                 if (!sure) return setSure(true);
                 deleteTask(store, task.id);
+                // 지운 일정의 사진도 드라이브에서 치운다
+                for (const id of new Set([...uploaded.current, ...(task.photo_id ? [task.photo_id] : [])])) void removeTaskPhoto(sb, uid, id);
                 closeEditor();
               }}
             >
@@ -193,17 +237,36 @@ function EditorBody({ editor }: { editor: EditorState }) {
             </Button>
           )}
           <div className="ml-auto flex gap-2">
-            <Button variant="ghost" onClick={closeEditor}>
+            <Button variant="ghost" onClick={cancel}>
               취소
             </Button>
-            <Button variant="primary" onClick={save}>
-              {task ? "저장" : timed && d.repeat ? "습관 만들기" : "추가"}
+            <Button variant="primary" onClick={save} disabled={uploading !== null}>
+              {uploading !== null ? "사진 올리는 중…" : task ? "저장" : timed && d.repeat ? "습관 만들기" : "추가"}
             </Button>
           </div>
         </div>
       }
     >
       <div className="space-y-5">
+        <input
+          ref={photoInput}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => void pickPhoto(e.target.files?.[0]).finally(() => (e.target.value = ""))}
+        />
+        {/* 사진을 붙인 일정은 열면 사진부터 보인다 */}
+        {photoId && (
+          <TaskPhoto key={photoId} photoId={photoId} onReplace={() => photoInput.current?.click()} onRemove={() => setPhotoId(null)} />
+        )}
+        {uploading !== null && (
+          <div className="overflow-hidden rounded-2xl border border-line bg-surface-2">
+            <p className="px-4 pt-3 text-sm font-semibold">사진 올리는 중… {Math.round(uploading * 100)}%</p>
+            <div className="m-4 mt-2 h-1.5 overflow-hidden rounded-full bg-line">
+              <div className="h-full bg-accent transition-[width]" style={{ width: `${Math.round(uploading * 100)}%` }} />
+            </div>
+          </div>
+        )}
         <input
           autoFocus={!task}
           value={d.title}
@@ -234,6 +297,17 @@ function EditorBody({ editor }: { editor: EditorState }) {
           >
             <Star size={15} fill={d.starred ? "currentColor" : "none"} /> 별표
           </button>
+          {!photoId && !(timed && d.repeat && !task) && (
+            <button
+              type="button"
+              onClick={() => photoInput.current?.click()}
+              disabled={uploading !== null}
+              title={sb && uid ? "사진 붙이기 — 일정을 열면 사진부터 보여요" : "로그인하면 사진을 붙일 수 있어요"}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-surface-2 px-3 text-[13px] font-semibold text-muted transition hover:text-fg disabled:opacity-50"
+            >
+              <Camera size={15} /> 사진
+            </button>
+          )}
         </div>
 
         {categories.length > 0 && (

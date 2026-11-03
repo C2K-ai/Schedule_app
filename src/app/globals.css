@@ -194,6 +194,11 @@ body {
   color: var(--fg);
 }
 
+/* PC: 일정 수가 바뀌어 스크롤바가 생겼다 없어져도 화면이 옆으로 밀리지 않게 — 자리를 늘 남겨 둔다(창을 열어 스크롤을 막을 때도) */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: var(--font-sans);
   /* 한글이 단어 중간에서 끊기지 않게 */
@@ -292,6 +297,33 @@ select {
   }
   100% {
     background-color: #12030a;
+  }
+}
+
+/* 알람 방식 '진동'·'무음' — 소리 대신 화면 가장자리가 은은하게 깜빡인다(번쩍이지 않게 1.1초 간격) */
+.alarm-flash {
+  --flash: #c8ff2e;
+  animation: alarm-flash 1.1s ease-in-out infinite;
+}
+.alarm-flash-danger {
+  --flash: #ff3d5a;
+}
+@keyframes alarm-flash {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+    background-color: transparent;
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 8px var(--flash),
+      inset 0 0 140px color-mix(in oklab, var(--flash) 45%, transparent);
+    background-color: color-mix(in oklab, var(--flash) 9%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .alarm-flash {
+    animation-duration: 2.4s;
   }
 }
 

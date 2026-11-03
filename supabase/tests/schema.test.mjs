@@ -71,7 +71,7 @@ await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", im
 await db.exec(readFileSync(new URL("../migrations/20261008000200_career.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
 await db.exec(readFileSync(new URL("../migrations/20261008000300_briefing.sql", import.meta.url), "utf8"));
-for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql", "20261017000000_timetable_no_tasks.sql", "20261018000000_security_hardening.sql", "20261031000000_ai_key_swap.sql"]) {
+for (const f of ["20261008000400_admin.sql", "20261008000500_admin_guards.sql", "20261009000000_approval.sql", "20261009000100_drive.sql", "20261009000200_drive_lock.sql", "20261009000300_member_name.sql", "20261010000000_activities.sql", "20261011000000_diary.sql", "20261012000000_drive_folder.sql", "20261012000100_drive_rewrite.sql", "20261013000000_habit_range.sql", "20261014000000_calendar_feeds.sql", "20261015000000_marks.sql", "20261016000000_timetable.sql", "20261017000000_timetable_no_tasks.sql", "20261018000000_security_hardening.sql", "20261031000000_ai_key_swap.sql", "20261103000000_task_photo.sql"]) {
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
 }
@@ -1094,6 +1094,36 @@ await db.exec(`reset role;`);
   ok(rows.length === 1 && rows[0] === K2 && h.hint === "sk-ant-api03-Bcd…LAST", "AI 키: 있으면 그 자리를 바꿈(하나만 남음)");
   const cfg = (await asService(`select public.must_function_config() v`))[0].v;
   ok(cfg.must_anthropic_key === K2, "AI 키: AI 함수들이 읽는 설정(must_function_config)에 새 키가 보임");
+}
+
+// ── 일정 사진(20261103000000_task_photo) ──
+{
+  const as = async (uid, sql, params) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+    try {
+      return await q(sql, params);
+    } finally {
+      await db.exec(`reset role;`);
+    }
+  };
+  await db.exec(`update public.must_app_settings set drive_quota_mb = 150`);
+  const mine = (await as(B, `insert into public.drive_files (filename, size, mime, folder) values ('택배 사진.jpg', 300000, 'image/jpeg', '일정 사진') returning id`))[0].id;
+  const theirs = (await as(A, `insert into public.drive_files (filename, size, mime) values ('남의 사진.jpg', 1000, 'image/jpeg') returning id`))[0].id;
+  const add = (title, photo) =>
+    as(B, `insert into public.tasks (title, starts_at, ends_at, photo_id) values ($1, now() + interval '1 day', now() + interval '25 hours', $2) returning id, photo_id`, [title, photo]);
+  const t1 = (await add("택배 갖고 오기", mine))[0];
+  ok(t1.photo_id === mine, "일정 사진: 내 드라이브 사진은 붙음");
+  ok((await add("남의 사진", theirs))[0].photo_id === null, "일정 사진: 남의 파일 id 는 안 붙음(비움)");
+  ok((await add("없는 사진", "12345678-1234-4123-8123-123456789abc"))[0].photo_id === null, "일정 사진: 없는 파일 id 도 안 붙음");
+  const t2 = (await add("나중에 붙임", null))[0];
+  await as(B, `update public.tasks set photo_id = $1 where id = $2 returning id`, [theirs, t2.id]);
+  ok((await as(B, `select photo_id from public.tasks where id = $1`, [t2.id]))[0].photo_id === null, "일정 사진: 고칠 때도 남의 파일은 안 붙음");
+  await as(B, `update public.tasks set title = '택배 갖고 오기(경비실)' where id = $1 returning id`, [t1.id]);
+  ok((await as(B, `select photo_id from public.tasks where id = $1`, [t1.id]))[0].photo_id === mine, "일정 사진: 다른 칸을 고쳐도 사진은 그대로");
+  const before = (await as(B, `select updated_at from public.tasks where id = $1`, [t1.id]))[0].updated_at;
+  await as(B, `delete from public.drive_files where id = $1 returning id`, [mine]);
+  const after = (await as(B, `select photo_id, updated_at from public.tasks where id = $1`, [t1.id]))[0];
+  ok(after.photo_id === null && new Date(after.updated_at) >= new Date(before), "일정 사진: 드라이브에서 사진을 지우면 일정에서도 빠짐(다른 기기도 받게 시각 올림)");
 }
 
 console.log(failures ? `\n${failures}개 실패` : "\n전부 통과");

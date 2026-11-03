@@ -330,6 +330,8 @@ export interface TaskInput {
   reminder_offsets?: number[];
   sound_id?: string | null;
   strict?: boolean;
+  /** 붙인 사진(드라이브 파일 id) */
+  photo_id?: string | null;
 }
 
 /** 일정 종류에 맞는 시작·끝 — 날짜만은 그날 0시~다음날 0시, 날짜 없음은 만든 시각(정렬용) */
@@ -373,6 +375,8 @@ export function createTask(store: PlannerStore, input: TaskInput, settings: Sett
     schedule: kind,
     category_id: input.category_id ?? null,
     starred: input.starred ?? false,
+    // 사진이 있을 때만 칸을 보낸다(사진 없는 일정은 예전과 똑같은 줄)
+    ...(input.photo_id ? { photo_id: input.photo_id } : {}),
   };
   store.put("tasks", t);
   return t;

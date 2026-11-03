@@ -20,6 +20,7 @@ import { findSound, playSound, stopAllSounds } from "@/lib/sound";
 import { addDays, addMinutes, atTime, dayKey, fmtSpan, fmtTime, MIN, parseDayKey, toHHMM } from "@/lib/time";
 import { COLOR_HEX, type Task } from "@/lib/types";
 import { useNow } from "@/lib/useNow";
+import { ScreenFlash } from "./AlarmOverlay";
 import { usePlanner } from "./PlannerProvider";
 import { Button, Chip, cx, inputCls, Modal } from "./ui";
 
@@ -145,12 +146,23 @@ const whenLabel = (t: Task) => {
   return `${d.getMonth() + 1}/${d.getDate()}${isTimed(t) ? ` ${fmtTime(t.starts_at)}` : ""}`;
 };
 
-/** 미시작 경고음 — 화면 없이 소리만. 경고창의 '경고음 끄기'나 어떤 처리를 하면 멈춘다(최대 45초). */
+/** 알람 방식이 진동·무음일 때 미시작 경고 화면을 깜빡이는 시간 */
+const QUIET_FLASH_MS = 6000;
+
+/**
+ * 미시작 경고음 — 화면 없이 소리만. 경고창의 '경고음 끄기'나 어떤 처리를 하면 멈춘다(최대 45초).
+ * 알람 방식이 진동·무음이면 소리 대신 화면 가장자리를 몇 초 깜빡이고 끝낸다.
+ */
 export function OverdueSiren() {
   const { overdueRing, stopOverdue, settings } = usePlanner();
   const key = overdueRing?.key;
+  const quiet = settings.alarmMode !== "sound";
   useEffect(() => {
     if (!overdueRing) return;
+    if (quiet) {
+      const t = window.setTimeout(() => stopOverdue(), QUIET_FLASH_MS);
+      return () => window.clearTimeout(t);
+    }
     let replaced = false;
     const h = playSound(findSound(overdueRing.soundId, settings.customSounds), {
       loop: true,
@@ -167,7 +179,7 @@ export function OverdueSiren() {
     // 같은 경고가 이어지는 동안 설정 변경으로 다시 울리지 않게 key 기준
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return null;
+  return overdueRing && quiet ? <ScreenFlash danger fixed /> : null;
 }
 
 type Step = "choose" | "postpone" | "skip" | "bulk";
@@ -214,7 +226,7 @@ function EnforcementCard({ task, queue, now }: { task: Task; queue: Task[]; now:
   return (
     <Modal open size="md" tone="danger" className="border-danger/70!">
       <div className="tape -mx-5 mb-5 h-2.5 md:-mx-6" />
-      {overdueRing && (
+      {overdueRing && settings.alarmMode === "sound" && (
         <button
           onClick={() => {
             stopOverdue();

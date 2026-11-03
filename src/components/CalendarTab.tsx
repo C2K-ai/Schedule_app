@@ -174,6 +174,9 @@ function DayPanel({ day }: { day: Date }) {
   );
 }
 
+/** 캘린더 탭에서 지금 고른 날 — 화면 아래 + 버튼이 이날로 새 일정을 연다(캘린더 탭이 아니면 null) */
+export const calendarPick: { day: Date | null } = { day: null };
+
 function MonthGrid({ month, selected, onSelect }: { month: Date; selected: Date; onSelect: (d: Date) => void }) {
   const { tasks, activities, marks: markList, snap } = usePlanner();
   const cells = useMemo(() => monthCells(month), [month]);
@@ -291,6 +294,13 @@ export function CalendarTab() {
     return () => window.removeEventListener(OPEN_TIMETABLE, go);
   }, []);
   const [selected, setSelected] = useState(() => startOfDay(new Date()));
+  // 아래 + 버튼(Shell)이 고른 날에 일정을 만들게 — 캘린더 탭을 떠나면 비운다
+  useEffect(() => {
+    calendarPick.day = selected;
+    return () => {
+      calendarPick.day = null;
+    };
+  }, [selected]);
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const wide = useMedia("(min-width: 1024px)");
   const pick = (d: Date) => {

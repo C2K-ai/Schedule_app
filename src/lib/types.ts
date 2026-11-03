@@ -55,6 +55,8 @@ export interface Task extends Row {
   schedule: ScheduleKind;
   category_id: string | null;
   starred: boolean;
+  /** 붙인 사진 — 드라이브 '일정 사진' 폴더의 파일 id(lib/taskPhoto.ts). 없으면 null/없음 */
+  photo_id?: string | null;
 }
 
 export type ScheduleKind = "timed" | "day" | "someday";
@@ -227,6 +229,8 @@ export interface SoundDef {
 
 export type VibrationKey = "none" | "short" | "double" | "heartbeat" | "sos" | "alarm";
 export type AlarmTheme = "pulse" | "strobe" | "calm";
+/** 앱 안 알람을 어떻게 알릴지 — sound: 소리(+읽어 주기·진동) / vibrate: 진동 + 화면 깜빡임 / silent: 화면만 깜빡임 */
+export type AlarmMode = "sound" | "vibrate" | "silent";
 export type AlarmKind = "before" | "start" | "overdue" | "end" | "snooze" | "focus";
 
 export interface Settings {
@@ -240,6 +244,8 @@ export interface Settings {
   speak: boolean;
   vibration: VibrationKey;
   alarmTheme: AlarmTheme;
+  /** 정각·미시작 알람을 소리로 / 진동으로 / 무음(화면만) — PC·폰 같이(설정이 계정에 동기화) */
+  alarmMode: AlarmMode;
   focusMin: number;
   breakMin: number;
   longBreakMin: number;

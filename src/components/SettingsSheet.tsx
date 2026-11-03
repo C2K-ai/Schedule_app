@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellRing, Cloud, Download, KeyRound, LogOut, Monitor, Moon, RefreshCw, Smartphone, Sun, Upload, Vibrate, Volume2 } from "lucide-react";
+import { Bell, BellOff, BellRing, Cloud, Download, KeyRound, LogOut, Monitor, Moon, RefreshCw, Smartphone, Sun, Upload, Vibrate, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   isIOS,
@@ -32,7 +32,7 @@ import { downloadSound, findSound, playSound, unlockAudio, vibrate, VIBRATIONS }
 import { hasLocalData, readLocalDb } from "@/lib/store";
 import { cloudEnabled, getSupabase } from "@/lib/supabase";
 import { fmtOffset, uuid } from "@/lib/time";
-import type { AlarmTheme, Settings, VibrationKey } from "@/lib/types";
+import type { AlarmMode, AlarmTheme, Settings, VibrationKey } from "@/lib/types";
 import { usePlanner } from "./PlannerProvider";
 import { AuthForm, friendly } from "./AuthForm";
 import { BackgroundPicker } from "./BackgroundPicker";
@@ -379,6 +379,46 @@ function NotifyTab() {
         </div>
       </Section>
 
+      <Section
+        title="알람 방식"
+        desc="정각·미시작 때 앱이 어떻게 알릴지 골라요. PC·폰 같이 바뀌어요. 앱을 닫아 두었을 때 오는 폰 알림 소리는 폰 설정을 따라요."
+      >
+        <div className="grid grid-cols-3 gap-2">
+          {(
+            [
+              { v: "sound", name: "소리", desc: "알람 소리 + 읽어 주기", icon: <Volume2 size={18} /> },
+              { v: "vibrate", name: "진동", desc: "소리 없이 진동 + 화면 깜빡임", icon: <Vibrate size={18} /> },
+              { v: "silent", name: "무음", desc: "화면만 깜빡여요", icon: <BellOff size={18} /> },
+            ] as { v: AlarmMode; name: string; desc: string; icon: React.ReactNode }[]
+          ).map((m) => (
+            <button
+              key={m.v}
+              onClick={() => {
+                set({ alarmMode: m.v });
+                if (m.v === "vibrate") vibrate(settings.vibration === "none" ? "heartbeat" : settings.vibration);
+              }}
+              aria-pressed={settings.alarmMode === m.v}
+              className={cx(
+                "rounded-2xl border-2 px-3 py-3 text-left transition",
+                settings.alarmMode === m.v ? "border-accent bg-[color-mix(in_oklab,var(--accent)_10%,transparent)]" : "border-line",
+              )}
+            >
+              <span className="flex items-center gap-1.5 font-bold">
+                {m.icon}
+                {m.name}
+              </span>
+              <span className="mt-1 block text-xs leading-snug text-muted">{m.desc}</span>
+            </button>
+          ))}
+        </div>
+        {settings.alarmMode !== "sound" && (
+          <p className="mt-2 text-xs text-muted">
+            지금은 ‘{settings.alarmMode === "vibrate" ? "진동" : "무음"}’이라 알람 소리와 제목 읽어 주기는 나오지 않아요
+            {settings.alarmMode === "vibrate" ? "(PC 는 진동이 없어 화면만 깜빡여요)" : ""}.
+          </p>
+        )}
+      </Section>
+
       <Section title="알람 연출">
         <Label>전체화면 알람 테마</Label>
         <div className="grid grid-cols-3 gap-2">
@@ -425,7 +465,12 @@ function NotifyTab() {
         <div className="mt-3">
           <Range label="알람 음량" value={Math.round(settings.volume * 100)} min={0} max={100} step={5} unit="%" onChange={(v) => set({ volume: v / 100 })} />
           <Switch checked={settings.escalate} onChange={(escalate) => set({ escalate })} label="점점 크게·빠르게" desc="무시할수록 알람이 커지고 빨라집니다. 미시작 경고는 항상 켜짐." />
-          <Switch checked={settings.speak} onChange={(speak) => set({ speak })} label="일정 제목 읽어 주기" desc="“독일어 단어 30개, 시작할 시간입니다.” — 음성 합성(TTS)으로 말해 줍니다." />
+          <Switch
+            checked={settings.speak}
+            onChange={(speak) => set({ speak })}
+            label="일정 제목 읽어 주기"
+            desc="“독일어 단어 30개, 시작할 시간입니다.” — 음성 합성(TTS)으로 말해 줍니다. 알람 방식이 ‘소리’일 때만."
+          />
         </div>
       </Section>
     </>

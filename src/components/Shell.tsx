@@ -32,7 +32,7 @@ import { useIsAdmin } from "@/lib/admin";
 import { createCategory, deleteCategory, liveCategories, updateCategory } from "@/lib/planner";
 import { OPEN_TIMETABLE, openTimetable, pendingWritePhoto } from "@/lib/pending";
 import { shrinkPhoto } from "@/lib/photo";
-import { MIN } from "@/lib/time";
+import { HOUR, MIN, sameDay, startOfDay } from "@/lib/time";
 import { useMedia } from "@/lib/useMedia";
 import { COLOR_HEX } from "@/lib/types";
 import { ActivityEditor } from "./ActivityEditor";
@@ -45,7 +45,7 @@ import { AlarmOverlay } from "./AlarmOverlay";
 import { BackgroundPicker } from "./BackgroundPicker";
 import { Backdrop, WallpaperView } from "./Backdrop";
 import { BriefingEngine } from "./Briefing";
-import { CalendarTab } from "./CalendarTab";
+import { CalendarTab, calendarPick } from "./CalendarTab";
 import { CareerSheet } from "./Career";
 import { CompletedSheet } from "./CompletedSheet";
 import { DiarySheet } from "./DiarySheet";
@@ -338,7 +338,11 @@ export function Shell() {
 
   const title = TABS.find((t) => t.value === tab)!.label;
   const addNew = () => {
-    p.openEditor({ start: new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN), categoryId: filter.kind === "category" ? filter.id : undefined });
+    // 캘린더에서 다른 날을 골라 두었으면 그날 09:00 으로(오늘이면 예전처럼 다음 15분)
+    const picked = tab === "calendar" ? calendarPick.day : null;
+    const start =
+      picked && !sameDay(picked, new Date()) ? new Date(startOfDay(picked).getTime() + 9 * HOUR) : new Date(Math.ceil(Date.now() / (15 * MIN)) * 15 * MIN);
+    p.openEditor({ start, categoryId: filter.kind === "category" ? filter.id : undefined });
   };
   const menu = (
     <MenuPanel

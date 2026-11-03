@@ -1,4 +1,4 @@
-import type { Settings } from "./types";
+import type { AlarmMode, Settings, VibrationKey } from "./types";
 
 export const DEFAULT_SETTINGS: Settings = {
   graceMin: 5,
@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: Settings = {
   speak: true,
   vibration: "heartbeat",
   alarmTheme: "pulse",
+  alarmMode: "sound",
   focusMin: 25,
   breakMin: 5,
   longBreakMin: 15,
@@ -42,6 +43,30 @@ export function mergeSettings(partial: Partial<Settings> | null | undefined): Se
     sounds: { ...DEFAULT_SETTINGS.sounds, ...(p.sounds ?? {}) },
     customSounds: p.customSounds ?? [],
     ddays: p.ddays ?? [],
+    alarmMode: ALARM_MODES.includes(p.alarmMode as AlarmMode) ? (p.alarmMode as AlarmMode) : "sound",
+  };
+}
+
+export const ALARM_MODES: AlarmMode[] = ["sound", "vibrate", "silent"];
+
+/**
+ * 알람 방식에 따라 실제로 낼 것.
+ *  · sound: 소리 + (켜 두었으면) 제목 읽어 주기 + 진동 패턴
+ *  · vibrate: 소리·읽어 주기 없이 진동(진동 패턴이 '없음'이면 기본 패턴) + 화면 깜빡임
+ *  · silent: 소리·읽어 주기·진동 없이 화면만 깜빡임
+ */
+export function alarmOutput(s: Pick<Settings, "alarmMode" | "speak" | "vibration">): {
+  sound: boolean;
+  voice: boolean;
+  vibration: VibrationKey;
+  flash: boolean;
+} {
+  const mode = s.alarmMode ?? "sound";
+  return {
+    sound: mode === "sound",
+    voice: mode === "sound" && s.speak,
+    vibration: mode === "silent" ? "none" : mode === "vibrate" && s.vibration === "none" ? "heartbeat" : s.vibration,
+    flash: mode !== "sound",
   };
 }
 

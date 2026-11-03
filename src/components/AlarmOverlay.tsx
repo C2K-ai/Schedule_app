@@ -27,7 +27,8 @@ export function AlarmOverlay() {
   const alarmKey = alarm?.key;
 
   useEffect(() => {
-    if (!alarm) return;
+    // 진동·무음 알람 방식이면 소리 없이 화면만(아래 ScreenFlash)
+    if (!alarm || settings.alarmMode !== "sound") return;
     const sound = findSound(alarm.soundId, settings.customSounds);
     const h = playSound(sound, {
       loop: true,
@@ -47,6 +48,7 @@ export function AlarmOverlay() {
   const ringColor = overdue ? "#ff3d5a" : "#c8ff2e";
   const focus = activeFocus(snap.db);
   const muted = mutedKey === alarm.key;
+  const quiet = settings.alarmMode !== "sound";
 
   const close = () => {
     stopAllSounds();
@@ -81,6 +83,8 @@ export function AlarmOverlay() {
           background: `radial-gradient(60% 50% at 50% 40%, ${overdue ? "rgba(255,61,90,0.22)" : "rgba(200,255,46,0.12)"}, transparent 70%)`,
         }}
       />
+
+      {quiet && <ScreenFlash danger={overdue} />}
 
       <div className="relative z-10 flex w-full max-w-lg flex-col items-center text-center">
         <p className="font-mono text-6xl font-bold tracking-tighter tabular-nums md:text-7xl">{fmtTime(new Date(now))}</p>
@@ -146,19 +150,34 @@ export function AlarmOverlay() {
                 확인
               </button>
             )}
-            <button
-              onClick={() => {
-                stopAllSounds();
-                setMutedKey(alarm.key);
-              }}
-              disabled={muted}
-              className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-white/5 font-semibold text-white/70 hover:bg-white/10 disabled:opacity-40"
-            >
-              {muted ? <VolumeX size={18} /> : <Volume2 size={18} />} {muted ? "소리 끔" : "소리만 끄기"}
-            </button>
+            {!quiet && (
+              <button
+                onClick={() => {
+                  stopAllSounds();
+                  setMutedKey(alarm.key);
+                }}
+                disabled={muted}
+                className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-white/5 font-semibold text-white/70 hover:bg-white/10 disabled:opacity-40"
+              >
+                {muted ? <VolumeX size={18} /> : <Volume2 size={18} />} {muted ? "소리 끔" : "소리만 끄기"}
+              </button>
+            )}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 소리 없이 알릴 때(알람 방식 '진동'·'무음') — 화면 가장자리가 1초 간격으로 은은하게 깜빡인다.
+ * fixed: 다른 창(미시작 경고창) 위에 띄울 때. 누르는 건 막지 않는다.
+ */
+export function ScreenFlash({ danger = false, fixed = false }: { danger?: boolean; fixed?: boolean }) {
+  return (
+    <div
+      aria-hidden
+      className={cx("alarm-flash pointer-events-none inset-0", fixed ? "fixed z-[75]" : "absolute", danger && "alarm-flash-danger")}
+    />
   );
 }

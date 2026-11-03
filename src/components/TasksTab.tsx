@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, ChevronRight, CircleDashed, Cloud, Plus, Repeat, Settings2, Share, SlidersHorizontal, Star, TriangleAlert, X } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronRight, CircleDashed, Cloud, Plus, Repeat, Settings2, Share, SlidersHorizontal, Star, TriangleAlert, X } from "lucide-react";
 import { useMemo, useState, type ReactNode, type RefObject } from "react";
 import { upcomingMarks } from "@/lib/marks";
 import { isIOS, isStandalone } from "@/lib/notify";
@@ -177,6 +177,7 @@ export function TaskRow({ t, categories, showDate = false }: { t: Task; categori
         <p className={cx("truncate text-[15px] font-semibold", closed && "text-muted line-through")}>
           {t.habit_id && <Repeat size={12} className="mr-1 inline text-muted" />}
           {t.title}
+          {t.photo_id && <Camera size={13} className="ml-1.5 inline align-[-1px] text-muted" aria-label="사진 있음" />}
         </p>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
           {timed && (

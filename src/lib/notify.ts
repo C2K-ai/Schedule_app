@@ -53,6 +53,8 @@ export interface LocalNotice {
   taskId?: string;
   startsAt?: string;
   vibration: VibrationKey;
+  /** 무음 알람 모드 — 소리·진동 없이 알림만 */
+  silent?: boolean;
 }
 
 /** 앱(탭)이 살아 있을 때 직접 띄우는 시스템 알림. 서버 푸시와 tag 가 같아서 중복으로 쌓이지 않는다. */
@@ -66,7 +68,8 @@ export async function showSystemNotification(n: LocalNotice) {
     badge: withBase("/icons/badge-96.png"),
     requireInteraction: urgent,
     renotify: n.kind === "overdue",
-    vibrate: VIBRATIONS[n.vibration]?.pattern ?? [],
+    vibrate: n.silent ? [] : (VIBRATIONS[n.vibration]?.pattern ?? []),
+    silent: n.silent || undefined,
     timestamp: n.startsAt ? Date.parse(n.startsAt) : Date.now(),
     data: { taskId: n.taskId, kind: n.kind, startsAt: n.startsAt },
     actions: urgent

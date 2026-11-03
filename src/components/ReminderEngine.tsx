@@ -18,6 +18,7 @@ import {
   soundForKind,
   type Trigger,
 } from "@/lib/reminders";
+import { alarmOutput } from "@/lib/settings";
 import { findSound, playSound, preloadSounds, speak, unlockAudio, vibrate } from "@/lib/sound";
 import { getSupabase } from "@/lib/supabase";
 import { DAY } from "@/lib/time";
@@ -92,6 +93,8 @@ export function ReminderEngine() {
       const hidden = document.visibilityState !== "visible";
       const focusOn = Boolean(activeFocus(snap.db));
       const tag = task ? `must-${task.id}-${kind}-${seq}` : key;
+      // 알람 방식(설정 → 알림): 소리 / 진동 / 무음(화면만)
+      const out = alarmOutput(s);
 
       if (hidden) {
         void showSystemNotification({
@@ -101,18 +104,21 @@ export function ReminderEngine() {
           kind,
           taskId: task?.id,
           startsAt: task?.starts_at,
-          vibration: s.vibration,
+          vibration: out.vibration,
+          silent: s.alarmMode === "silent",
         });
       }
 
       if (kind === "before") {
         // 집중 모드(방해금지) 중에는 사전 알림을 조용히
-        if (!focusOn) playSound(sound, { volume: s.volume * 0.8 });
+        if (!focusOn && out.sound) playSound(sound, { volume: s.volume * 0.8 });
+        else if (!focusOn && out.vibration !== "none") vibrate("short");
         toast({ text: desc.title, ttl: 8000 });
         return;
       }
       if (kind === "end" && task) {
-        playSound(findSound(s.sounds.before, s.customSounds), { volume: s.volume * 0.8 });
+        if (out.sound) playSound(findSound(s.sounds.before, s.customSounds), { volume: s.volume * 0.8 });
+        else if (out.vibration !== "none") vibrate("short");
         toast({
           text: desc.title,
           ttl: 15000,
@@ -120,7 +126,7 @@ export function ReminderEngine() {
         });
         return;
       }
-      vibrate(s.vibration);
+      vibrate(out.vibration);
       if (kind === "overdue") {
         // 경고창이 이미 떠 있으니 화면은 덮지 않고 소리만 — 사유를 쓰던 중이어도 입력이 날아가지 않는다
         latest.current.ringOverdue({
@@ -133,7 +139,7 @@ export function ReminderEngine() {
           soundId,
           at: Date.now(),
         });
-        if (s.speak && task) window.setTimeout(() => speak(`${task.title}, 아직 시작하지 않았습니다.`, s.volume), 1800);
+        if (out.voice && task) window.setTimeout(() => speak(`${task.title}, 아직 시작하지 않았습니다.`, s.volume), 1800);
         return;
       }
       ring({
@@ -146,7 +152,7 @@ export function ReminderEngine() {
         soundId,
         at: Date.now(),
       });
-      if (s.speak && task) {
+      if (out.voice && task) {
         const line = kind === "focus" ? desc.title : `${task.title}, 시작할 시간입니다.`;
         window.setTimeout(() => speak(line, s.volume), 1800);
       }

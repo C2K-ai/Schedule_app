@@ -8,30 +8,6 @@ export interface BriefTask {
   starts_at: string;
   schedule: string | null;
   strict: boolean;
-  /** 보여 줄 시각 "HH:MM" — 시간표 수업처럼 이미 현지 시각인 것(없으면 starts_at 을 시간대로 바꿔서) */
-  time?: string;
-}
-
-export interface TimetableHabit {
-  title: string;
-  start_time: string | null;
-  days: number[] | null;
-  start_day: string | null;
-  end_day: string | null;
-}
-
-/** 오늘(현지 날짜 YYYY-MM-DD) 시간표 수업·알바 — 시간표는 일정(tasks)을 만들지 않아 따로 센다(앱 timetable.ts 와 같은 규칙) */
-export function timetableToday(list: TimetableHabit[], localDay: string): BriefTask[] {
-  const dow = new Date(`${localDay}T00:00:00Z`).getUTCDay();
-  return list
-    .filter(
-      (h) =>
-        /^([01][0-9]|2[0-3]):[0-5][0-9]/.test(h.start_time ?? "") &&
-        (h.days ?? []).includes(dow) &&
-        (!h.start_day || h.start_day <= localDay) &&
-        (!h.end_day || h.end_day >= localDay),
-    )
-    .map((h) => ({ title: h.title, status: "planned", starts_at: "", schedule: "timed", strict: false, time: h.start_time!.slice(0, 5) }));
 }
 
 const hhmm = (iso: string, tz: string) =>
@@ -44,7 +20,7 @@ export const BRIEF_TTL_SEC = 6 * 3600;
 const short = (s: string) => (s.length > 20 ? `${s.slice(0, 19)}…` : s);
 
 /**
- * 앱의 buildBriefing(src/components/Briefing.tsx)과 같은 문구.
+ * 앱의 buildBriefing(src/lib/briefing.ts)과 같은 문구. 시간표 수업은 넣지 않는다(사용자 요청 2026-11-03).
  *   1줄: 시각 있는 일정 "09:00 회의 · 14:30 병원"(접힌 알림에도 보이는 줄)
  *   2줄: "시간 미정 · 장보기, 보고서" — 날짜만 정한 일정도 이름으로
  *   끝줄: 미시작 n건 · 했는지 확인할 일정 n건
@@ -53,12 +29,10 @@ const short = (s: string) => (s.length > 20 ? `${s.slice(0, 19)}…` : s);
 export function briefingText(tasks: BriefTask[], tz: string, overdue: number, unchecked = 0): { title: string; body: string } {
   const open = tasks.filter((t) => t.status === "planned" || t.status === "in_progress");
   const timed = (t: BriefTask) => (t.schedule ?? "timed") === "timed";
-  const at = (t: BriefTask) => t.time ?? hhmm(t.starts_at, tz);
-  // 모두 오늘 안이라 현지 "HH:MM" 순서 = 시각 순서
   const withTime = open
     .filter(timed)
-    .map((t) => ({ t, at: at(t) }))
-    .sort((a, b) => a.at.localeCompare(b.at));
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+    .map((t) => ({ t, at: hhmm(t.starts_at, tz) }));
   const noTime = open.filter((t) => !timed(t));
   // 시간 미정 일정이 있으면 그 자리를 남겨 둔다(둘 다 보이게)
   const shownTimed = withTime.slice(0, noTime.length ? BRIEF_MAX - Math.min(noTime.length, 3) : BRIEF_MAX);
@@ -100,23 +74,14 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
   for (const d of (data ?? []) as Due[]) {
     // 한 기기에서 난 오류가 뒤 사람들의 브리핑을 막지 않게(보안 점검 2026-10-11)
     try {
-      const [{ data: tasks }, { data: classes }] = await Promise.all([
-        db
-          .from("tasks")
-          .select("title, status, starts_at, schedule, strict")
-          .eq("user_id", d.user_id)
-          .is("deleted_at", null)
-          .neq("schedule", "someday")
-          .gte("starts_at", d.day_start)
-          .lt("starts_at", d.day_end),
-        db
-          .from("habits")
-          .select("title, start_time, days, start_day, end_day")
-          .eq("user_id", d.user_id)
-          .eq("in_timetable", true)
-          .eq("active", true)
-          .is("deleted_at", null),
-      ]);
+      const { data: tasks } = await db
+        .from("tasks")
+        .select("title, status, starts_at, schedule, strict")
+        .eq("user_id", d.user_id)
+        .is("deleted_at", null)
+        .neq("schedule", "someday")
+        .gte("starts_at", d.day_start)
+        .lt("starts_at", d.day_end);
       const now = Date.now();
       const { data: prof } = await db.from("profiles").select("grace_min").eq("id", d.user_id).maybeSingle();
       const grace = prof?.grace_min ?? 5;
@@ -144,8 +109,7 @@ export async function sendBriefings(db: SupabaseClient): Promise<{ briefed: numb
           .lte("ends_at", nowIso)
           .gt("ends_at", new Date(now - 7 * 86_400_000).toISOString()),
       ]);
-      const today = [...((tasks ?? []) as BriefTask[]), ...timetableToday((classes ?? []) as TimetableHabit[], String(d.local_day))];
-      const text = briefingText(today, safeTz(d.tz), overdue ?? 0, unchecked ?? 0);
+      const text = briefingText((tasks ?? []) as BriefTask[], safeTz(d.tz), overdue ?? 0, unchecked ?? 0);
       const payload: PushPayload = {
         ...text,
         tag: `must-briefing-${d.local_day}`,
