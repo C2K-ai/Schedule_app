@@ -47,3 +47,13 @@
 ## 검사·배포
 - tsc · eslint · 단위 116 · Deno 64 · DB 전부(새 7개) 통과. 화면 시험 29개 통과(스크립트는 스크래치, 결과는 여기).
 - 배포 순서: DB 먼저(칸이 없으면 동기화가 막혀서) → send-due-notifications v8 → GitHub Pages(성공, 1분 50초).
+
+## 6. 중복 알림 (같은 날, 사용자 "이제 중복 알림 고쳐줘")
+- 서버 기록: 11/03 09:00 일정 하나에 08:50 곧 시작 · 09:00 정각 · 09:05 미시작 1 — 세 번 보냄(정상). 그런데 tag 가 종류·회차마다 달라 알림창에 세 장이 쌓임.
+  등록 기기: 폰 1(10/31~) + Windows PC 1(11/03 10:00 다시 등록 — 전에 등록했던 PC 라 ensurePush 가 살림).
+- 고친 것: 일정마다 tag 하나 + renotify, 같은 종류·회차는 다시 안 띄움(앱·SW 둘 다), 앱 창이 보이면 SW 는 조용히, 끝낸 일정 알림 치우기,
+  폰은 앱을 켤 때 브리핑 알림 안 함, 무음 + 진동 패턴을 같이 줘 알림이 막히던 것.
+- SW 시험 방법: Playwright CDP 세션에서 `ServiceWorker.enable` → 등록 id → `ServiceWorker.deliverPushMessage({origin, registrationId, data})`.
+  앱 창 없이 보려면 about:blank 로 보낸 뒤 푸시, 목록은 같은 출처의 `/sw.js` 를 연 탭에서 `registration.getNotifications()`.
+  처음 '전체 3장'으로 실패한 건 시험이 앱을 열 때 PC 브리핑이 한 장 뜬 것(정상) — 일정 알림만 세게 고침.
+- 배포: send-due-notifications v9 → Pages(성공 1분 54초), 크론 200.
