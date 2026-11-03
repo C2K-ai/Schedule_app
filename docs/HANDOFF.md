@@ -5,19 +5,19 @@
 
 ## 0. ⚠️ 지금 상태 — 2026-10-31 갱신 (여기부터 읽기)
 
-**브랜치**: `ui-revamp` = `main`(2026-10-31: 폰 알림 살리기 + 아침 브리핑에 오늘 일정 목록(8절 39)). 끝난 일은 8절.
+**브랜치**: `ui-revamp` = `main`(2026-11-03: 일정 사진 · 알람 방식 · 캘린더 + 날짜 · PC 화면 밀림 · 브리핑에서 시간표 빼기(8절 40)). 끝난 일은 8절.
 
-### 0-1. 폰 알림 — 고쳐 배포함, **폰 다시 등록됨(2026-10-31 19:07 KST)** · 사용자 확인 대기
-- 원인: 서버 `push_subscriptions` **0행**(10/21 무렵부터 'no subscriptions'). 앱이 구독이 죽으면 다시 만들지 않았음. 고친 것은 8절 39.
-- 사용자가 폰에서 앱을 열자 새 코드가 저절로 다시 구독(POST 201) → `push_subscriptions` 1행(fcm.googleapis.com · 안드로이드 폰 · 브리핑 07:00).
-  확인용으로 브리핑 시각을 잠깐 19:00 으로 바꿔 **오늘 브리핑을 19:09 에 보냄 → `briefed:1, failed:0`(푸시 서버가 받음)**, 바로 07:00 으로 되돌림(last_briefing_on 은 오늘이라 내일 07:00 에 다시 감).
-- 남은 것: 사용자가 그 알림을 폰에서 봤는지, 다음 날 07:00 브리핑이 잠금화면에 와 있는지. 안 보이면 폰 설정 → 알림에서 DREAM(또는 Chrome) 알림·잠금화면 표시부터.
-- 왜 구독이 죽었는지는 못 밝힘(로그가 하루치만 남음). 다시 죽어도 이제 앱을 열면 고쳐짐.
-- **대기 — 중복 알림**(사용자 2026-10-31: "알림 다 제대로 오는데 같은 내용 알림이 몇 번 중복") → 사용자가 "이따가 고치자". 아직 조사 안 함. 짐작(확인 전):
+### 0-1. 중복 알림 — **대기**(사용자 2026-10-31 "이따가 고치자")
+- 사용자: "알림 다 제대로 오는데 같은 내용 알림이 몇 번 중복". 아직 조사 안 함. 짐작(확인 전):
   ① 앱을 켤 때 브리핑(tag `must-briefing`)과 서버 아침 브리핑(tag `must-briefing-<날짜>`) 태그가 달라 둘 다 뜸
   ② 미시작 경고 seq 1~3·시작 전·정각이 태그가 달라 한 일정에 여러 장 쌓임(설계상이지만 줄일지 사용자와 정하기)
   ③ 앱이 열려 있을 때 SW 가 받은 푸시를 앱에 넘기면(`must:push`) 앱이 다른 tag 로 또 띄우는지 — `ReminderEngine` 의 fire 와 서버 tag 비교.
   먼저 `notification_jobs`(그날 보낸 kind·seq·시각)부터 보고, 사용자에게 어떤 알림이 겹쳤는지 물어볼 것.
+
+### 0-2. 2026-11-03 개선 5가지 — 배포함(8절 40), **사용자 확인 대기**
+- 폰: 일정 창 '사진'으로 사진 붙이기 → 일정을 열면 사진이 맨 위 / 설정 → 알림 → '알람 방식'(소리·진동·무음) / 캘린더에서 날 고르고 + → 그날로.
+- PC: 일정 수가 다른 날을 골라도 화면이 안 밀리는지. 아침 브리핑에 시간표 수업이 안 나오는지(내일 07:00).
+- 사진은 로그인해야 붙음(드라이브 용량 150MB 를 같이 씀). 앱을 닫았을 때 오는 폰 알림 소리는 알람 방식과 상관없이 폰 설정을 따름(설정 화면에 적어 둠).
 
 ### 0-0. 일기 책 애니메이션 — 다듬기 배포함(2026-10-10), **사용자 폰 확인 대기**
 사용자 지적 두 가지(닫기가 너무 짧음 · 폰에서 심하게 버벅임)를 고쳐 배포함. 사용자가 써 보고 말하면 그 부분만 고친다(큰 진단·심사 다시 돌리지 말 것).
@@ -108,7 +108,9 @@
 | 시간표(학기별 주간 칸·사진으로 넣기, **일정·알림과 따로**) | `TimetableView.tsx`(칸·수업 고치기·학기 기간), `TimetableImport.tsx`(사진/글 → 미리보기), `lib/timetable.ts`, 습관 `in_timetable`·`place`(회차 안 만듦 — `planner.ts` `isClass`·`dropClassOccurrences`), Edge `parse-schedule` mode "timetable", 디자인 값 `docs/design/timetable-ui-guide.md` |
 | 커리어 기록 + AI 다듬기 | `Career.tsx`, Edge `career-polish` |
 | 알림(앱 안 알람·서버 푸시) | `ReminderEngine.tsx`, `lib/reminders.ts`, `lib/push.ts`(`ensurePush` — 열 때마다 구독 살피고 고침), `PushHealthCard.tsx`(폰 '알림 켜기' 카드), `public/sw.js`, Edge `send-due-notifications`·`notification-action` |
-| 오늘 브리핑(앱을 켤 때·서버 아침 푸시) | `lib/briefing.ts`·`Briefing.tsx`(앱), Edge `send-due-notifications/briefing.ts`(같은 모양 — 시각 순서 + 시간표 + 시간 미정), 기기별 시각 `push_subscriptions.briefing_time`(폰 기본 07:00) |
+| 오늘 브리핑(앱을 켤 때·서버 아침 푸시) | `lib/briefing.ts`·`Briefing.tsx`(앱), Edge `send-due-notifications/briefing.ts`(같은 모양 — 시각 순서 + 시간 미정, **시간표 수업은 안 넣음**), 기기별 시각 `push_subscriptions.briefing_time`(폰 기본 07:00) |
+| 알람 방식(소리·진동·무음) | 설정 `alarmMode` + `lib/settings.ts` `alarmOutput`(무엇을 낼지) → `ReminderEngine` fire · `AlarmOverlay`(`ScreenFlash`) · `Enforcement` `OverdueSiren`, CSS `.alarm-flash` |
+| 일정 사진 | `lib/taskPhoto.ts`(줄여서 드라이브 '일정 사진' 폴더에 올림·기기 캐시), `TaskPhoto.tsx`(맨 위 크게·화면 가득), `TaskEditor.tsx`(붙이기·바꾸기·빼기·취소 때 치움), 일정 `photo_id`, DB `20261103000000_task_photo` |
 | 폰 잠금화면 일정 카드 | `lib/lockCard.ts`, `LockCardSync.tsx`, `public/sw.js`(lock-card) |
 | 테마·배경 | `globals.css`(data-palette), `lib/backgrounds.ts`, `BackgroundPicker.tsx`, `Backdrop.tsx`, `public/themes/bg/` |
 | 설정 | `SettingsSheet.tsx`, `lib/settings.ts`(기본값), `lib/types.ts`(Settings 타입) |
@@ -121,12 +123,12 @@
 
 ## 4. 서버(Supabase) 현재 상태
 
-- **적용된 마이그레이션**: `20261005000000_init` ~ `20261017000000_timetable_no_tasks` 전부.
+- **적용된 마이그레이션**: `20261005000000_init` ~ `20261103000000_task_photo` 전부(그 사이 `20261018000000_security_hardening`·`20261031000000_ai_key_swap`).
   `20261008000500_admin_guards` 는 **앞쪽(마지막 관리자 보호 트리거)만 적용**(2026-10-08). 뒤쪽 `must-cleanup` 크론에
   "7일 지난 크론 실행 기록 지우기" 넣는 부분은 DELETE 문 때문에 MCP 승인 창이 60초 안에 안 떠서 미적용 —
   필요하면 대시보드 SQL Editor 에서 그 파일의 `do $do$ … $do$;` 블록만 실행.
 - **Edge Functions**(배포 버전): `parse-schedule` v12(글은 Haiku 5.5, 사진·시간표 사진은 Sonnet 5.5) · `career-polish` v6(Sonnet 5.5 — 다듬기·한 번에 넣기·한눈에 보기) · `calendar-feed` v2(**JWT 검증 끔**, 토큰으로 주인) · `admin` v6 · `ai-key` v1(관리자만 — AI 키 바꾸기) ·
-  `signup` v5(**JWT 검증 끔**) · `send-due-notifications` v7(**JWT 검증 끔** — 크론 비밀값 헤더로) · `notification-action` v2(**JWT 검증 끔** — 서명 토큰) · `push-test` v3(제목 DREAM).
+  `signup` v5(**JWT 검증 끔**) · `send-due-notifications` v8(**JWT 검증 끔** — 크론 비밀값 헤더로) · `notification-action` v2(**JWT 검증 끔** — 서명 토큰) · `push-test` v3(제목 DREAM).
   알림 쓰는 함수 4개 모두 지금 저장소의 `_shared/push.ts`(2026-10-31 배포).
   나머지는 모두 JWT 검증 켬.
 - **Vault 비밀값**(Edge `setting()` 이 env → Vault 순으로 읽음): `must_anthropic_key`(Claude API 키, 확인 완료), `must_vapid_public/private/subject`,
@@ -359,6 +361,18 @@
    - 같이: signup v5 · push-test v3 · notification-action v2 도 지금 공용 알림 코드로(알림 버튼 서명 토큰 만들기·검사가 옛 코드와 글자까지 같음을 확인한 뒤).
    시험: Deno 65(브리핑 6), 단위 112(브리핑 2), 화면 18(가짜 서버 + 가짜 PushManager: 권한 없음 → 카드 → 허용 → 새 구독 저장·카드 사라짐 / 서버가 지운 구독 → 버리고 새로 /
    멀쩡한 구독 → 그대로 / 등록 해제 기억). 배포본 = 저장소(send-due 글자 단위 확인), 배포 뒤 크론 200, signup·notification-action 에 잘못된 요청 → 400·401(정상 거절).
+   **확인 끝**: 10/31 19:07 폰이 저절로 다시 등록, 시험 브리핑 19:09 `briefed:1` → 사용자 "알림 다 제대로 온다"(11/03). 중복 알림은 0-1 로.
+40. **2026-11-03 개선 5가지**(사용자 스크린숏 3장과 함께 요청) —
+   ① 아침 브리핑·앱을 켤 때 브리핑에서 **시간표 수업 뺌**(39 에서 넣었던 것, send-due v8). ② **캘린더에서 다른 날을 고르고 아래 + →
+   그날 09:00**(오늘이면 예전처럼 다음 15분) — `CalendarTab` 의 `calendarPick`(고른 날, 탭을 떠나면 null)을 `Shell` addNew 가 읽음.
+   ③ **알람 방식**(설정 → 알림, `alarmMode` — 계정 설정이라 PC·폰 같이): 소리(기본, 예전대로) / 진동(소리·읽어 주기 없이 진동 + 화면 깜빡임) /
+   무음(화면만 깜빡임). 전체화면 알람·미시작 경고(진동·무음이면 6초 깜빡이고 끝, '경고음 끄기' 버튼 숨김)·곧 시작·끝날 시간, 무음이면 앱이 띄우는 시스템 알림도 silent.
+   서버 푸시(앱을 닫았을 때)는 안 바꿈 — 폰 설정을 따름. ④ **PC 화면 밀림**: 스크롤바가 생겼다 없어지며 10px 밀리던 것 → `html { scrollbar-gutter: stable }`.
+   ⑤ **일정 사진**: 일정 창 '사진' → 줄여서(1568px JPEG) 드라이브 '일정 사진' 폴더에 올리고 일정엔 `photo_id` 만. 열면 사진이 맨 위(누르면 화면 가득), 바꾸기·빼기,
+   붙였다가 취소·바꿈·뺌·일정 삭제 땐 드라이브에서도 지움, 목록에 카메라 표시, 한 번 받은 사진은 Cache Storage `must-task-photos`.
+   DB `20261103000000_task_photo`(적용함): 내 드라이브 파일만 붙음(남의 것·없는 것은 비움), 드라이브에서 지우면 일정에서도 빠짐 — 시험 7개.
+   시험: 단위 116(알람 방식 4·브리핑 2), Deno 64, DB 전부, 화면 29(가짜 서버: 캘린더 +, 소리/무음 알람 — 소리 시작 17번 vs 0번·읽어 주기 1 vs 0, 설정 고르기,
+   사진 붙이기·저장·열면 사진이 제목 위·크게 보기·취소하면 지움, PC 스크롤 2055px↔1000px 에도 제목 위치 1270 그대로 — 고정을 끄면 1270→1280 으로 밀림).
 
 ## 9. 테마·배경 구조
 
