@@ -52,26 +52,46 @@ export interface LocalNotice {
   kind: AlarmKind;
   taskId?: string;
   startsAt?: string;
+  /** 같은 일정의 몇 번째 알림인지(곧 시작 = 몇 분 전, 미시작 = 1·2·3) — 같은 것이 이미 떠 있으면 다시 안 띄운다 */
+  seq?: number;
   vibration: VibrationKey;
   /** 무음 알람 모드 — 소리·진동 없이 알림만 */
   silent?: boolean;
+  /** 같은 자리(tag)의 알림을 바꿀 때 다시 울릴지 — 일정 알림은 켬, 브리핑은 끔 */
+  renotify?: boolean;
+}
+
+/** 같은 자리(tag)에 같은 종류·회차 알림이 이미 떠 있는지 — 서버 푸시가 먼저 왔거나 두 번 불린 것 */
+export async function alreadyShown(reg: ServiceWorkerRegistration, tag: string, kind: string, seq = 0): Promise<boolean> {
+  try {
+    const list = await reg.getNotifications({ tag });
+    return list.some((x) => {
+      const d = x.data as { kind?: string; seq?: number } | null;
+      return d?.kind === kind && (d?.seq ?? 0) === seq;
+    });
+  } catch {
+    return false;
+  }
 }
 
 /** 앱(탭)이 살아 있을 때 직접 띄우는 시스템 알림. 서버 푸시와 tag 가 같아서 중복으로 쌓이지 않는다. */
 export async function showSystemNotification(n: LocalNotice) {
   if (notificationPermission() !== "granted") return false;
   const urgent = n.kind === "start" || n.kind === "overdue" || n.kind === "snooze";
+  const reg = await registerServiceWorker();
+  if (reg && (await alreadyShown(reg, n.tag, n.kind, n.seq ?? 0))) return true;
   const opts: RichOptions = {
     body: n.body,
     tag: n.tag,
     icon: withBase("/icons/icon-192.png"),
     badge: withBase("/icons/badge-96.png"),
     requireInteraction: urgent,
-    renotify: n.kind === "overdue",
-    vibrate: n.silent ? [] : (VIBRATIONS[n.vibration]?.pattern ?? []),
-    silent: n.silent || undefined,
+    // 같은 일정 자리에서 다음 알림(곧 시작 → 정각 → 미시작)으로 바뀔 때도 다시 울린다. 무음이면 조용히
+    renotify: Boolean((n.renotify ?? true) && !n.silent),
+    // 브라우저 규칙: 소리 없는 알림엔 진동 패턴을 줄 수 없다(같이 주면 알림이 안 뜸)
+    ...(n.silent ? { silent: true } : { vibrate: VIBRATIONS[n.vibration]?.pattern ?? [] }),
     timestamp: n.startsAt ? Date.parse(n.startsAt) : Date.now(),
-    data: { taskId: n.taskId, kind: n.kind, startsAt: n.startsAt },
+    data: { taskId: n.taskId, kind: n.kind, seq: n.seq ?? 0, startsAt: n.startsAt },
     actions: urgent
       ? [
           { action: "start", title: "▶ 지금 시작" },
@@ -79,7 +99,6 @@ export async function showSystemNotification(n: LocalNotice) {
         ]
       : [{ action: "open", title: "열기" }],
   };
-  const reg = await registerServiceWorker();
   try {
     if (reg) {
       await reg.showNotification(n.title, opts);

@@ -16,6 +16,7 @@ import {
   readFired,
   readSnoozes,
   soundForKind,
+  triggerTag,
   type Trigger,
 } from "@/lib/reminders";
 import { alarmOutput } from "@/lib/settings";
@@ -92,7 +93,8 @@ export function ReminderEngine() {
       const sound = findSound(soundId, s.customSounds);
       const hidden = document.visibilityState !== "visible";
       const focusOn = Boolean(activeFocus(snap.db));
-      const tag = task ? `must-${task.id}-${kind}-${seq}` : key;
+      // 일정 하나 = 알림창 한 자리(곧 시작 → 정각 → 미시작이 같은 자리에서 바뀐다, 서버 푸시와 같은 tag)
+      const tag = task ? triggerTag(task.id) : key;
       // 알람 방식(설정 → 알림): 소리 / 진동 / 무음(화면만)
       const out = alarmOutput(s);
 
@@ -104,6 +106,7 @@ export function ReminderEngine() {
           kind,
           taskId: task?.id,
           startsAt: task?.starts_at,
+          seq,
           vibration: out.vibration,
           silent: s.alarmMode === "silent",
         });
@@ -323,6 +326,23 @@ export function ReminderEngine() {
       window.history.replaceState(null, "", withBase("/"));
     }
   }, [handleAction]);
+
+  // 시작·완료·건너뜀·삭제한 일정의 알림은 알림창에서 치운다(지난 '시작 안 함'이 남아 겹쳐 보이지 않게).
+  //   진행 중인 일정의 '끝날 시간' 알림은 남긴다. 이 기기가 아직 모르는 일정(다른 기기에서 막 만든 것)의 알림은 건드리지 않는다
+  const taskRows = p.snap.db.tasks;
+  useEffect(() => {
+    void registerServiceWorker().then(async (reg) => {
+      if (!reg) return;
+      const list = await reg.getNotifications().catch(() => [] as Notification[]);
+      for (const n of list) {
+        const d = n.data as { taskId?: string; kind?: string } | null;
+        const t = d?.taskId ? taskRows[d.taskId] : undefined;
+        if (!t) continue;
+        const stale = Boolean(t.deleted_at) || (t.status !== "planned" && !(t.status === "in_progress" && d?.kind === "end"));
+        if (stale) n.close();
+      }
+    });
+  }, [taskRows]);
 
   // 로그인 상태면 앱을 열 때마다 이 기기 푸시를 살피고 고친다(서버가 지운 죽은 구독이면 새로 받아 다시 등록).
   // 앱을 오래 켜 둔 채 다시 볼 때도 3시간에 한 번

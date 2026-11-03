@@ -4,7 +4,7 @@
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
  *  - 잠금화면 카드    : 앱이 넘겨준 시점별 내용(lib/lockCard.ts)으로 '지금/다음 일정' 알림을 조용히 바꿔 단다
  */
-const VERSION = "must-v10";
+const VERSION = "must-v11";
 // 버전이 바뀌어도 지우지 않는 작은 저장소(잠금화면 카드 내용)
 const STATE = "must-state";
 // '공유 → DREAM' 으로 받은 사진·글을 앱이 꺼내 갈 때까지 잠깐 두는 곳
@@ -136,14 +136,18 @@ self.addEventListener("fetch", (event) => {
 });
 
 // ───────────── 푸시 ─────────────
-function buildOptions(p) {
+// quiet: 앱을 보고 있을 때 — 앱이 직접 알리므로(전체화면 알람·소리) 알림창엔 조용히 남긴다
+function buildOptions(p, quiet = false) {
   const urgent = p.kind === "start" || p.kind === "overdue" || p.kind === "snooze";
+  const silent = quiet || Boolean(p.silent);
   return {
     body: p.body || "",
     tag: p.tag || undefined,
-    renotify: Boolean(p.renotify && p.tag),
+    // 일정 하나 = 한 자리(tag). 곧 시작 → 정각 → 미시작으로 바뀔 때 다시 울린다(조용히 남길 땐 안 울림)
+    renotify: Boolean(p.tag && !silent && (p.renotify || p.taskId)),
     requireInteraction: p.requireInteraction ?? urgent,
-    vibrate: p.vibrate || [200, 100, 200],
+    // 브라우저 규칙: 소리 없는 알림엔 진동 패턴을 줄 수 없다(같이 주면 알림이 안 뜸)
+    ...(silent ? { silent: true } : { vibrate: p.vibrate || [200, 100, 200] }),
     icon: `${BASE}/icons/icon-192.png`,
     badge: `${BASE}/icons/badge-96.png`,
     timestamp: p.startsAt ? Date.parse(p.startsAt) : Date.now(),
@@ -230,7 +234,13 @@ self.addEventListener("push", (event) => {
       const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       // 열려 있는 앱에 넘겨서 자체 알람 소리·전체화면 경고를 울리게 한다
       wins.forEach((w) => w.postMessage({ type: "must:push", payload: p }));
-      await self.registration.showNotification(p.title || "DREAM", buildOptions(p));
+      // 같은 알림(같은 일정·같은 종류·같은 회차)이 이미 떠 있으면 다시 띄우지 않는다 — 앱이 먼저 띄웠거나 두 번 온 것
+      const shown = p.tag ? await self.registration.getNotifications({ tag: p.tag }).catch(() => []) : [];
+      const same = shown.some((n) => n.data && n.data.kind === p.kind && (n.data.seq || 0) === (p.seq || 0));
+      if (!same) {
+        const watching = wins.some((w) => w.visibilityState === "visible");
+        await self.registration.showNotification(p.title || "DREAM", buildOptions(p, watching));
+      }
       // 푸시가 올 때마다(알림 시각·아침 브리핑) 잠금화면 카드도 지금 시각에 맞게
       await refreshLock();
       if (typeof p.badgeCount === "number" && self.navigator.setAppBadge) {
@@ -267,7 +277,8 @@ self.addEventListener("notificationclick", (event) => {
         if (handled && action === "snooze") {
           await self.registration.showNotification("⏱ 5분 뒤 다시 알려드릴게요", {
             body: p.title || "",
-            tag: `${p.tag || "must"}-ack`,
+            // 그 일정 자리에 — 5분 뒤 다시 알림이 오면 이 자리를 바꾼다(따로 쌓이지 않게)
+            tag: p.tag || "must-ack",
             icon: `${BASE}/icons/icon-192.png`,
             badge: `${BASE}/icons/badge-96.png`,
             silent: true,

@@ -14,6 +14,9 @@ export interface BadgeRow {
 
 const DAY = 86_400_000;
 
+/** 일정 하나 = 알림창 한 자리 — 곧 시작 → 정각 → 미시작이 같은 자리에서 바뀌며 다시 울린다(앱 reminders.ts triggerTag 와 같게) */
+export const taskTag = (taskId: string) => `must-${taskId}`;
+
 /** 끝난 일정의 '시작 안 함' 알림은 보내지 않는다 */
 export function skipEndedOverdue(kind: string, t: { ends_at: string }, now: number): boolean {
   return kind === "overdue" && now >= Date.parse(t.ends_at);

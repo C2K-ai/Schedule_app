@@ -1,6 +1,6 @@
 // deno test send-due-notifications/rules.test.ts
 import { assertEquals } from "jsr:@std/assert@1";
-import { badgeCounts, skipEndedOverdue } from "./rules.ts";
+import { badgeCounts, skipEndedOverdue, taskTag } from "./rules.ts";
 
 const now = Date.parse("2026-10-09T05:00:00Z"); // 서울 14:00
 const at = (h: string) => `2026-10-09T${h}:00+09:00`;
@@ -30,4 +30,8 @@ Deno.test("날짜만 일정은 그날이 지나야 배지에 들고, 강제 경�
     { user_id: u, strict: true, schedule: "day", starts_at: at("00:00"), ends_at: "2026-10-10T00:00:00+09:00" }, // 오늘 것 → 0
   ];
   assertEquals(badgeCounts(rows, now, () => 5).get(u), 1);
+});
+
+Deno.test("일정 하나 = 알림 한 자리 — 종류·회차와 상관없이 같은 tag", () => {
+  assertEquals(taskTag("abc"), "must-abc");
 });

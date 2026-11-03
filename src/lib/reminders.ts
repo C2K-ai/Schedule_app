@@ -26,9 +26,12 @@ export interface Snooze {
   fireAt: number;
 }
 
-export function triggerTag(taskId: string, kind: AlarmKind, seq: number) {
-  // 서버 푸시와 같은 tag → 같은 알림이 두 번 쌓이지 않고 교체된다
-  return `must-${taskId}-${kind}-${seq}`;
+/**
+ * 일정 하나 = 알림창 한 자리. 곧 시작 → 정각 → 미시작 경고가 같은 자리에서 바뀌며 다시 울린다(쌓이지 않게, 2026-11-03).
+ * 서버 푸시(send-due-notifications)와 같은 tag. 같은 종류·회차가 이미 떠 있으면 다시 띄우지 않는 건 notify.ts·sw.js 가 본다.
+ */
+export function triggerTag(taskId: string) {
+  return `must-${taskId}`;
 }
 
 export function computeTriggers(tasks: Task[], settings: Settings, snoozes: Snooze[]): Trigger[] {
@@ -36,7 +39,7 @@ export function computeTriggers(tasks: Task[], settings: Settings, snoozes: Snoo
   const mk = (task: Task, kind: AlarmKind, seq: number, fireAt: number) =>
     out.push({
       key: `${task.id}:${kind}:${seq}:${task.starts_at}`,
-      tag: triggerTag(task.id, kind, seq),
+      tag: triggerTag(task.id),
       kind,
       seq,
       fireAt,

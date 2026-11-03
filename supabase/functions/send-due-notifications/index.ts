@@ -3,7 +3,7 @@
 //   보호: x-cron-secret 헤더 == CRON_SECRET
 import { admin, cors, describe, json, safeTz, sendToUser, setting, signAction, VIBRATIONS, type PushPayload } from "../_shared/push.ts";
 import { sendBriefings } from "./briefing.ts";
-import { badgeCounts, skipEndedOverdue, type BadgeRow } from "./rules.ts";
+import { badgeCounts, skipEndedOverdue, taskTag, type BadgeRow } from "./rules.ts";
 
 interface Job {
   id: number;
@@ -73,15 +73,16 @@ Deno.serve(async (req) => {
       const text = describe(job.kind, job.seq, t, Date.now(), tz);
       const payload: PushPayload = {
         ...text,
-        // 앱이 직접 띄우는 알림과 tag 가 같다 → 같은 알림이 두 번 쌓이지 않고 교체된다
-        tag: `must-${t.id}-${job.kind}-${job.seq}`,
+        // 일정 하나 = 알림창 한 자리(앱이 직접 띄우는 알림과 같은 tag) — 곧 시작 → 정각 → 미시작이 쌓이지 않고 바뀐다.
+        // 같은 종류·회차가 이미 떠 있으면 서비스 워커가 다시 안 띄운다(kind·seq 로 비교)
+        tag: taskTag(t.id),
         kind: job.kind,
         seq: job.seq,
         taskId: t.id,
         startsAt: t.starts_at,
         url: `/?task=${t.id}`,
         requireInteraction: job.kind !== "before",
-        renotify: job.kind === "overdue",
+        renotify: true,
         vibrate: VIBRATIONS[vibration] ?? VIBRATIONS.heartbeat,
         actionUrl,
         actionToken: await signAction(t.id),

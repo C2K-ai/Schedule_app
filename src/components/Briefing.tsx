@@ -4,6 +4,8 @@ import { Sunrise, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { buildBriefing } from "@/lib/briefing";
 import { showSystemNotification } from "@/lib/notify";
+import { briefingTime, isPhone } from "@/lib/push";
+import { dayKey } from "@/lib/time";
 import { usePlanner } from "./PlannerProvider";
 
 const SESSION_KEY = "must:briefed";
@@ -31,7 +33,16 @@ export function BriefingEngine() {
       /* 카드는 못 보여도 알림은 띄운다 */
     }
     window.dispatchEvent(new Event(CARD_EVENT));
-    void showSystemNotification({ title: b.title, body: b.body, tag: "must-briefing", kind: "before", vibration: "short" });
+    // 폰은 서버가 아침에 브리핑을 보내므로 앱을 열 때 또 띄우지 않는다(위 카드만). 띄울 때도 서버 브리핑과 같은 자리(그날 tag) — 겹치지 않게
+    if (isPhone() && briefingTime()) return;
+    void showSystemNotification({
+      title: b.title,
+      body: b.body,
+      tag: `must-briefing-${dayKey(new Date())}`,
+      kind: "before",
+      vibration: "short",
+      renotify: false,
+    });
   }, [ready, settings.launchBriefing, settings.graceMin, tasks]);
 
   return null;
