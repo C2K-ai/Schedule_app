@@ -4,7 +4,7 @@
  *  - fetch           : 오프라인 캐시 (운영 빌드에서만)
  *  - 잠금화면 카드    : 앱이 넘겨준 시점별 내용(lib/lockCard.ts)으로 '지금/다음 일정' 알림을 조용히 바꿔 단다
  */
-const VERSION = "must-v11";
+const VERSION = "must-v12";
 // 버전이 바뀌어도 지우지 않는 작은 저장소(잠금화면 카드 내용)
 const STATE = "must-state";
 // '공유 → DREAM' 으로 받은 사진·글을 앱이 꺼내 갈 때까지 잠깐 두는 곳
@@ -96,6 +96,8 @@ self.addEventListener("fetch", (event) => {
             const cache = await caches.open(VERSION);
             cache.put(ROOT, res.clone());
           }
+          // GitHub(앱을 올려 둔 곳)이 잠깐 고장 나면(5xx — 유니콘 그림 오류 화면) 그 화면 대신 저장해 둔 앱을 연다
+          if (res.status >= 500) return (await caches.match(ROOT)) || res;
           return res;
         } catch {
           return (await caches.match(ROOT)) || Response.error();
